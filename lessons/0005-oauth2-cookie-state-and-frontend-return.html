@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OAuth2 state 쿠키와 프론트 복귀 흐름</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow {
+      white-space: pre-wrap;
+    }
+
+    .ok {
+      color: #047857;
+      font-weight: 700;
+    }
+
+    .no {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>OAuth2 state 쿠키와 프론트 복귀 흐름</h1>
+  <p class="note">
+    목표: 서버 세션이 없을 때 <code>state</code>를 쿠키로 비교하는 구조와,
+    Google callback 처리 후 사용자가 홈 화면으로 돌아오고 AT를 확보하는 구조를 요청/응답 단위로 이해한다.
+  </p>
+
+  <h2>1. state는 그대로 돌아오나?</h2>
+  <p>
+    정상 흐름에서는 그렇다. 우리 서버가 Google authorization URL에 <code>state=abc123</code>을 넣어 보내면,
+    Google은 로그인/동의 후 우리 callback URL에 같은 <code>state=abc123</code>을 붙여서 브라우저를 돌려보낸다.
+  </p>
+  <pre class="flow"><code>우리 백엔드가 만든 redirect 응답:
+302 Location: https://accounts.google.com/o/oauth2/v2/auth
+  ?client_id=...
+  &amp;redirect_uri=https://api.our-service.com/oauth2/callback/google
+  &amp;response_type=code
+  &amp;scope=openid%20email%20profile
+  &amp;state=abc123
+
+Google 로그인 성공 후 redirect 응답:
+302 Location: https://api.our-service.com/oauth2/callback/google
+  ?code=GOOGLE_AUTH_CODE
+  &amp;state=abc123</code></pre>
+
+  <p class="warn">
+    하지만 중요한 것은 “돌아온다”가 아니라 “돌아온 값이 내가 시작한 요청의 값과 같은지 검증한다”이다.
+  </p>
+
+  <h2>2. 서버 세션이 없으면 state를 어디에 두나?</h2>
+  <p>
+    한 가지 방식은 <strong>우리 백엔드 도메인의 HttpOnly 임시 쿠키</strong>에 저장하는 것이다.
+    이 쿠키는 Google로 보내지는 게 아니라, 나중에 브라우저가 우리 callback URL로 돌아올 때 우리 백엔드에 자동으로 붙는다.
+  </p>
+
+  <pre class="flow"><code>1. 브라우저 -> 우리 백엔드
+GET https://api.our-service.com/login/google
+
+2. 우리 백엔드 -> 브라우저
+Set-Cookie: oauth_state=abc123; HttpOnly; Secure; SameSite=Lax; Max-Age=300; Path=/oauth2/callback
+302 Location: https://accounts.google.com/o/oauth2/v2/auth?...&amp;state=abc123
+
+3. 브라우저 -> Google
+GET https://accounts.google.com/o/oauth2/v2/auth?...&amp;state=abc123
+
+중요:
+  oauth_state 쿠키는 api.our-service.com의 쿠키다.
+  따라서 accounts.google.com 요청에는 붙지 않는다.
+
+4. Google -> 브라우저
+302 Location: https://api.our-service.com/oauth2/callback/google?code=...&amp;state=abc123
+
+5. 브라우저 -> 우리 백엔드 callback
+GET /oauth2/callback/google?code=...&amp;state=abc123
+Cookie: oauth_state=abc123
+
+6. 우리 백엔드
+query state와 cookie state 비교
+일치하면 통과
+다르면 거절</code></pre>
+
+  <p class="note">
+    이 방식에서 쿠키는 “로그인 완료 쿠키”가 아니다.
+    잠깐 동안 OAuth 요청과 callback을 연결하기 위한 임시 검증값 저장소다.
+  </p>
+
+  <h2>3. 쿠키 기반 state 검증 의사코드</h2>
+  <pre class="flow"><code>GET /login/google:
+  state = randomBase64Url(32)
+
+  response.setCookie(
+    name = "oauth_state",
+    value = state,
+    httpOnly = true,
+    secure = true,
+    sameSite = "Lax",
+    maxAge = 300,
+    path = "/oauth2/callback"
+  )
+
+  redirect(
+    "https://accounts.google.com/o/oauth2/v2/auth"
+      + "?response_type=code"
+      + "&amp;client_id=..."
+      + "&amp;redirect_uri=https://api.our-service.com/oauth2/callback/google"
+      + "&amp;scope=openid%20email%20profile"
+      + "&amp;state=" + state
+  )
+
+GET /oauth2/callback/google:
+  stateFromQuery = request.query["state"]
+  stateFromCookie = request.cookie["oauth_state"]
+
+  if stateFromQuery == null:
+      reject
+
+  if stateFromCookie == null:
+      reject
+
+  if stateFromQuery != stateFromCookie:
+      reject
+
+  response.deleteCookie("oauth_state")
+  exchange code with Google
+  issue our tokens</code></pre>
+
+  <p class="warn">
+    운영 환경에서는 단순 비교 외에도 만료 시간, 재사용 방지, redirect 목적지 검증이 필요하다.
+    완전 무상태에 가깝게 가려면 <code>state</code> 자체를 서명하거나 암호화해서 위변조를 막는다.
+  </p>
+
+  <h2>4. <code>/login/success</code>는 API인가 화면인가?</h2>
+  <p>
+    <code>https://our-frontend.com/login/success</code>는 예시 이름일 뿐이다.
+    API가 아니라 React/Vue/Next 같은 프론트 애플리케이션의 라우트일 수 있다.
+    실제 서비스에서는 <code>/</code>, <code>/home</code>, <code>/dashboard</code>, <code>/mypage</code>로 보내도 된다.
+  </p>
+
+  <pre class="flow"><code>callback 처리 완료 후:
+302 Location: https://our-frontend.com/
+
+또는:
+302 Location: https://our-frontend.com/dashboard
+
+또는:
+302 Location: https://our-frontend.com/login/success?from=oauth</code></pre>
+
+  <p class="note">
+    중요한 것은 URL 이름이 아니라 “백엔드 callback 응답이 브라우저에게 프론트 화면 URL로 이동하라고 지시한다”는 점이다.
+  </p>
+
+  <h2>5. 방식 A: callback에서 RT 쿠키 저장 후 홈으로 redirect</h2>
+  <pre class="flow"><code>1. Google callback 도착
+GET https://api.our-service.com/oauth2/callback/google?code=...&amp;state=...
+
+2. 우리 백엔드
+state 검증
+Google code 교환
+Google id_token 검증
+회원 조회/가입
+우리 refresh token 발급
+
+3. 우리 백엔드 -> 브라우저
+Set-Cookie: refresh_token=RT; HttpOnly; Secure; SameSite=Lax; Path=/auth
+302 Location: https://our-frontend.com/
+
+4. 브라우저 -> 프론트
+GET https://our-frontend.com/
+
+5. 프론트 앱 시작 코드
+POST https://api.our-service.com/auth/refresh
+Cookie: refresh_token=RT
+
+6. 우리 백엔드 -> 프론트
+200 OK
+{
+  "accessToken": "AT",
+  "user": { ... }
+}</code></pre>
+
+  <p>
+    여기서 <code>/auth/refresh</code> 호출은 브라우저가 마법처럼 하는 게 아니다.
+    프론트 앱의 초기화 코드, route guard, React <code>useEffect</code>, Vue router guard 같은 코드가 호출한다.
+  </p>
+
+  <pre class="flow"><code>프론트 앱 부팅 시:
+  accessToken이 메모리에 없으면
+      POST /auth/refresh 호출
+      성공하면 AT를 메모리에 저장
+      /me 또는 홈 데이터 API 호출</code></pre>
+
+  <p class="warn">
+    RT가 HttpOnly 쿠키에 있으면 JavaScript는 RT 값을 읽지 못한다.
+    대신 같은 사이트 요청 또는 <code>credentials: "include"</code> 요청에서 브라우저가 쿠키를 자동으로 붙여준다.
+  </p>
+
+  <h2>6. 방식 B: callback 후 일회성 로그인 티켓으로 교환</h2>
+  <p>
+    방식 B의 핵심은 Google callback 응답에서 바로 RT 쿠키를 심는 대신,
+    프론트에 매우 짧게 사는 <strong>우리 서비스용 일회성 티켓</strong>만 넘기고,
+    프론트가 별도 API로 AT/RT를 교환한다는 것이다.
+    이 티켓은 Google authorization code가 아니라 우리 백엔드가 만든 값이다.
+  </p>
+
+  <pre class="flow"><code>1. Google callback 도착
+GET https://api.our-service.com/oauth2/callback/google?code=...&amp;state=...
+
+2. 우리 백엔드
+state 검증
+Google code 교환
+Google id_token 검증
+회원 조회/가입
+login_ticket 생성
+
+3. 우리 백엔드 -> 브라우저
+302 Location: https://our-frontend.com/oauth/complete?ticket=LOGIN_TICKET
+
+4. 브라우저 -> 프론트
+GET https://our-frontend.com/oauth/complete?ticket=LOGIN_TICKET
+
+5. 프론트 앱 코드
+POST https://api.our-service.com/auth/exchange
+Content-Type: application/json
+
+{
+  "ticket": "LOGIN_TICKET"
+}
+
+6. 우리 백엔드 -> 프론트
+Set-Cookie: refresh_token=RT; HttpOnly; Secure; SameSite=Lax; Path=/auth
+200 OK
+{
+  "accessToken": "AT",
+  "user": { ... }
+}</code></pre>
+
+  <p class="note">
+    방식 B는 “최종 토큰 발급”을 redirect 응답이 아니라 일반 API 응답에서 처리하고 싶을 때 쓴다.
+    단, <code>LOGIN_TICKET</code>은 짧은 만료, 1회 사용, 서명/저장소 검증이 필요하다.
+  </p>
+
+  <h2>7. 방식 A와 B의 차이</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>방식 A</h3>
+      <p><span class="ok">간단하다.</span> callback에서 바로 RT 쿠키를 심고 홈으로 보낸다.</p>
+      <p><span class="no">프론트는 부팅 후 refresh/me API를 호출해야 한다.</span></p>
+    </section>
+    <section class="card">
+      <h3>방식 B</h3>
+      <p><span class="ok">AT를 일반 API 응답 body로 받기 쉽다.</span></p>
+      <p><span class="no">일회성 티켓 관리가 추가된다.</span></p>
+    </section>
+  </div>
+
+  <h2>8. 회상 퀴즈</h2>
+  <section class="quiz" aria-label="OAuth2 cookie state quiz">
+    <p><strong>Q1.</strong> <code>oauth_state</code> 쿠키는 Google 요청에 붙는가?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">항상 붙는다</button>
+    <button type="button" data-target="answer-1" data-answer="correct">우리 도메인만</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">절대 안 붙는다</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> 방식 A에서 <code>/auth/refresh</code>는 누가 호출하는가?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">브라우저 기본</button>
+    <button type="button" data-target="answer-2" data-answer="correct">프론트 코드</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">Google 서버</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> 방식 B의 <code>ticket</code>은 무엇인가?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">Google code</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">Refresh token</button>
+    <button type="button" data-target="answer-3" data-answer="correct">우리 티켓</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.1">RFC 6749: Authorization Request</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.2">RFC 6749: Authorization Response</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc9700.html#section-4.7.1">RFC 9700: CSRF Protection</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="./0004-oauth2-login-flow-stateless-vs-session.html">OAuth2 로그인 흐름</a>,
+    <a href="../reference/0002-oauth2-login-flow-cheatsheet.html">OAuth2 로그인 흐름 치트시트</a>.
+    헷갈리는 부분은 다음 Teach Session에서 요청/응답 로그 형태로 더 쪼개서 질문해도 된다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect ? "정답." : "오답. 요청 대상 도메인과 호출 주체를 다시 보자.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>

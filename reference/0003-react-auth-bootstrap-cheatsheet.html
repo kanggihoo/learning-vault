@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>React 인증 상태 복원 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main>
+  <h1>React 인증 상태 복원 치트시트</h1>
+  <p class="note">
+    핵심: <strong>HttpOnly RT 쿠키는 JavaScript가 읽지 않는다. React는 앱 시작 시 refresh API를 호출하고, 성공 응답의 user/AT를 state에 저장해 로그인 UI를 그린다.</strong>
+  </p>
+
+  <h2>OAuth2 callback 이후</h2>
+  <pre><code>백엔드 callback 응답:
+Set-Cookie: refresh_token=RT; HttpOnly; Secure; SameSite=Lax; Path=/auth
+302 Location: https://our-frontend.com/
+
+브라우저:
+RT 쿠키 저장
+프론트 홈으로 이동
+
+React:
+아직 로그인 여부 모름
+status = "loading"</code></pre>
+
+  <h2>앱 시작 인증 복원</h2>
+  <pre><code>React app mount:
+  POST /auth/refresh
+  credentials: "include"
+
+백엔드:
+  RT 쿠키 검증
+  성공: AT와 user 응답
+  실패: 401
+
+React:
+  성공: status = "authenticated", user 저장
+  실패: status = "anonymous"</code></pre>
+
+  <h2>AuthProvider 최소 구조</h2>
+  <pre><code>const [status, setStatus] = useState("loading");
+const [accessToken, setAccessToken] = useState(null);
+const [user, setUser] = useState(null);
+
+useEffect(() =&gt; {
+  async function bootstrapAuth() {
+    const response = await fetch("/auth/refresh", {
+      method: "POST",
+      credentials: "include"
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      setAccessToken(data.accessToken);
+      setUser(data.user);
+      setStatus("authenticated");
+    } else {
+      setAccessToken(null);
+      setUser(null);
+      setStatus("anonymous");
+    }
+  }
+
+  bootstrapAuth();
+}, []);</code></pre>
+
+  <h2>헤더 렌더링 기준</h2>
+  <pre><code>status === "loading"
+  - 확인 중
+  - 깜빡임 방지용 skeleton 가능
+
+status === "authenticated"
+  - "{user.name}님 환영합니다"
+  - 로그아웃 버튼
+
+status === "anonymous"
+  - 로그인 버튼</code></pre>
+
+  <h2>쿠키 구분</h2>
+  <pre><code>oauth_state
+  - OAuth callback 검증용 임시 쿠키
+  - callback 이후 삭제
+  - 로그인 유지용 아님
+
+refresh_token
+  - 로그인 유지용 쿠키
+  - HttpOnly라 JS에서 읽지 못함
+  - /auth/refresh 요청 때 브라우저가 자동 첨부</code></pre>
+
+  <h2>방식 A/B 선택</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>방식 A</h3>
+      <p>callback에서 RT 쿠키를 바로 심고 홈으로 redirect. 단순한 SPA 로그인에 적합하다.</p>
+    </section>
+    <section class="card">
+      <h3>방식 B</h3>
+      <p>callback 후 일회성 티켓으로 <code>/auth/exchange</code> 호출. 후처리 통제가 필요할 때 쓴다.</p>
+    </section>
+  </div>
+
+  <h2>주의</h2>
+  <pre><code>credentials: "include"
+  - 프론트와 백엔드 origin이 다르면 필요
+  - 서버 CORS도 credentials 허용 필요
+
+Access token
+  - 메모리에 저장
+  - 새로고침하면 사라짐
+  - 사라지면 /auth/refresh로 재발급
+
+Refresh token
+  - HttpOnly 쿠키
+  - JavaScript로 읽지 않음</code></pre>
+
+  <p>관련 lesson: <a href="../lessons/0006-react-auth-bootstrap-after-oauth2.html">React에서 OAuth2 로그인 후 인증 상태 복원하기</a></p>
+</main>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OAuth2 로그인 흐름 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main>
+  <h1>OAuth2 로그인 흐름 치트시트</h1>
+  <p class="note">
+    한 줄 기준: <strong>브라우저 redirect로 code를 받고, 백엔드가 서버 간 요청으로 구글 토큰을 받은 뒤, 우리 서비스 토큰을 새로 발급하고 다시 프론트로 redirect한다.</strong>
+  </p>
+
+  <h2>역할</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>Resource Owner</h3>
+      <p>사용자. 구글 계정 소유자.</p>
+    </section>
+    <section class="card">
+      <h3>Client</h3>
+      <p>우리 서비스. 백엔드가 confidential client 역할을 하는 경우가 많다.</p>
+    </section>
+    <section class="card">
+      <h3>Authorization Server</h3>
+      <p>구글 인증/인가 서버. code와 구글 토큰을 발급한다.</p>
+    </section>
+    <section class="card">
+      <h3>Resource Server</h3>
+      <p>구글 API 서버 또는 우리 API 서버. 어떤 토큰을 받는지 구분해야 한다.</p>
+    </section>
+  </div>
+
+  <h2>토큰 구분</h2>
+  <pre><code>authorization code
+  - 브라우저 redirect로 우리 callback에 도착
+  - 짧게 살고 1회용에 가깝다
+  - 백엔드가 구글 token endpoint에 교환한다
+
+google access_token
+  - 구글 API 호출용
+  - 우리 API 인증 토큰으로 쓰지 않는다
+
+google id_token
+  - OpenID Connect 로그인에서 사용자 인증 결과를 담는 JWT
+  - decode만 하지 말고 signature, iss, aud, exp, nonce를 검증한다
+  - 검증 후 sub를 사용자 고유키로 본다
+
+our access token
+  - 우리 API 호출용
+  - 보통 짧은 만료
+
+our refresh token
+  - 우리 access token 재발급용
+  - 브라우저 앱에서는 HttpOnly Secure SameSite 쿠키에 두는 설계가 흔하다</code></pre>
+
+  <h2>세션 있는 방식</h2>
+  <pre><code>GET /login/google
+  서버 세션: state, nonce, returnUrl 저장
+  브라우저: session_id 쿠키
+  302 to Google
+
+GET /oauth2/callback/google?code=...&amp;state=...
+  서버 세션의 state와 query state 비교
+  code를 Google token endpoint에 교환
+  id_token 검증
+  우리 로그인 처리
+  Set-Cookie: refresh_token=...
+  302 Location: 프론트엔드 로그인 성공 화면</code></pre>
+
+  <h2>state 검증</h2>
+  <pre><code>목적
+  - callback 요청이 내가 시작한 로그인 요청의 결과인지 확인
+  - OAuth callback CSRF 방어
+
+세션 방식
+  로그인 시작: session["oauth_state"] = random_state
+  callback: request.state == session["oauth_state"] 비교
+  성공 후: session["oauth_state"] 삭제
+
+무상태 방식
+  로그인 시작: state = sign_or_encrypt({ nonce, returnUrl, exp })
+  callback: state 서명과 만료 검증
+  필요하면 임시 쿠키나 PKCE 값과 바인딩 확인</code></pre>
+
+  <h2>Google ID Token 검증</h2>
+  <pre><code>Google id_token은 JWT다.
+하지만 JWT payload decode만으로는 신뢰할 수 없다.
+
+필수 검증:
+  signature
+    Google 공개키/JWKS로 서명 검증
+    kid에 맞는 키 선택
+
+  iss
+    accounts.google.com 또는 https://accounts.google.com
+
+  aud
+    우리 Google OAuth Client ID
+
+  exp
+    만료 전이어야 함
+
+  nonce
+    요청에 nonce를 보냈다면 같은 값이어야 함
+
+검증 후:
+  sub를 우리 회원의 Google 고유 식별자로 저장
+  email은 기본키로 쓰지 않음</code></pre>
+
+  <h2>무상태에 가까운 방식</h2>
+  <pre><code>GET /login/google
+  state = 서명/암호화된 { nonce, returnUrl, iat, exp }
+  code_verifier는 HttpOnly 임시 쿠키 또는 안전한 저장 전략 사용
+  302 to Google
+
+GET /oauth2/callback/google?code=...&amp;state=...
+  state 서명/만료 검증
+  필요하면 임시 쿠키와 바인딩 확인
+  code를 Google token endpoint에 교환
+  id_token 검증
+  우리 로그인 처리
+  Set-Cookie: refresh_token=...
+  302 Location: 프론트엔드 로그인 성공 화면</code></pre>
+
+  <h2>redirect 체인</h2>
+  <pre><code>브라우저 -> 우리 백엔드 /login/google
+우리 백엔드 -> 302 Location: https://accounts.google.com/...
+
+브라우저 -> accounts.google.com
+구글 -> 302 Location: https://api.our-service.com/oauth2/callback/google?code=...
+
+브라우저 -> 우리 백엔드 /oauth2/callback/google?code=...
+우리 백엔드 -> 302 Location: https://our-frontend.com/login/success
+
+브라우저 -> 우리 프론트 /login/success</code></pre>
+
+  <h2>AT/RT 전달 패턴</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>Redirect + Cookie</h3>
+      <p>백엔드 callback에서 <code>Set-Cookie</code> 후 프론트로 302 이동. 이 경우 callback 응답 body로 토큰을 읽는 구조가 아니다.</p>
+    </section>
+    <section class="card">
+      <h3>One-time Code + Exchange</h3>
+      <p>프론트로 일회성 코드만 넘기고, 프론트가 API 호출로 AT를 body에서 받고 RT는 쿠키로 받는다.</p>
+    </section>
+    <section class="card">
+      <h3>BFF Session</h3>
+      <p>브라우저에는 세션 쿠키만 둔다. 우리 JWT는 서버 내부에서만 쓸 수 있다.</p>
+    </section>
+  </div>
+
+  <h2>헷갈리기 쉬운 표현</h2>
+  <pre><code>웹훅
+  X: 구글 서버가 우리 서버에 직접 이벤트를 보내는 것
+  O: OAuth callback은 사용자 브라우저 redirect다
+
+#fragment
+  X: 서버가 callback에서 읽는 토큰 전달 방식
+  O: 브라우저 JavaScript만 읽는 URL 조각이다
+  현대 로그인에서는 implicit flow 대신 code flow + PKCE를 우선한다
+
+state
+  X: 로그인 토큰
+  O: 요청과 콜백을 묶는 CSRF 방어/복귀 위치 보존 값</code></pre>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1">RFC 6749: Authorization Code Grant</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc6749.html#section-10.12">RFC 6749: Cross-Site Request Forgery</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.2">RFC 9700: OAuth 2.0 Security Best Current Practice - Implicit Grant</a></li>
+    <li><a href="https://openid.net/specs/openid-connect-core-1_0.html">OpenID Connect Core 1.0</a></li>
+    <li><a href="https://developers.google.com/identity/gsi/web/guides/verify-google-id-token">Google: Verify the Google ID token on your server side</a></li>
+    <li><a href="https://developers.google.com/identity/protocols/oauth2/web-server">Google OAuth2 for Web Server Applications</a></li>
+  </ul>
+
+  <p>관련 lesson: <a href="../lessons/0004-oauth2-login-flow-stateless-vs-session.html">OAuth2 로그인 흐름: 세션 방식과 무상태 방식</a></p>
+</main>
+</body>
+</html>

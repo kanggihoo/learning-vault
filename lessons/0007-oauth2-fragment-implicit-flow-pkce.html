@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OAuth2 fragment, implicit flow, PKCE 이해하기</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow {
+      white-space: pre-wrap;
+    }
+
+    .ok {
+      color: #047857;
+      font-weight: 700;
+    }
+
+    .no {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>OAuth2 fragment, implicit flow, PKCE 이해하기</h1>
+  <p class="note">
+    목표: URL의 <code>#access_token=...</code>이 왜 예전 implicit flow에서 쓰였고,
+    왜 현대 웹 로그인에서는 authorization code flow + PKCE를 우선하는지 이해한다.
+  </p>
+
+  <h2>1. URL의 fragment란?</h2>
+  <p>
+    URL에서 <code>#</code> 뒤쪽을 fragment라고 부른다.
+    예를 들어 아래 URL에서 fragment는 <code>access_token=...</code> 부분이다.
+  </p>
+
+  <pre class="flow"><code>https://our-frontend.com/callback#access_token=GOOGLE_AT&amp;token_type=Bearer
+                           └──────────────────────────────────────────────
+                                      fragment</code></pre>
+
+  <p class="warn">
+    fragment는 HTTP 요청으로 서버에 전송되지 않는다.
+    브라우저 안에만 남고, 프론트 JavaScript가 <code>window.location.hash</code>로 읽을 수 있다.
+  </p>
+
+  <pre class="flow"><code>브라우저 주소창:
+https://our-frontend.com/callback#access_token=abc
+
+실제 서버로 가는 HTTP 요청:
+GET /callback HTTP/1.1
+Host: our-frontend.com
+
+서버가 못 보는 부분:
+#access_token=abc</code></pre>
+
+  <h2>2. implicit flow는 무엇이었나?</h2>
+  <p>
+    예전에는 SPA가 백엔드 없이 브라우저 JavaScript만으로 OAuth 로그인을 처리하는 경우가 많았다.
+    이때 authorization code를 백엔드가 교환하는 구조가 아니라,
+    authorization server가 access token을 브라우저로 바로 돌려줬다.
+  </p>
+
+  <pre class="flow"><code>Implicit flow:
+
+1. 브라우저 -> Google
+GET /auth?response_type=token&amp;client_id=...
+
+2. Google 로그인/동의
+
+3. Google -> 브라우저
+302 Location: https://our-frontend.com/callback#access_token=GOOGLE_AT
+
+4. 프론트 JavaScript
+window.location.hash에서 access_token을 읽음
+
+5. 프론트 JavaScript
+그 access_token으로 Google API 호출</code></pre>
+
+  <p class="note">
+    여기서 핵심은 <code>code</code>가 아니라 <code>access_token</code>이 바로 브라우저에 도착한다는 점이다.
+  </p>
+
+  <h2>3. 왜 fragment를 썼나?</h2>
+  <p>
+    fragment는 서버에 전송되지 않으므로, access token이 프론트 호스팅 서버의 HTTP 요청 로그에 남을 위험을 줄일 수 있었다.
+    그래서 예전 implicit flow에서는 토큰을 query string이 아니라 fragment에 넣었다.
+  </p>
+
+  <div class="grid">
+    <section class="card">
+      <h3>Query string</h3>
+      <pre><code>/callback?access_token=abc</code></pre>
+      <p><span class="no">서버 요청에 포함된다.</span> 서버 로그, 프록시 로그 등에 남기 쉽다.</p>
+    </section>
+    <section class="card">
+      <h3>Fragment</h3>
+      <pre><code>/callback#access_token=abc</code></pre>
+      <p><span class="ok">서버 요청에는 빠진다.</span> 프론트 JavaScript만 읽을 수 있다.</p>
+    </section>
+  </div>
+
+  <h2>4. 그런데 왜 이제 피하나?</h2>
+  <p>
+    fragment가 서버에 안 간다고 해서 안전한 것은 아니다.
+    access token이 브라우저 주소창과 JavaScript 환경에 직접 노출된다.
+    브라우저 안의 스크립트, 확장 프로그램, XSS, 잘못된 리다이렉트 처리에 더 민감하다.
+  </p>
+
+  <pre class="flow"><code>문제의 핵심:
+  access token이 브라우저 앞단에 바로 도착함
+  백엔드가 token endpoint에서 교환하고 검증할 기회가 약함
+  token이 URL 조각에 잠깐이라도 노출됨
+  프론트 코드가 token을 직접 다루게 됨</code></pre>
+
+  <p class="warn">
+    그래서 최신 보안 권고에서는 authorization response에서 access token을 바로 주는 implicit 방식을 피하고,
+    authorization code flow와 PKCE를 사용하라고 권고한다.
+  </p>
+
+  <h2>5. 현대 방식: code flow + PKCE</h2>
+  <p>
+    현대 SPA 또는 웹 앱에서는 브라우저가 access token을 바로 받는 대신, 먼저 authorization code를 받는다.
+    그리고 그 code를 token endpoint에서 access token으로 교환한다.
+    PKCE는 이 code를 훔친 사람이 마음대로 토큰으로 교환하지 못하게 묶는 장치다.
+  </p>
+
+  <pre class="flow"><code>Authorization code flow + PKCE:
+
+1. 프론트 또는 백엔드
+code_verifier 생성
+code_challenge = hash(code_verifier)
+
+2. 브라우저 -> Google
+GET /auth
+  ?response_type=code
+  &amp;client_id=...
+  &amp;code_challenge=...
+  &amp;code_challenge_method=S256
+
+3. Google -> callback
+302 Location: https://our-app.com/callback?code=AUTH_CODE&amp;state=...
+
+4. token endpoint 요청
+POST /token
+  code=AUTH_CODE
+  code_verifier=원래값
+
+5. Google
+code_challenge와 code_verifier가 맞는지 확인 후 token 발급</code></pre>
+
+  <p class="note">
+    PKCE의 직관은 “처음 요청한 사람이 가진 비밀 조각을 나중에 다시 증명해야 code를 토큰으로 바꿔준다”이다.
+  </p>
+
+  <h2>6. 지금 우리가 다룬 백엔드 로그인과 비교</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>예전 implicit</h3>
+      <pre><code>callback#access_token=...</code></pre>
+      <p>브라우저가 access token을 바로 받는다. 프론트 JS가 fragment를 읽는다.</p>
+    </section>
+    <section class="card">
+      <h3>지금 배운 백엔드 code flow</h3>
+      <pre><code>callback?code=...</code></pre>
+      <p>브라우저는 code만 운반한다. 백엔드가 Google token endpoint와 서버 간 통신한다.</p>
+    </section>
+  </div>
+
+  <h2>7. 한 문장 정리</h2>
+  <p class="note">
+    <code>#access_token=...</code>은 “브라우저 프론트가 토큰을 직접 받던 예전 방식”의 흔적이고,
+    지금은 “브라우저는 code만 받고, 토큰은 token endpoint에서 교환한다”는 방식이 기본 방향이다.
+  </p>
+
+  <h2>8. 회상 퀴즈</h2>
+  <section class="quiz" aria-label="OAuth2 fragment quiz">
+    <p><strong>Q1.</strong> <code>#access_token=abc</code>는 서버 요청에 포함되는가?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">포함된다</button>
+    <button type="button" data-target="answer-1" data-answer="correct">포함 안됨</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">상황별 포함</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> implicit flow의 특징은?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">code 전달</button>
+    <button type="button" data-target="answer-2" data-answer="correct">token 직행</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">RT 전용</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> PKCE가 막으려는 핵심은?</p>
+    <button type="button" data-target="answer-3" data-answer="correct">code 탈취</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">쿠키 만료</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">화면 이동</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc6749.html#section-4.2">RFC 6749: Implicit Grant</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.2">RFC 9700: Implicit Grant 보안 권고</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc7636.html">RFC 7636: PKCE</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="./0004-oauth2-login-flow-stateless-vs-session.html">OAuth2 로그인 흐름</a>,
+    <a href="../reference/0002-oauth2-login-flow-cheatsheet.html">OAuth2 로그인 흐름 치트시트</a>.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect ? "정답." : "오답. fragment, code, token의 위치를 다시 구분하자.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>

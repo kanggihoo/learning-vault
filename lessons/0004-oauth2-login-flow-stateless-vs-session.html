@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OAuth2 로그인 흐름: 세션 방식과 무상태 방식</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow {
+      white-space: pre-wrap;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border: 1px solid #c9c9c1;
+      border-radius: 999px;
+      background: #fff;
+      font-size: 0.92rem;
+    }
+
+    .correct {
+      color: #047857;
+    }
+
+    .wrong {
+      color: #b91c1c;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>OAuth2 로그인 흐름: 세션 방식과 무상태 방식</h1>
+  <p class="note">
+    목표: 구글 로그인 버튼을 누른 뒤 <code>code</code>, <code>state</code>, <code>ID Token</code>, 우리 서비스의
+    <code>Access Token</code>/<code>Refresh Token</code>이 각각 어디서 생기고 어디로 이동하는지 구분한다.
+  </p>
+
+  <h2>먼저 바로잡을 것</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>콜백은 웹훅이 아니다</h3>
+      <p>구글 서버가 백엔드로 몰래 POST를 쏘는 구조가 아니다. 사용자의 브라우저가 구글에서 우리 <code>redirect_uri</code>로 302 이동하면서 <code>?code=...&amp;state=...</code>를 들고 온다.</p>
+    </section>
+    <section class="card">
+      <h3>accounts.google.com은 구글 화면이다</h3>
+      <p><code>accounts.google.com</code>은 사용자가 보는 구글 로그인/동의 페이지다. 우리 프론트 화면이 아니라 구글이 호스팅하는 authorization endpoint 화면이다.</p>
+    </section>
+    <section class="card">
+      <h3>OAuth2와 로그인은 다르다</h3>
+      <p>OAuth2는 권한 위임 프레임워크다. “구글 로그인”은 보통 OAuth2 위에 OpenID Connect를 얹어 <code>ID Token</code>으로 사용자를 식별한다.</p>
+    </section>
+    <section class="card">
+      <h3>구글 토큰을 그대로 우리 인증 토큰으로 쓰지 않는다</h3>
+      <p>백엔드는 구글의 <code>ID Token</code>을 검증하고 <code>sub</code> 같은 안정적인 식별자로 우리 회원을 찾은 뒤, 우리 서비스용 AT/RT를 새로 발급한다.</p>
+    </section>
+  </div>
+
+  <h2>기본 흐름: Authorization Code Flow</h2>
+  <pre class="flow"><code>1. 사용자 브라우저
+   GET /login/google
+
+2. 우리 백엔드
+   state 생성
+   redirect_uri, scope, client_id, response_type=code를 담아
+   구글 Authorization Endpoint로 302 Redirect
+
+3. 사용자 브라우저
+   accounts.google.com으로 이동
+   구글이 제공하는 로그인/동의 화면을 봄
+
+4. 구글 Authorization Server
+   로그인/동의가 성공하면 사용자 브라우저를 우리 redirect_uri로 302 Redirect
+   예: GET /oauth2/callback/google?code=AUTH_CODE&amp;state=STATE
+
+5. 우리 백엔드 callback controller
+   state 검증
+   code를 구글 Token Endpoint로 서버 간 요청
+
+6. 구글 Token Endpoint
+   access_token, id_token, 경우에 따라 refresh_token 반환
+
+7. 우리 백엔드
+   id_token 검증: iss, aud, exp, signature, nonce/state 관련 값
+   sub로 우리 회원 조회/가입
+   우리 서비스용 access token / refresh token 발급
+
+8. 우리 백엔드
+   callback GET 요청에 대한 응답을 만듦
+   예: Set-Cookie: refresh_token=...
+   예: 302 Location: https://our-frontend.com/login/success
+
+9. 사용자 브라우저
+   302 Location을 보고 프론트엔드 화면으로 다시 GET 요청
+   예: GET /login/success
+   이후 프론트는 우리 access token 또는 쿠키 기반으로 우리 API를 호출</code></pre>
+
+  <p class="note">
+    사용자가 프론트 화면으로 돌아오는 이유는 8번에서 우리 백엔드가 callback 요청에 대한 응답으로 다시
+    <code>302 Location: 프론트엔드_URL</code>을 내려주기 때문이다.
+    즉 구글이 프론트로 직접 보내는 게 아니라, 구글은 우리 callback으로 보내고, 우리 callback이 다시 프론트로 보낸다.
+  </p>
+
+  <p>
+    공식 OAuth2 문서는 authorization code가 사용자의 브라우저를 거쳐 클라이언트로 돌아오고, access token은 token endpoint에서 직접 받는 구조라고 설명한다.
+    자세한 원문은 <a href="https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1">RFC 6749 Section 4.1</a>,
+    Google 구현 문서는 <a href="https://developers.google.com/identity/protocols/oauth2/web-server">Google OAuth2 for Web Server Applications</a>를 보라.
+  </p>
+
+  <h2>그럼 우리 JWT는 body에 담기나?</h2>
+  <p>항상 그렇지는 않다. 핵심은 “로그인 완료 시점이 redirect인지, API 응답인지”다.</p>
+  <div class="grid">
+    <section class="card">
+      <h3>백엔드 콜백이 바로 프론트로 Redirect</h3>
+      <p>302 redirect에는 JSON body를 실어도 브라우저 앱이 일반 API 응답처럼 읽지 않는다. 이때는 백엔드가 <code>Set-Cookie</code>로 RT 또는 세션 쿠키를 심고 <code>Location</code>으로 프론트 페이지를 지정한다.</p>
+    </section>
+    <section class="card">
+      <h3>프론트가 별도 API로 토큰 교환</h3>
+      <p>백엔드 콜백 후 프론트에 일회성 로그인 코드만 넘기고, 프론트가 <code>POST /auth/exchange</code>를 호출한다. 이 API 응답 body에 AT를 담고, RT는 HttpOnly 쿠키로 줄 수 있다.</p>
+    </section>
+    <section class="card">
+      <h3>BFF 또는 서버 렌더링</h3>
+      <p>브라우저에는 우리 JWT를 아예 노출하지 않고 서버 세션 쿠키만 줄 수도 있다. API 호출은 백엔드가 사용자의 세션을 보고 처리한다.</p>
+    </section>
+  </div>
+
+  <h2>세션이 있는 서버 방식</h2>
+  <pre class="flow"><code>로그인 시작:
+  서버 세션에 state, nonce, returnUrl 저장
+  브라우저에는 session_id 쿠키만 전달
+
+콜백:
+  query의 state와 세션의 state 비교
+  일치하면 code를 token endpoint에 교환
+  로그인 완료 후 세션에 userId 저장 또는 우리 AT/RT 발급</code></pre>
+  <p class="note">장점: <code>state</code>, <code>nonce</code>, <code>returnUrl</code>을 서버에 보관하므로 구현이 단순하다. 단점: 서버 세션 저장소가 필요하다.</p>
+
+  <h2><code>state</code> 검증이란?</h2>
+  <p>
+    <code>state</code> 검증은 callback의 <code>?state=...</code>가 로그인 시작 시점에 우리 서버가 만든 값과 같은지 확인하는 것이다.
+    목적은 공격자가 자기 Google 로그인 결과를 피해자의 브라우저에 끼워 넣는 CSRF류 공격을 막는 것이다.
+  </p>
+  <div class="grid">
+    <section class="card">
+      <h3>세션 저장 방식</h3>
+      <pre><code>GET /login/google
+  state = random()
+  session["oauth_state"] = state
+  redirect to Google with state
+
+GET /callback?code=...&amp;state=abc
+  expected = session["oauth_state"]
+  if request.state != expected:
+      reject
+  delete session["oauth_state"]</code></pre>
+    </section>
+    <section class="card">
+      <h3>무상태 방식</h3>
+      <pre><code>GET /login/google
+  payload = { nonce, returnUrl, exp }
+  state = sign_or_encrypt(payload)
+  redirect to Google with state
+
+GET /callback?code=...&amp;state=...
+  payload = verify_signature(state)
+  if expired:
+      reject
+  use payload.returnUrl safely</code></pre>
+    </section>
+  </div>
+  <p class="warn">
+    <code>state</code>는 로그인 토큰이 아니다. 추측 불가능해야 하고, 요청과 콜백을 묶는 검증값이다.
+    검증에 성공하면 한 번 쓰고 버리는 방식이 안전하다.
+  </p>
+
+  <h2>완전 무상태에 가까운 서버 방식</h2>
+  <pre class="flow"><code>로그인 시작:
+  state_payload = { nonce, returnUrl, iat, exp }
+  state = 서명 또는 암호화된 값
+  필요하면 code_verifier는 짧은 수명 HttpOnly 쿠키에 저장
+  구글로 redirect
+
+콜백:
+  state 서명/만료 검증
+  쿠키의 code_verifier 또는 state에 묶인 값을 사용해 code 교환
+  우리 AT/RT 발급
+  RT는 HttpOnly Secure SameSite 쿠키로 전달 가능</code></pre>
+  <p class="warn">
+    무상태라고 해서 아무 검증값도 저장하지 않는다는 뜻이 아니다.
+    서버 저장소를 쓰지 않을 뿐, 브라우저 쿠키나 <code>state</code> 안에 들어간 값은 서명, 암호화, 만료, 재사용 방지 전략이 필요하다.
+  </p>
+
+  <h2>Google <code>id_token</code>은 decode만 하면 안 된다</h2>
+  <p>
+    Google <code>id_token</code>은 JWT 형태다. 하지만 JWT는 문자열 포맷일 뿐이라서,
+    payload를 base64url decode하는 것만으로는 “구글이 발급했다”는 사실이 증명되지 않는다.
+  </p>
+  <pre class="flow"><code>해야 하는 검증:
+  1. signature 검증
+     - JWT header의 kid에 맞는 Google 공개키를 가져와 검증
+     - 공개키는 Google JWK/PEM endpoint에서 가져오고 Cache-Control에 맞춰 캐시
+
+  2. iss 검증
+     - accounts.google.com 또는 https://accounts.google.com 인지 확인
+
+  3. aud 검증
+     - 우리 Google OAuth Client ID와 일치하는지 확인
+     - 다른 앱을 위해 발급된 id_token이면 거절
+
+  4. exp 검증
+     - 만료된 토큰이면 거절
+
+  5. nonce 검증
+     - nonce를 보낸 흐름이라면 시작 시점의 nonce와 같은지 확인
+
+검증 후:
+  sub를 우리 회원의 Google 고유 식별자로 사용
+  email은 바뀔 수 있으므로 기본키로 삼지 않음</code></pre>
+  <p class="note">
+    실무에서는 직접 공개키 파싱을 구현하기보다 Google API Client 또는 검증된 JWT/OIDC 라이브러리를 사용한다.
+    중요한 기준은 “decode 후 사용”이 아니라 “검증 후 사용”이다.
+  </p>
+
+  <h2><code>#fragment</code>는 무엇이었나?</h2>
+  <p>
+    URL의 <code>#access_token=...</code> 같은 fragment는 예전 implicit flow에서 토큰을 브라우저에 직접 전달할 때 쓰였다.
+    fragment는 HTTP 요청으로 서버에 전송되지 않으므로 프론트 JavaScript만 읽을 수 있다.
+  </p>
+  <p class="warn">
+    현대 보안 권고에서는 implicit flow 대신 authorization code flow와 PKCE를 사용한다.
+    OAuth 2.0 Security Best Current Practice는 access token을 authorization response에서 직접 발급하는 implicit 방식 사용을 피하라고 권고한다.
+    참고: <a href="https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.2">RFC 9700 Section 2.1.2</a>.
+  </p>
+
+  <p>
+    Google ID Token 검증 기준은 <a href="https://developers.google.com/identity/gsi/web/guides/verify-google-id-token">Google의 서버 측 ID Token 검증 문서</a>와
+    <a href="https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation">OpenID Connect Core ID Token Validation</a>를 기준으로 삼는다.
+  </p>
+
+  <h2>짧은 회상 퀴즈</h2>
+  <section class="quiz" aria-label="OAuth2 flow quiz">
+    <p><strong>Q1.</strong> 구글이 callback URL로 <code>code</code>를 전달할 때, 실제 HTTP 요청을 우리 백엔드로 보내는 주체는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">구글 서버</button>
+    <button type="button" data-target="answer-1" data-answer="correct">사용자 브라우저</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">우리 프론트 서버</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> 우리 서비스 사용자를 식별할 때 보통 검증해야 하는 구글 토큰은?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">구글 refresh_token</button>
+    <button type="button" data-target="answer-2" data-answer="correct">구글 id_token</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">우리 access_token</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> URL <code>#fragment</code>로 토큰을 받는 예전 방식과 가장 가까운 것은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">세션 쿠키 방식</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">인가 코드 방식</button>
+    <button type="button" data-target="answer-3" data-answer="correct">Implicit flow</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <h2>다음에 물어볼 만한 질문</h2>
+  <p>
+    다음 Teach Session에서는 “Spring Security OAuth2 Login에서 AuthorizationRequestRepository가 왜 필요한가” 또는
+    “SPA + 백엔드 조합에서 AT는 memory, RT는 HttpOnly cookie에 두는 이유”를 이어서 다룰 수 있다.
+  </p>
+
+  <p>빠른 복습용 자료: <a href="../reference/0002-oauth2-login-flow-cheatsheet.html">OAuth2 로그인 흐름 치트시트</a></p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect ? "정답. 이 구간은 브라우저 redirect다." : "오답. 요청 주체와 토큰 발급 위치를 다시 구분해보자.";
+      target.className = isCorrect ? "answer correct" : "answer wrong";
+    });
+  });
+</script>
+</body>
+</html>
