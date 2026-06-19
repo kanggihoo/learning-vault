@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>협업 Git에서 rebase를 써도 되는 순간</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main>
+  <h1>협업 Git에서 rebase를 써도 되는 순간</h1>
+  <p>이번 lesson의 목표는 하나다. <strong>rebase가 안전한지 그래프만 보고 판단하기</strong>.</p>
+
+  <h2>1. rebase는 해시를 바꾼다</h2>
+  <p>Git 공식 책은 rebase를 “한 브랜치의 변경을 다른 브랜치 위에 다시 적용하는 것”으로 설명한다. 그래서 결과 파일 내용은 같을 수 있지만 커밋 객체는 새로 만들어지고 해시가 바뀐다. <a href="https://git-scm.com/book/en/v2/Git-Branching-Rebasing">Pro Git: Rebasing</a></p>
+
+  <pre><code>처음 상태
+
+A1b2c3d -- B2c3d4e -- C3d4e5f  main
+              \
+               D4e5f6a -- E5f6a7b  feature/login
+
+명령
+git switch feature/login
+git rebase main
+
+결과
+A1b2c3d -- B2c3d4e -- C3d4e5f  main
+                          \
+                           F6a7b8c -- G7b8c9d  feature/login
+
+D4e5f6a, E5f6a7b는 사라진 것이 아니라 feature/login이 더 이상 가리키지 않는다.
+같은 변경이지만 새 커밋 F6a7b8c, G7b8c9d가 생겼다.</code></pre>
+
+  <p class="note">따라서 rebase의 위험은 “파일이 망가진다”보다 “팀원이 알고 있던 커밋 이름이 바뀐다”에 가깝다.</p>
+
+  <h2>2. 안전한 경우: 내 브랜치, 내 커밋</h2>
+  <p>아직 push하지 않았거나, 원격에 push했더라도 사실상 나 혼자 쓰는 PR 브랜치라면 rebase는 좋다. main의 최신 변경 위에 내 작업을 얹어서 PR 이력을 읽기 쉽게 만들 수 있다.</p>
+
+  <pre><code>origin/main이 앞으로 감
+
+A1b2c3d -- B2c3d4e -- C3d4e5f -- H8c9d0e  origin/main
+              \
+               D4e5f6a -- E5f6a7b  feature/login
+
+내 작업 브랜치 정리
+git fetch origin
+git switch feature/login
+git rebase origin/main
+
+결과
+A1b2c3d -- B2c3d4e -- C3d4e5f -- H8c9d0e  origin/main
+                                     \
+                                      I9d0e1f -- J0e1f2a  feature/login</code></pre>
+
+  <p>이미 원격에 올린 내 PR 브랜치라면 push가 거절될 수 있다. 이때는 단순 <code>--force</code>보다 <code>--force-with-lease</code>가 낫다. 공식 <a href="https://git-scm.com/docs/git-push">git-push 문서</a> 기준으로 이 옵션은 내가 알고 있는 원격 상태와 다를 때 덮어쓰지 않도록 보호한다.</p>
+
+  <pre><code>git push --force-with-lease origin feature/login</code></pre>
+
+  <h2>3. 위험한 경우: 공개된 커밋</h2>
+  <p>다른 사람이 이미 pull 해서 그 위에 작업했을 수 있는 커밋은 rebase하지 않는다. Git 공식 책도 “저장소 밖에 존재하고 다른 사람이 기반으로 삼았을 수 있는 커밋을 rebase하지 말라”고 경고한다.</p>
+
+  <pre><code>원격 공유 브랜치
+
+A1b2c3d -- B2c3d4e -- C3d4e5f -- D4e5f6a  origin/shared
+                                     \
+                                      E5f6a7b -- F6a7b8c  teammate/work
+
+내가 shared를 rebase 후 force push
+
+A1b2c3d -- B2c3d4e -- C3d4e5f -- X1x2x3x -- Y2y3y4y  origin/shared
+                                     \
+                                      E5f6a7b -- F6a7b8c  teammate/work
+
+문제: 팀원의 E5f6a7b는 옛 D4e5f6a를 부모로 기억한다.
+이제 같은 변경이 D4e5f6a와 X1x2x3x처럼 다른 해시로 중복될 수 있다.</code></pre>
+
+  <p class="warn">팀원이 같이 쓰는 브랜치라면 merge commit이 조금 생겨도 보통 그게 낫다. 복잡한 그래프보다 공유 이력을 망가뜨리는 비용이 더 크다.</p>
+
+  <h2>4. 실무 판단표</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>rebase 추천</h3>
+      <p>내 로컬 커밋 정리, 개인 PR 브랜치 최신화, merge 전 commit squash.</p>
+    </section>
+    <section class="card">
+      <h3>merge 추천</h3>
+      <p>main, develop, release처럼 보호되는 공유 브랜치 통합. 여러 명이 같은 feature 브랜치에서 작업할 때.</p>
+    </section>
+    <section class="card">
+      <h3>팀 규칙 우선</h3>
+      <p>GitHub의 “Squash and merge”, “Rebase and merge”, “Create a merge commit” 중 무엇을 쓰는지는 팀의 추적 전략에 맞춘다.</p>
+    </section>
+  </div>
+
+  <h2>5. 짧은 연습</h2>
+  <section class="quiz">
+    <p><strong>Q.</strong> 다음 중 rebase해도 가장 안전한 상황은?</p>
+    <button data-ok="false">main 브랜치를 rebase 후 force push</button>
+    <button data-ok="true">내 PR 브랜치를 origin/main 위로 rebase</button>
+    <button data-ok="false">팀원이 쓰는 공유 브랜치를 rebase</button>
+    <p class="answer" id="answer"></p>
+  </section>
+
+  <h2>6. 명령어 감각</h2>
+  <p>복습용 명령어 표는 <a href="../reference/0001-git-rebase-collaboration-cheatsheet.html">Git rebase 협업 치트시트</a>에 따로 정리했다.</p>
+  <p>추천 1차 자료: <a href="https://git-scm.com/book/en/v2/Git-Branching-Rebasing">Pro Git - Rebasing</a>. 읽다가 헷갈리는 그래프나 상황이 생기면 이 agent에게 그대로 질문하면 된다.</p>
+</main>
+<script>
+  const answer = document.getElementById("answer");
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      answer.textContent = button.dataset.ok === "true"
+        ? "정답. 내 PR 브랜치이고 공유 기준점이 아니라서 안전하다."
+        : "아니다. 다른 사람이 기반으로 삼았을 수 있는 이력은 바꾸지 않는다.";
+    });
+  });
+</script>
+</body>
+</html>

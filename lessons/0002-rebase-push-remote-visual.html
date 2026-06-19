@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rebase와 push가 바꾸는 위치</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .stage {
+      margin: 28px 0;
+      padding: 18px;
+      border: 2px solid #d7d7cf;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .stage h2 {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .diagram {
+      font-size: 15px;
+      white-space: pre;
+    }
+
+    .local {
+      color: #2563eb;
+      font-weight: 700;
+    }
+
+    .remote {
+      color: #b45309;
+      font-weight: 700;
+    }
+
+    .bad {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+
+    .ok {
+      color: #047857;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>rebase와 push가 실제로 바꾸는 것</h1>
+  <p class="note">
+    핵심: <strong>rebase는 로컬 브랜치만 바꾼다.</strong>
+    <strong>원격 브랜치는 push할 때 바뀐다.</strong>
+  </p>
+
+  <section class="stage">
+    <h2>0. 시작 상태</h2>
+    <p>원격 <code>origin/A</code>, 내 로컬 <code>A</code>, 철수 로컬 <code>A</code>가 모두 같은 커밋을 보고 있다.</p>
+    <pre class="diagram"><code>M1 -- M2 -- A1 -- A2
+              ▲
+              ├─ <span class="remote">origin/A</span>
+              ├─ <span class="local">내 로컬 A</span>
+              └─ 철수 로컬 A</code></pre>
+  </section>
+
+  <section class="stage">
+    <h2>1. main에 새 커밋 M3가 생김</h2>
+    <p><code>origin/main</code>만 앞으로 갔다. <code>origin/A</code>는 아직 그대로다.</p>
+    <pre class="diagram"><code>M1 -- M2 -- M3
+        ▲     ▲
+        │     └─ <span class="remote">origin/main</span>
+        │
+        └-- A1 -- A2
+                  ▲
+                  ├─ <span class="remote">origin/A</span>
+                  ├─ <span class="local">내 로컬 A</span>
+                  └─ 철수 로컬 A</code></pre>
+  </section>
+
+  <section class="stage">
+    <h2>2. 내가 로컬에서 rebase</h2>
+    <pre><code>git switch A
+git fetch origin
+git rebase origin/main</code></pre>
+    <p><strong>여기서는 원격이 안 바뀐다.</strong> 내 로컬 <code>A</code>만 <code>M3</code> 뒤로 이동하며 새 커밋 <code>A1'</code>, <code>A2'</code>가 된다.</p>
+    <pre class="diagram"><code>M1 -- M2 -- M3 -- A1' -- A2'
+        ▲           ▲       ▲
+        │           │       └─ <span class="local">내 로컬 A</span>
+        │           └─ 새로 만들어진 커밋
+        │
+        └-- A1 -- A2
+                  ▲
+                  ├─ <span class="remote">origin/A</span>  그대로
+                  └─ 철수 로컬 A 그대로</code></pre>
+  </section>
+
+  <section class="stage">
+    <h2>3. 내가 force push</h2>
+    <pre><code>git push --force-with-lease origin A</code></pre>
+    <p>이 순간 <code>origin/A</code>가 바뀐다. rebase 때문이 아니라 push 때문이다.</p>
+    <pre class="diagram"><code>M1 -- M2 -- M3 -- A1' -- A2'
+        ▲                   ▲
+        │                   ├─ <span class="local">내 로컬 A</span>
+        │                   └─ <span class="remote">origin/A</span>  여기로 바뀜
+        │
+        └-- A1 -- A2
+                  ▲
+                  └─ 철수 로컬 A는 아직 여기</code></pre>
+  </section>
+
+  <section class="stage">
+    <h2>4. 왜 공유 브랜치면 문제인가</h2>
+    <p>철수가 옛 <code>A2</code> 위에서 <code>C1</code>을 만들었다고 하자.</p>
+    <pre class="diagram"><code>원격 origin/A:
+M1 -- M2 -- M3 -- A1' -- A2'
+                            ▲
+                            └─ <span class="remote">origin/A</span>
+
+철수 로컬 A:
+M1 -- M2 -- A1 -- A2 -- C1
+                        ▲
+                        └─ 철수 로컬 A</code></pre>
+    <p class="warn">
+      Git 입장에서는 <code>A1/A2</code>와 <code>A1'/A2'</code>가 다른 커밋이다.
+      그래서 철수의 브랜치와 원격 브랜치가 갈라진다.
+    </p>
+  </section>
+
+  <section class="stage">
+    <h2>5. 개인 브랜치면 왜 괜찮나</h2>
+    <p>철수가 <code>origin/A</code>를 쓰지 않았다면, 깨질 사람이 없다.</p>
+    <pre class="diagram"><code>M1 -- M2 -- M3 -- A1' -- A2'
+                            ▲
+                            ├─ <span class="local">내 로컬 A</span>
+                            └─ <span class="remote">origin/A</span>
+
+다른 사람이 A1/A2를 기준으로 작업하지 않았음
+=> <span class="ok">문제 없음</span></code></pre>
+  </section>
+
+  <section class="stage">
+    <h2>결론</h2>
+    <pre class="diagram"><code><span class="ok">OK</span>
+개인 브랜치 A:
+git rebase origin/main
+git push --force-with-lease origin A
+
+<span class="bad">위험</span>
+여러 명이 쓰는 브랜치 A:
+git rebase origin/main
+git push --force-with-lease origin A</code></pre>
+  </section>
+</main>
+</body>
+</html>

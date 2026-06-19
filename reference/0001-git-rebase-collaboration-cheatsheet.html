@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Git rebase 협업 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main>
+  <h1>Git rebase 협업 치트시트</h1>
+  <p class="note">판단 기준: <strong>내가 바꾸려는 커밋을 다른 사람이 이미 pull 해서 그 위에 작업했을 가능성이 있나?</strong> 가능성이 있으면 rebase로 공개 이력을 다시 쓰지 않는다.</p>
+
+  <h2>써도 되는 rebase</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>아직 push 안 한 개인 커밋 정리</h3>
+      <pre><code>git rebase -i HEAD~3</code></pre>
+      <p>메시지 수정, squash, commit 순서 정리에 적합하다.</p>
+    </section>
+    <section class="card">
+      <h3>내 PR 브랜치를 최신 main 위로 재배치</h3>
+      <pre><code>git fetch origin
+git switch feature/login
+git rebase origin/main
+git push --force-with-lease</code></pre>
+      <p>이 브랜치를 나 혼자 쓰거나, 팀 규칙상 PR 브랜치 rebase가 허용될 때 사용한다.</p>
+    </section>
+    <section class="card">
+      <h3>pull 시 로컬 커밋을 위로 올리기</h3>
+      <pre><code>git pull --rebase origin main</code></pre>
+      <p>공유 브랜치에 직접 커밋하지 않는다는 전제가 있을 때 로컬 merge commit을 줄인다.</p>
+    </section>
+  </div>
+
+  <h2>피해야 하는 rebase</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>공유 브랜치 이력 재작성</h3>
+      <pre><code>git switch main
+git rebase ...
+git push --force</code></pre>
+      <p>다른 사람이 이미 기반으로 삼은 커밋 해시를 사라지게 만든다.</p>
+    </section>
+    <section class="card">
+      <h3>여러 명이 같이 작업 중인 feature 브랜치</h3>
+      <pre><code>git rebase origin/main
+git push --force</code></pre>
+      <p>팀원이 같은 브랜치 위에 작업 중이면 그 사람의 기준점이 바뀐다.</p>
+    </section>
+    <section class="card">
+      <h3>무조건 force push</h3>
+      <pre><code>git push --force</code></pre>
+      <p>원격에 새 커밋이 추가됐는지 확인하지 않고 덮어쓸 수 있다. 필요하면 <code>--force-with-lease</code>를 쓴다.</p>
+    </section>
+  </div>
+
+  <h2>자주 쓰는 협업 명령어</h2>
+  <pre><code># 상태와 이력 확인
+git status
+git log --oneline --graph --decorate --all
+git diff
+git diff --staged
+
+# 원격 최신 정보만 가져오기
+git fetch origin
+git fetch --prune
+
+# 브랜치 이동과 생성
+git switch main
+git switch -c feature/login
+git branch -vv
+
+# 통합
+git merge origin/main
+git merge --no-ff feature/login
+git rebase origin/main
+git rebase -i HEAD~3
+
+# 충돌 처리 중
+git status
+git add &lt;file&gt;
+git rebase --continue
+git rebase --abort
+git merge --abort
+
+# push
+git push -u origin feature/login
+git push --force-with-lease
+
+# 임시 보관
+git stash push -m "wip login"
+git stash list
+git stash pop</code></pre>
+
+  <p>관련 lesson: <a href="../lessons/0001-when-to-rebase-in-team-git.html">협업 Git에서 rebase를 써도 되는 순간</a></p>
+</main>
+</body>
+</html>
