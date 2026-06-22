@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTTPS/TLS/SSL 인증서 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main>
+  <h1>HTTPS/TLS/SSL 인증서 치트시트</h1>
+  <p class="note">
+    기준 문장: <strong>HTTPS는 HTTP 메시지를 TLS 연결 안에서 주고받는 것이며, 인증서는 서버 신원 확인을 맡고, 실제 데이터 암호화는 handshake로 만든 session key가 맡는다.</strong>
+  </p>
+
+  <h2>용어</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>HTTP</h3>
+      <p>웹 요청/응답 메시지 형식. 단독으로 쓰면 평문이다.</p>
+    </section>
+    <section class="card">
+      <h3>HTTPS</h3>
+      <p>HTTP over TLS. HTTP 메시지가 TLS record 안에 암호화되어 흐른다.</p>
+    </section>
+    <section class="card">
+      <h3>TLS</h3>
+      <p>Transport Layer Security. 현대 웹 보안 연결 프로토콜이다.</p>
+    </section>
+    <section class="card">
+      <h3>SSL</h3>
+      <p>오래된 이름. 실무 표현으로 남아 있지만 현대적으로는 TLS라고 보는 것이 정확하다.</p>
+    </section>
+  </div>
+
+  <h2>인증서 형태</h2>
+  <pre><code>표준 구조:
+  X.509 certificate
+
+파일 확장자:
+  .crt
+  .cer
+  .pem
+
+인코딩:
+  DER = 바이너리 ASN.1 인코딩
+  PEM = DER bytes를 Base64 텍스트로 감싸는 형태
+
+PEM 예:
+  -----BEGIN CERTIFICATE-----
+  MIIF...
+  -----END CERTIFICATE-----</code></pre>
+
+  <h2>인증서 안의 데이터</h2>
+  <pre><code>version
+  X.509 버전
+
+serial number
+  CA가 부여한 인증서 번호
+
+issuer
+  발급 CA
+
+subject
+  인증서 대상
+
+subject alternative name(SAN)
+  실제 도메인 목록
+  hostname 검증의 핵심
+
+validity
+  notBefore / notAfter
+
+subject public key info
+  서버 공개키 + 알고리즘
+
+key usage / extended key usage
+  서버 인증 등 사용 목적
+
+signature algorithm
+  CA 서명 알고리즘
+
+signature value
+  CA 디지털 서명값</code></pre>
+
+  <h2>Handshake 요약</h2>
+  <pre><code>ClientHello
+  브라우저가 TLS 버전, 암호 스위트, 랜덤값, 서버명 등을 제안
+
+ServerHello + certificate
+  서버가 선택한 방식과 인증서를 보냄
+
+certificate validation
+  브라우저가 도메인명, CA 체인, 유효 기간, 사용 목적을 검증
+
+key exchange
+  양쪽이 같은 session traffic key를 계산
+
+application data
+  HTTP 요청/응답을 session key로 암호화해 전송</code></pre>
+
+  <h2>Session key</h2>
+  <pre><code>뜻:
+  TLS 연결에서만 쓰는 임시 대칭키
+  HTTP request/response 암호화/복호화에 사용
+  handshake 결과로 브라우저와 서버가 계산
+  연결 종료 후 버림
+
+아님:
+  로그인 session id 아님
+  JSESSIONID 쿠키 아님
+  JWT 아님
+  서버 DB의 사용자 세션 아님
+
+TLS 1.3에서 더 정확한 말:
+  여러 traffic secret / traffic key가 파생됨
+  client write traffic key
+  server write traffic key
+  수업에서는 이 묶음을 session key라고 압축해서 부름
+
+형태:
+  사람이 정한 문자열 아님
+  암호 알고리즘에 들어가는 랜덤 bytes
+  디버깅 출력에서는 hex 문자열처럼 보일 수 있음
+  네트워크에 그대로 보내지 않음</code></pre>
+
+  <h2>OSI/TCP-IP 위치</h2>
+  <pre><code>실무 stack:
+  HTTP
+  TLS
+  TCP
+  IP
+  Link/Physical
+
+송신:
+  L7 HTTP 메시지 생성
+  -> TLS 암호화
+  -> TCP/IP 아래로 내려감
+
+수신:
+  TCP/IP 위로 올라옴
+  -> TLS 복호화
+  -> L7 HTTP 메시지 복원
+
+주의:
+  "L7끼리 통신"은 논리 view
+  실제 byte 흐름은 client L7 -> L1 -> network -> server L1 -> L7
+  TLS는 순수 L4도 순수 L7도 아님
+  TCP 위, HTTP 아래 보안 layer로 이해하면 됨</code></pre>
+
+  <h2>암호화 범위</h2>
+  <pre><code>보호됨:
+  GET /path?query=...
+  HTTP headers
+  Cookie
+  Authorization
+  request body
+  response headers
+  response body
+
+노출될 수 있음:
+  서버 IP
+  port
+  DNS 질의 도메인
+  SNI 서버명, ECH가 없을 때
+  통신 시각, 크기, 빈도</code></pre>
+
+  <h2>인증서 검증 체크</h2>
+  <pre><code>브라우저가 확인하는 것:
+  - 접속한 hostname이 인증서 SAN에 포함되는가?
+  - 신뢰 가능한 CA 체인으로 이어지는가?
+  - 인증서 유효 기간 안인가?
+  - 인증서 사용 목적이 서버 인증에 맞는가?
+  - handshake 메시지의 서명/키 교환 검증이 맞는가?</code></pre>
+
+  <h2>Let's Encrypt</h2>
+  <pre><code>정체:
+  무료, 자동화, 공개 Certificate Authority(CA)
+  HTTPS 프로토콜이나 암호화 알고리즘이 아님
+
+핵심 목적:
+  서버가 브라우저 신뢰 TLS 인증서를 쉽게 발급/갱신하게 함
+
+작동 흐름:
+  ACME client 실행
+  CA가 domain validation challenge 발급
+  서버가 DNS record 또는 HTTP well-known path로 도메인 제어 증명
+  CA가 challenge 확인
+  성공하면 TLS 인증서 발급
+  서버가 HTTPS handshake 때 인증서 제시
+
+중요 구분:
+  Let's Encrypt -> 인증서 발급/갱신
+  TLS handshake -> 인증서 검증 + session key 생성
+  session key -> HTTP 데이터 암호화/복호화</code></pre>
+
+  <h2>HTTP에서 HTTPS로 강제</h2>
+  <pre><code>Redirect:
+  HTTP 요청 -> 301/308 Location: https://...
+  첫 요청은 평문일 수 있음
+
+HSTS:
+  HTTPS 응답 -> Strict-Transport-Security
+  이후 브라우저가 HTTP 요청을 HTTPS로 먼저 바꿈
+
+HSTS preload:
+  브라우저 내장 목록에 포함되면 첫 방문 전부터 HTTPS 강제 가능</code></pre>
+
+  <h2>자주 하는 오해</h2>
+  <pre><code>오해: 인증서가 모든 데이터를 직접 암호화한다.
+정정: 인증서는 서버 신원과 공개키 신뢰를 제공하고, 실제 데이터는 session key로 암호화된다.
+
+오해: HTTPS면 URL 전체가 외부에 안 보인다.
+정정: path/query는 보호되지만, DNS/SNI/IP 같은 연결 메타데이터는 보일 수 있다.
+
+오해: HTTP를 HTTPS로 redirect하면 첫 요청도 안전하다.
+정정: redirect는 평문 HTTP 요청을 받은 뒤 알려주는 방식이다. HSTS가 이 약점을 줄인다.</code></pre>
+
+  <pre><code>오해: Let's Encrypt가 HTTPS 데이터를 암호화/복호화한다.
+정정: Let's Encrypt는 CA다. 인증서를 발급한다. 실제 데이터 보호는 TLS session key가 한다.</code></pre>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc5280.html">RFC 5280: X.509 Certificate and CRL Profile</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc8446.html">RFC 8446: TLS 1.3</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Glossary/HTTPS">MDN: HTTPS</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Glossary/TLS">MDN: TLS</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security">MDN: HSTS</a></li>
+    <li><a href="https://letsencrypt.org/how-it-works/">Let's Encrypt: How It Works</a></li>
+  </ul>
+
+  <p>관련 lesson: <a href="../lessons/0008-http-https-tls-ssl-certificate.html">HTTP가 HTTPS가 될 때 TLS와 인증서가 하는 일</a></p>
+</main>
+</body>
+</html>

@@ -36,6 +36,25 @@
 - [MDN: Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)
   HTTP 쿠키 설정 헤더 문서. Use for: `HttpOnly`, `Secure`, `SameSite`, `Max-Age`, `Path` 동작 확인.
 
+## Web Security Knowledge
+
+- [RFC 5280: Internet X.509 Public Key Infrastructure Certificate and CRL Profile](https://www.rfc-editor.org/rfc/rfc5280.html)
+  X.509 인증서 표준 문서. Use for: 인증서 필드, Subject, Issuer, Validity, Subject Public Key Info, Extensions, 인증 경로 검증 확인.
+- [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
+  HTTP 의미론 표준 문서. Use for: HTTP가 application-level protocol이고 `http`/`https` URI scheme이 어떻게 구분되는지 확인.
+- [RFC 9113: HTTP/2](https://www.rfc-editor.org/rfc/rfc9113.html)
+  HTTP/2 표준 문서. Use for: 하나의 연결 위에서 여러 HTTP stream을 multiplex하는 구조 확인.
+- [RFC 8446: The Transport Layer Security (TLS) Protocol Version 1.3](https://www.rfc-editor.org/rfc/rfc8446.html)
+  TLS 1.3 표준 문서. Use for: TLS가 제공하는 보안 채널, handshake, key exchange, application data 보호 기준 확인.
+- [MDN: HTTPS](https://developer.mozilla.org/en-US/docs/Glossary/HTTPS)
+  HTTPS 개념 문서. Use for: HTTPS가 HTTP를 TLS로 암호화한 버전이라는 기본 정의 확인.
+- [MDN: Transport Layer Security](https://developer.mozilla.org/en-US/docs/Glossary/TLS)
+  TLS 개념 문서. Use for: TLS가 SSL을 대체한 프로토콜이며 웹 통신 보안에 쓰인다는 용어 정리 확인.
+- [MDN: Strict-Transport-Security](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security)
+  HSTS 헤더 문서. Use for: 브라우저가 이후 요청을 HTTPS로 강제하게 만드는 방식 확인.
+- [Let's Encrypt: How It Works](https://letsencrypt.org/how-it-works/)
+  공개 CA인 Let's Encrypt의 인증서 발급 흐름 설명. Use for: 도메인 검증, 인증서 발급, 자동 갱신의 큰 흐름 확인.
+
 ## Wisdom (Communities)
 
 - [Stack Overflow: git tag](https://stackoverflow.com/questions/tagged/git)

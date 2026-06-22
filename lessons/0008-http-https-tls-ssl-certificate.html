@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HTTP가 HTTPS가 될 때 TLS와 인증서가 하는 일</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow {
+      white-space: pre-wrap;
+    }
+
+    .ok {
+      color: #047857;
+      font-weight: 700;
+    }
+
+    .no {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+
+    .small {
+      color: #4b5563;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>HTTP가 HTTPS가 될 때 TLS와 인증서가 하는 일</h1>
+  <p class="note">
+    목표: HTTPS를 “HTTP를 TLS 보안 터널 안에 넣은 것”으로 이해하고,
+    인증서가 암호화 자체가 아니라 서버 신원 확인과 키 합의의 출발점이라는 점을 구분한다.
+  </p>
+
+  <h2>1. HTTPS는 HTTP를 바꾸는 게 아니다</h2>
+  <p>
+    HTTPS는 새로운 요청 형식이 아니다. 브라우저와 서버가 먼저 TLS 연결을 만든 뒤,
+    그 안전한 연결 안에서 평소의 HTTP 요청과 응답을 주고받는 방식이다.
+    MDN도 HTTPS를 TLS로 암호화된 HTTP라고 설명한다.
+  </p>
+
+  <pre class="flow"><code>HTTP:
+브라우저 ───── GET /api/me ─────> 서버
+        평문으로 지나감
+
+HTTPS:
+브라우저 ── TLS handshake ──> 서버
+브라우저 == 암호화된 TLS 터널 == 서버
+브라우저 ── { GET /api/me } ──> 서버
+              암호화된 HTTP 메시지</code></pre>
+
+  <p class="warn">
+    그래서 “HTTP를 HTTPS로 변환한다”는 표현은 두 가지를 섞기 쉽다.
+    포트 80의 HTTP 요청을 <code>301</code>/<code>308</code>로 HTTPS URL에 보내는 것은 redirect이고,
+    실제 보호는 HTTPS URL에서 TLS 연결이 새로 만들어질 때 시작된다.
+  </p>
+
+  <h2>2. TLS handshake에서 일어나는 일</h2>
+  <p>
+    현대 TLS의 핵심은 “공개키로 모든 데이터를 직접 암호화”가 아니다.
+    공개키 기반 인증서로 서버가 진짜인지 확인하고, Diffie-Hellman 계열 key exchange로
+    양쪽만 아는 대칭키를 만든 뒤, 실제 HTTP 데이터는 그 대칭키로 빠르게 암호화한다.
+  </p>
+
+  <pre class="flow"><code>1. 브라우저: 지원하는 TLS 버전, 암호 스위트, 랜덤값, 접속할 서버명 전송
+2. 서버: 인증서와 key exchange 재료 전송
+3. 브라우저: 인증서가 이 도메인에 유효하고 신뢰 가능한 CA가 서명했는지 검증
+4. 양쪽: key exchange 결과로 같은 session traffic key 계산
+5. 이후: HTTP 요청/응답을 TLS record로 쪼개 암호화해서 주고받음</code></pre>
+
+  <p class="note">
+    복호화도 같은 원리다. 브라우저와 서버는 handshake 결과로 얻은 session key를 가지고
+    자신에게 도착한 TLS record를 복호화한다. 서버 인증서의 개인키로 매 HTTP 메시지를 풀어보는 구조가 아니다.
+  </p>
+
+  <h2>3. 어디까지 암호화되는가?</h2>
+  <p>
+    TLS 연결이 성립된 뒤의 HTTP 메시지는 거의 통째로 보호된다.
+    요청 라인, path, query string, headers, cookies, body, 응답 headers, 응답 body가 모두 TLS application data 안에 들어간다.
+  </p>
+
+  <div class="grid">
+    <section class="card">
+      <h3>암호화됨</h3>
+      <ul>
+        <li><code>GET /orders?user=1</code>의 path와 query</li>
+        <li><code>Cookie</code>, <code>Authorization</code> 같은 HTTP header</li>
+        <li>POST/PUT 요청 body</li>
+        <li>응답 header와 응답 body</li>
+      </ul>
+    </section>
+    <section class="card">
+      <h3>노출될 수 있음</h3>
+      <ul>
+        <li>상대 서버 IP와 port</li>
+        <li>DNS 질의의 도메인명, 별도 보호가 없을 때</li>
+        <li>TLS SNI의 서버명, ECH가 없을 때</li>
+        <li>통신 시각, 크기, 빈도 같은 메타데이터</li>
+      </ul>
+    </section>
+  </div>
+
+  <p class="warn">
+    따라서 HTTPS여도 “어느 서버와 통신했는지” 같은 네트워크 메타데이터까지 완전히 숨기는 것은 아니다.
+    하지만 HTTP 내용 자체, 특히 쿠키와 Authorization header와 body는 보호된다.
+  </p>
+
+  <h2>4. SSL 인증서는 무엇인가?</h2>
+  <p>
+    실무에서 “SSL 인증서”라고 부르지만, 현재는 보통 TLS 인증서라고 이해하면 된다.
+    SSL은 오래된 프로토콜 이름이고, 현대 HTTPS는 TLS를 사용한다.
+  </p>
+
+  <pre class="flow"><code>인증서가 담는 것:
+  - 이 인증서가 유효한 도메인명: example.com, www.example.com
+  - 서버의 공개키
+  - 발급자: CA
+  - 유효 기간
+  - CA의 디지털 서명</code></pre>
+
+  <p>
+    파일 형태로는 보통 <code>.crt</code>, <code>.cer</code>, <code>.pem</code> 같은 이름으로 본다.
+    내부 표준 구조는 X.509 인증서다. 사람이 읽기 좋은 설정 파일이라기보다,
+    ASN.1/DER로 인코딩된 구조화된 바이너리 데이터이고,
+    PEM은 그 DER 바이너리를 Base64 텍스트로 감싼 형태다.
+  </p>
+
+  <pre class="flow"><code>PEM 형태 예시:
+-----BEGIN CERTIFICATE-----
+MIIF...
+...base64...
+-----END CERTIFICATE-----
+
+DER 형태:
+  같은 인증서 내용을 바이너리 bytes로 저장</code></pre>
+
+  <pre class="flow"><code>X.509 인증서 주요 필드:
+  version
+    X.509 버전
+
+  serial number
+    CA가 부여한 인증서 고유 번호
+
+  issuer
+    인증서를 발급한 CA 이름
+
+  subject
+    인증서 대상 이름
+
+  subject alternative name(SAN)
+    실제 도메인 목록: example.com, www.example.com
+    현대 브라우저는 hostname 검증 때 SAN을 본다
+
+  validity
+    notBefore / notAfter 유효 기간
+
+  subject public key info
+    서버 공개키와 알고리즘
+
+  key usage / extended key usage
+    이 인증서가 서버 인증에 쓰일 수 있는지 같은 용도 제한
+
+  signature algorithm
+    CA가 어떤 알고리즘으로 서명했는지
+
+  signature value
+    CA의 디지털 서명값</code></pre>
+
+  <p>
+    브라우저는 인증서를 보고 “내가 접속한 도메인과 인증서의 도메인이 맞는가?”,
+    “이 인증서를 신뢰 가능한 CA 체인으로 검증할 수 있는가?”,
+    “유효 기간과 사용 목적이 맞는가?”를 확인한다.
+    이 검증이 실패하면 브라우저는 인증서 경고를 보여준다.
+  </p>
+
+  <h2>5. Let's Encrypt는 무엇인가?</h2>
+  <p>
+    Let's Encrypt는 무료, 자동화, 공개 Certificate Authority(CA)다.
+    즉, “HTTPS 자체”나 “암호화 알고리즘”이 아니라,
+    브라우저가 신뢰할 수 있는 TLS 인증서를 발급해 주는 기관이다.
+    운영 주체는 비영리 단체 ISRG다.
+  </p>
+
+  <pre class="flow"><code>Let's Encrypt가 하는 일:
+  1. ACME client가 서버에서 실행됨
+  2. Let's Encrypt CA가 도메인 소유/제어 증명 challenge를 줌
+  3. 서버가 DNS record 또는 HTTP well-known path로 증명
+  4. CA가 여러 네트워크 위치에서 challenge 확인
+  5. 성공하면 해당 도메인용 TLS 인증서 발급
+  6. 서버는 그 인증서를 HTTPS handshake 때 브라우저에 제시</code></pre>
+
+  <p class="note">
+    직관: Let's Encrypt는 “이 서버가 이 도메인을 제어한다”를 확인하고,
+    그 도메인에 쓸 인증서를 자동 발급해 주는 CA다.
+    발급된 인증서는 handshake에서 서버 신원 확인 재료로 쓰인다.
+  </p>
+
+  <p class="warn">
+    Let's Encrypt가 매 요청 데이터를 대신 암호화/복호화하지 않는다.
+    실제 요청 데이터 보호는 TLS handshake로 만든 session key가 담당한다.
+  </p>
+
+  <h2>6. 인증서가 HTTPS 과정에서 하는 역할</h2>
+  <p>
+    인증서는 데이터를 직접 계속 암호화하는 물건이라기보다, 서버 신원을 증명하고 안전한 key exchange를 가능하게 하는 신뢰 재료다.
+  </p>
+
+  <pre class="flow"><code>브라우저가 알고 싶은 것:
+  "내가 진짜 api.example.com과 말하고 있나?"
+
+인증서가 도와주는 것:
+  api.example.com의 공개키와 도메인명을 CA가 서명해 줌
+
+handshake가 만드는 것:
+  이 연결에서만 쓸 session key
+
+실제 데이터 보호:
+  session key로 HTTP 메시지를 암호화하고 위변조를 검출</code></pre>
+
+  <h2>7. HTTP에서 HTTPS로 강제하는 방법</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>Redirect</h3>
+      <p>
+        서버가 <code>http://</code> 요청에 <code>301</code> 또는 <code>308</code>과
+        <code>Location: https://...</code>를 응답한다.
+        단, 첫 HTTP 요청 자체는 이미 평문이었다.
+      </p>
+    </section>
+    <section class="card">
+      <h3>HSTS</h3>
+      <p>
+        HTTPS 응답에 <code>Strict-Transport-Security</code>를 넣으면,
+        브라우저는 이후 같은 사이트 요청을 HTTP로 보내기 전에 HTTPS로 바꾼다.
+      </p>
+    </section>
+  </div>
+
+  <p class="note">
+    한 문장으로 정리하면: HTTPS는 HTTP 메시지를 TLS로 감싸는 것이고,
+    인증서는 “이 서버가 그 도메인의 서버인지”를 검증하게 해 주며,
+    실제 암복호화는 handshake로 만들어진 session key가 담당한다.
+  </p>
+
+  <h2>8. 회상 퀴즈</h2>
+  <section class="quiz" aria-label="TLS HTTPS quiz">
+    <p><strong>Q1.</strong> 인증서의 가장 핵심 역할은?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">본문암호화</button>
+    <button type="button" data-target="answer-1" data-answer="correct">서버증명</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">속도향상</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> HTTPS에서 실제 HTTP body를 주로 암호화하는 키는?</p>
+    <button type="button" data-target="answer-2" data-answer="correct">세션키</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">도메인</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">상태값</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> HTTPS에서도 보일 수 있는 것은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">쿠키값</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">본문값</button>
+    <button type="button" data-target="answer-3" data-answer="correct">서버IP</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> Let's Encrypt의 역할은?</p>
+    <button type="button" data-target="answer-4" data-answer="correct">인증발급</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">본문복호</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">요청저장</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc5280.html">RFC 5280: X.509 Certificate and CRL Profile</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc8446.html">RFC 8446: TLS 1.3</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Glossary/HTTPS">MDN: HTTPS</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Glossary/TLS">MDN: TLS</a></li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security">MDN: HSTS</a></li>
+    <li><a href="https://letsencrypt.org/how-it-works/">Let's Encrypt: How It Works</a></li>
+  </ul>
+
+  <p class="small">
+    관련 자료:
+    <a href="../reference/0004-https-tls-ssl-certificate-cheatsheet.html">HTTPS/TLS/인증서 치트시트</a>,
+    <a href="./0007-oauth2-fragment-implicit-flow-pkce.html">OAuth2 fragment, implicit flow, PKCE 이해하기</a>.
+    헷갈리는 지점은 에이전트에게 후속 질문으로 바로 확인하자.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect ? "정답." : "오답. 인증서, 세션키, 암호화 범위를 다시 구분하자.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>
