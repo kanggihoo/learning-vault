@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>React Hooks: 언제 어떤 Hook을 쓰는가</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .hook-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid #deded6;
+    }
+
+    .hook-table th,
+    .hook-table td {
+      border-bottom: 1px solid #deded6;
+      padding: 12px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .hook-table th {
+      background: #eef7f5;
+    }
+
+    .flow {
+      white-space: pre-wrap;
+    }
+
+    .ok {
+      color: #047857;
+      font-weight: 700;
+    }
+
+    .no {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>React Hooks: 언제 어떤 Hook을 쓰는가</h1>
+  <p class="note">
+    목표: <code>useEffect</code>, <code>useRef</code>, <code>useMemo</code>, <code>useCallback</code>, <code>useReducer</code>를
+    이름이 아니라 “해결하려는 문제”로 고를 수 있게 만든다.
+  </p>
+
+  <h2>1. 먼저 이 질문부터 한다</h2>
+  <pre class="flow"><code>1. 화면에 보여야 하는 값인가?
+   yes -> useState 또는 useReducer
+   no  -> useRef 가능
+
+2. React 밖의 시스템과 연결해야 하는가?
+   yes -> useEffect
+   no  -> useEffect부터 쓰지 않는다
+
+3. 계산이 비싸거나 참조가 안정적이어야 하는가?
+   계산 결과 -> useMemo
+   함수 참조 -> useCallback
+
+4. 상태 변경 규칙이 여러 갈래로 복잡한가?
+   yes -> useReducer</code></pre>
+
+  <p class="warn">
+    가장 흔한 실수는 <code>useEffect</code>를 “렌더링 뒤에 뭔가 실행하는 곳”으로만 외우는 것이다.
+    React 공식 문서 기준으로 Effect의 핵심 목적은 컴포넌트를 외부 시스템과 동기화하는 것이다.
+    외부 시스템이 없다면 Effect가 필요 없는 경우가 많다.
+  </p>
+
+  <h2>2. Hook별 한 문장</h2>
+  <table class="hook-table">
+    <thead>
+      <tr>
+        <th>Hook</th>
+        <th>정확한 역할</th>
+        <th>쓸 때</th>
+        <th>헷갈리면 이렇게 기억</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>useEffect</code></td>
+        <td>렌더링 결과를 React 밖의 시스템과 맞춘다.</td>
+        <td>API 요청, 이벤트 구독, 타이머, WebSocket, 외부 위젯 연결.</td>
+        <td>“밖이랑 연결.”</td>
+      </tr>
+      <tr>
+        <td><code>useRef</code></td>
+        <td>렌더링과 무관한 값을 같은 객체에 보관한다.</td>
+        <td>DOM 노드, timer id, 이전 값, mutable flag 보관.</td>
+        <td>“기억하지만 다시 그리진 않음.”</td>
+      </tr>
+      <tr>
+        <td><code>useMemo</code></td>
+        <td>의존성이 안 바뀌면 계산 결과를 재사용한다.</td>
+        <td>비싼 계산, 큰 배열 filter/sort, memo된 자식에게 넘길 객체.</td>
+        <td>“값 캐시.”</td>
+      </tr>
+      <tr>
+        <td><code>useCallback</code></td>
+        <td>의존성이 안 바뀌면 함수 참조를 재사용한다.</td>
+        <td><code>memo</code>된 자식에게 함수 prop 전달, Effect 의존성 안정화.</td>
+        <td>“함수 캐시.”</td>
+      </tr>
+      <tr>
+        <td><code>useReducer</code></td>
+        <td>현재 state와 action으로 다음 state를 계산한다.</td>
+        <td>상태 필드가 많고 변경 규칙이 여러 이벤트에 흩어질 때.</td>
+        <td>“상태 변경 규칙표.”</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. useEffect: 외부와 맞출 때만</h2>
+  <p>
+    <code>useEffect</code>는 렌더링이 끝난 뒤 실행된다. 하지만 “렌더링 후 실행”보다 중요한 말은 “외부 시스템과 동기화”다.
+    서버, 브라우저 이벤트, 타이머, 외부 라이브러리처럼 React가 직접 관리하지 않는 대상이 있을 때 쓴다.
+  </p>
+
+  <pre><code>useEffect(() =&gt; {
+  const id = setInterval(() =&gt; {
+    console.log("tick");
+  }, 1000);
+
+  return () =&gt; {
+    clearInterval(id);
+  };
+}, []);</code></pre>
+
+  <p class="note">
+    기억법: setup이 있으면 cleanup도 생각한다. 연결했으면 끊고, 등록했으면 해제하고, 시작했으면 멈춘다.
+  </p>
+
+  <h2>4. useRef: 값은 보관하지만 렌더링은 안 한다</h2>
+  <p>
+    <code>useRef</code>는 <code>{ current: ... }</code> 모양의 같은 객체를 다음 렌더링에도 돌려준다.
+    <code>ref.current</code>를 바꿔도 React는 화면을 다시 그리지 않는다.
+  </p>
+
+  <pre><code>function SearchBox() {
+  const inputRef = useRef(null);
+
+  function focusInput() {
+    inputRef.current.focus();
+  }
+
+  return (
+    &lt;&gt;
+      &lt;input ref={inputRef} /&gt;
+      &lt;button onClick={focusInput}&gt;Focus&lt;/button&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+
+  <p class="warn">
+    화면에 보여야 하는 값이면 <code>useRef</code>가 아니라 state다.
+    <code>useRef</code>는 “React가 몰라도 되는 값”에 적합하다.
+  </p>
+
+  <h2>5. useMemo와 useCallback: 둘 다 성능 최적화다</h2>
+  <p>
+    <code>useMemo</code>는 함수 실행 결과를 캐시한다.
+    <code>useCallback</code>은 함수 자체를 캐시한다.
+    코드가 이 Hook들 없이 동작하지 않는다면 설계 문제를 먼저 고쳐야 한다.
+  </p>
+
+  <pre><code>const visibleItems = useMemo(() =&gt; {
+  return items.filter((item) =&gt; item.category === category);
+}, [items, category]);
+
+const handleSelect = useCallback((id) =&gt; {
+  setSelectedId(id);
+}, []);</code></pre>
+
+  <p class="note">
+    기억법: <code>useMemo(() =&gt; 계산결과, deps)</code>,
+    <code>useCallback(함수, deps)</code>.
+    <code>useCallback(fn, deps)</code>은 대략 <code>useMemo(() =&gt; fn, deps)</code>처럼 생각하면 된다.
+  </p>
+
+  <h2>6. useReducer: 상태 변경을 action으로 정리한다</h2>
+  <p>
+    <code>useReducer</code>는 복잡한 상태를 “이벤트 이름과 다음 상태 계산”으로 정리한다.
+    <code>setState</code>가 여러 곳에서 서로 다른 방식으로 흩어질 때 특히 좋다.
+  </p>
+
+  <pre><code>const initialState = {
+  title: "",
+  body: "",
+  isSaving: false,
+  error: null
+};
+
+function reducer(state, action) {
+  switch (action.type) {
+    case "titleChanged":
+      return { ...state, title: action.title };
+    case "saveStarted":
+      return { ...state, isSaving: true, error: null };
+    case "saveFailed":
+      return { ...state, isSaving: false, error: action.error };
+    default:
+      throw new Error("Unknown action: " + action.type);
+  }
+}
+
+function Editor() {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  return (
+    &lt;input
+      value={state.title}
+      onChange={(event) =&gt; {
+        dispatch({ type: "titleChanged", title: event.target.value });
+      }}
+    /&gt;
+  );
+}</code></pre>
+
+  <h2>7. 회상 퀴즈</h2>
+  <section class="quiz" aria-label="React hooks recall quiz">
+    <p><strong>Q1.</strong> WebSocket 연결을 열고 컴포넌트가 사라질 때 닫아야 한다. 가장 먼저 떠올릴 Hook은?</p>
+    <button type="button" data-target="answer-1" data-answer="correct">useEffect</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">useMemo</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">useReducer</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> timer id를 저장해야 하지만 화면을 다시 그릴 필요는 없다. 가장 맞는 Hook은?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">useMemo</button>
+    <button type="button" data-target="answer-2" data-answer="correct">useRef</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">useReducer</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> 큰 배열을 필터링한 결과를 의존성이 같을 때 재사용하고 싶다. 가장 맞는 Hook은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">useRef</button>
+    <button type="button" data-target="answer-3" data-answer="correct">useMemo</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">useEffect</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> <code>memo</code>된 자식에게 넘기는 함수 prop의 참조를 안정화하고 싶다. 가장 맞는 Hook은?</p>
+    <button type="button" data-target="answer-4" data-answer="correct">useCallback</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">useReducer</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">useRef</button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> form 상태가 여러 필드와 여러 이벤트로 바뀌어 규칙을 한곳에 모으고 싶다. 가장 맞는 Hook은?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong">useEffect</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">useMemo</button>
+    <button type="button" data-target="answer-5" data-answer="correct">useReducer</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://react.dev/reference/react/useEffect">React: useEffect</a></li>
+    <li><a href="https://react.dev/reference/react/useRef">React: useRef</a></li>
+    <li><a href="https://react.dev/reference/react/useMemo">React: useMemo</a></li>
+    <li><a href="https://react.dev/reference/react/useCallback">React: useCallback</a></li>
+    <li><a href="https://react.dev/reference/react/useReducer">React: useReducer</a></li>
+  </ul>
+
+  <p>
+    빠른 복습:
+    <a href="../reference/0006-react-hooks-selection-cheatsheet.html">React Hooks 선택 치트시트</a>.
+    실제 코드 상황:
+    <a href="./0012-react-hooks-code-situations.html">React Hooks 실제 코드 상황별 예제</a>.
+    헷갈리는 예시가 있으면 에이전트에게 코드와 함께 질문하자.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect ? "정답." : "오답. 문제의 핵심이 외부 동기화, 값 보관, 값 캐시, 함수 캐시, 상태 규칙 중 무엇인지 다시 보자.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>

@@ -50,7 +50,44 @@ This index points to saved learning material in this Learning Vault.
 - [0007 - OAuth2 fragment와 implicit flow 구분](./learning-records/0007-oauth2-fragment-implicit-flow-pkce.md)
 - [0008 - OAuth2 최종 정리본 저장 위치 보정](./learning-records/0008-oauth2-final-summary-placement-corrected.md)
 
+## Frontend
+
+### React Hooks
+
+**Lessons**
+
+- [0011 - React Hooks: 언제 어떤 Hook을 쓰는가](./lessons/0011-react-hooks-when-to-use.html)
+- [0012 - React Hooks 실제 코드 상황별 예제](./lessons/0012-react-hooks-code-situations.html)
+
+**References**
+
+- [0006 - React Hooks 선택 치트시트](./reference/0006-react-hooks-selection-cheatsheet.html)
+
+**Learning Records**
+
+- [0017 - React Hooks 선택 기준 질문 시작](./learning-records/0017-react-hooks-selection-baseline.md)
+- [0018 - useCallback 참조 안정성 멘탈 모델](./learning-records/0018-usecallback-referential-stability-mental-model.md)
+
 ## Web Security
+
+### CSRF Token
+
+**Lessons**
+
+- [0010 - CSRF 토큰이 막는 문제와 실제 사용 흐름](./lessons/0010-csrf-token-attack-and-defense.html)
+
+**References**
+
+- [0005 - CSRF 토큰 치트시트](./reference/0005-csrf-token-cheatsheet.html)
+
+**Topic Summaries**
+
+- [0003 - CSRF 토큰 최종 정리](./summaries/0003-csrf-token-final-summary.md)
+
+**Learning Records**
+
+- [0015 - CSRF 토큰 질문 기준점](./learning-records/0015-csrf-token-question-baseline.md)
+- [0016 - CSRF와 CORS/Origin 검증 멘탈 모델](./learning-records/0016-csrf-cors-origin-mental-model.md)
 
 ### HTTPS, TLS, SSL Certificates, Let's Encrypt
 

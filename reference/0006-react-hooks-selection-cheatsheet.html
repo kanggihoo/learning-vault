@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>React Hooks 선택 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .compact-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid #deded6;
+    }
+
+    .compact-table th,
+    .compact-table td {
+      border-bottom: 1px solid #deded6;
+      padding: 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .compact-table th {
+      background: #eef7f5;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>React Hooks 선택 치트시트</h1>
+  <p class="note">
+    핵심: Hook은 이름으로 외우지 말고 문제로 고른다.
+    외부 동기화는 <code>useEffect</code>, 렌더링과 무관한 보관은 <code>useRef</code>,
+    값 캐시는 <code>useMemo</code>, 함수 캐시는 <code>useCallback</code>,
+    복잡한 상태 규칙은 <code>useReducer</code>.
+  </p>
+
+  <h2>선택 알고리즘</h2>
+  <pre><code>화면에 보여야 하는 값인가?
+  yes -> useState / useReducer
+  no  -> useRef 후보
+
+React 밖과 연결하는가?
+  yes -> useEffect
+  no  -> useEffect 제거 후보
+
+성능 때문에 재사용하려는가?
+  계산 결과 -> useMemo
+  함수 참조 -> useCallback
+
+상태 변경 규칙이 복잡한가?
+  yes -> useReducer</code></pre>
+
+  <h2>빠른 표</h2>
+  <table class="compact-table">
+    <thead>
+      <tr>
+        <th>Hook</th>
+        <th>한 줄 정의</th>
+        <th>대표 상황</th>
+        <th>주의</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>useEffect</code></td>
+        <td>렌더링 후 외부 시스템과 동기화.</td>
+        <td>fetch, 구독, timer, DOM 이벤트, 외부 widget.</td>
+        <td>외부 시스템이 없으면 대개 필요 없다.</td>
+      </tr>
+      <tr>
+        <td><code>useRef</code></td>
+        <td>렌더링과 무관한 값을 보관.</td>
+        <td>DOM node, interval id, 이전 값, ignore flag.</td>
+        <td><code>current</code> 변경은 re-render를 만들지 않는다.</td>
+      </tr>
+      <tr>
+        <td><code>useMemo</code></td>
+        <td>계산 결과를 의존성 기준으로 재사용.</td>
+        <td>큰 배열 filter/sort, 비싼 계산, stable object prop.</td>
+        <td>정확성 수단이 아니라 성능 최적화다.</td>
+      </tr>
+      <tr>
+        <td><code>useCallback</code></td>
+        <td>함수 참조를 의존성 기준으로 재사용.</td>
+        <td><code>memo</code> 자식의 함수 prop, custom Hook 반환 함수.</td>
+        <td>모든 함수에 붙이는 습관은 불필요하다.</td>
+      </tr>
+      <tr>
+        <td><code>useReducer</code></td>
+        <td>state + action -> next state 규칙 관리.</td>
+        <td>form, wizard, editor, 비동기 상태 전이.</td>
+        <td>reducer는 순수 함수여야 한다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>암기 문장</h2>
+  <pre><code>useEffect   = 밖이랑 연결
+useRef      = 기억만 하고 조용히 보관
+useMemo     = 계산한 값 캐시
+useCallback = 함수 자체 캐시
+useReducer  = 상태 변경 규칙표</code></pre>
+
+  <h2>짧은 예시</h2>
+  <pre><code>// 외부 연결
+useEffect(() =&gt; {
+  window.addEventListener("resize", onResize);
+  return () =&gt; window.removeEventListener("resize", onResize);
+}, [onResize]);
+
+// 렌더링 없는 보관
+const timerIdRef = useRef(null);
+
+// 값 캐시
+const filtered = useMemo(() =&gt; filter(items, query), [items, query]);
+
+// 함수 캐시
+const onSelect = useCallback((id) =&gt; setSelectedId(id), []);
+
+// 상태 규칙
+const [state, dispatch] = useReducer(reducer, initialState);</code></pre>
+
+  <h2>관련 자료</h2>
+  <ul>
+    <li><a href="../lessons/0011-react-hooks-when-to-use.html">React Hooks: 언제 어떤 Hook을 쓰는가</a></li>
+    <li><a href="../lessons/0012-react-hooks-code-situations.html">React Hooks 실제 코드 상황별 예제</a></li>
+    <li><a href="https://react.dev/reference/react/useEffect">React: useEffect</a></li>
+    <li><a href="https://react.dev/reference/react/useRef">React: useRef</a></li>
+    <li><a href="https://react.dev/reference/react/useMemo">React: useMemo</a></li>
+    <li><a href="https://react.dev/reference/react/useCallback">React: useCallback</a></li>
+    <li><a href="https://react.dev/reference/react/useReducer">React: useReducer</a></li>
+  </ul>
+</main>
+</body>
+</html>

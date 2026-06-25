@@ -36,8 +36,27 @@
 - [MDN: Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)
   HTTP 쿠키 설정 헤더 문서. Use for: `HttpOnly`, `Secure`, `SameSite`, `Max-Age`, `Path` 동작 확인.
 
+## React Hooks Knowledge
+
+- [React: useEffect](https://react.dev/reference/react/useEffect)
+  React 공식 Hook 문서. Use for: 외부 시스템과 동기화하는 Effect의 목적, dependency, cleanup 기준 확인.
+- [React: useRef](https://react.dev/reference/react/useRef)
+  React 공식 Hook 문서. Use for: 렌더링에 필요 없는 값 보관, DOM ref, `current` 변경이 re-render를 만들지 않는다는 기준 확인.
+- [React: useMemo](https://react.dev/reference/react/useMemo)
+  React 공식 Hook 문서. Use for: 계산 결과 캐시, dependency 기준 재계산, 성능 최적화로만 의존해야 한다는 기준 확인.
+- [React: useCallback](https://react.dev/reference/react/useCallback)
+  React 공식 Hook 문서. Use for: 함수 참조 캐시, `memo`된 자식 컴포넌트 최적화, `useMemo`와의 차이 확인.
+- [React: useReducer](https://react.dev/reference/react/useReducer)
+  React 공식 Hook 문서. Use for: reducer/action 기반 상태 변경, dispatch, reducer 순수성 기준 확인.
+
 ## Web Security Knowledge
 
+- [OWASP: Cross-Site Request Forgery Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+  CSRF 방어 공식 치트시트. Use for: synchronizer token pattern, double-submit cookie, custom header, SameSite, Origin/Referer 검증 기준 확인.
+- [MDN: Cross-site request forgery](https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/CSRF)
+  브라우저 관점의 CSRF 개념 문서. Use for: 쿠키 자동 첨부, state-changing request, form 기반 공격 예시, SameSite의 한계 확인.
+- [Spring Security: Cross Site Request Forgery](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html)
+  Spring Security CSRF 공식 문서. Use for: 기본 CSRF 보호, `CookieCsrfTokenRepository`, `XSRF-TOKEN`, `X-XSRF-TOKEN`, SPA 연동 기준 확인.
 - [RFC 5280: Internet X.509 Public Key Infrastructure Certificate and CRL Profile](https://www.rfc-editor.org/rfc/rfc5280.html)
   X.509 인증서 표준 문서. Use for: 인증서 필드, Subject, Issuer, Validity, Subject Public Key Info, Extensions, 인증 경로 검증 확인.
 - [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)

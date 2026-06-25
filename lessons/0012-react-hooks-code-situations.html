@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>React Hooks 실제 코드 상황별 예제</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .situation {
+      border-left: 4px solid #334155;
+      background: #f1f5f9;
+      padding: 12px 16px;
+    }
+
+    .wrong {
+      border-left: 4px solid #b91c1c;
+      background: #fef2f2;
+      padding: 12px 16px;
+    }
+
+    .choice-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid #deded6;
+    }
+
+    .choice-table th,
+    .choice-table td {
+      border-bottom: 1px solid #deded6;
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .choice-table th {
+      background: #eef7f5;
+    }
+
+    .ok {
+      color: #047857;
+      font-weight: 700;
+    }
+
+    .no {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>React Hooks 실제 코드 상황별 예제</h1>
+  <p class="note">
+    목표: Hook 설명을 암기하지 않고, 실제 컴포넌트 상황에서 어떤 Hook을 골라야 하는지 코드로 판단한다.
+    먼저 <a href="./0011-react-hooks-when-to-use.html">React Hooks: 언제 어떤 Hook을 쓰는가</a>를 읽으면 기준이 더 선명하다.
+  </p>
+
+  <h2>1. useEffect: 검색어가 바뀌면 서버에서 다시 가져오기</h2>
+  <p class="situation">
+    상황: 사용자가 검색어를 입력하면 서버 API를 호출해서 결과 목록을 보여줘야 한다.
+    서버는 React 밖의 시스템이므로 렌더링 결과를 서버 요청과 동기화해야 한다.
+  </p>
+
+  <p class="wrong">
+    잘못된 직감: “렌더링할 때 fetch를 바로 호출하면 되지 않을까?”
+    그러면 렌더링 중 side effect가 발생하고, 상태 변경 때문에 렌더링과 요청이 꼬일 수 있다.
+  </p>
+
+  <pre><code>import { useEffect, useState } from "react";
+
+function ProductSearch({ query }) {
+  const [items, setItems] = useState([]);
+  const [status, setStatus] = useState("idle");
+
+  useEffect(() =&gt; {
+    if (query.trim() === "") {
+      setItems([]);
+      setStatus("idle");
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadProducts() {
+      setStatus("loading");
+
+      try {
+        const response = await fetch(`/api/products?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+
+        if (!ignore) {
+          setItems(data.items);
+          setStatus("success");
+        }
+      } catch {
+        if (!ignore) {
+          setStatus("error");
+        }
+      }
+    }
+
+    loadProducts();
+
+    return () =&gt; {
+      ignore = true;
+    };
+  }, [query]);
+
+  if (status === "loading") return &lt;p&gt;검색 중...&lt;/p&gt;;
+  if (status === "error") return &lt;p&gt;검색 실패&lt;/p&gt;;
+
+  return (
+    &lt;ul&gt;
+      {items.map((item) =&gt; (
+        &lt;li key={item.id}&gt;{item.name}&lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+  );
+}</code></pre>
+
+  <p class="note">
+    왜 <code>useEffect</code>인가: <code>query</code>라는 React 값이 바뀔 때마다 외부 시스템인 서버와 결과를 맞춰야 하기 때문이다.
+    이전 요청보다 늦게 도착한 응답이 최신 화면을 덮지 않도록 cleanup에서 <code>ignore</code>를 바꾼다.
+  </p>
+
+  <h2>2. useRef: interval id를 보관하지만 화면은 다시 그리지 않기</h2>
+  <p class="situation">
+    상황: 타이머를 시작/정지해야 한다. interval id는 기억해야 하지만 화면에 직접 보여줄 값은 아니다.
+  </p>
+
+  <pre><code>import { useRef, useState } from "react";
+
+function Stopwatch() {
+  const [seconds, setSeconds] = useState(0);
+  const intervalIdRef = useRef(null);
+
+  function start() {
+    if (intervalIdRef.current !== null) {
+      return;
+    }
+
+    intervalIdRef.current = setInterval(() =&gt; {
+      setSeconds((current) =&gt; current + 1);
+    }, 1000);
+  }
+
+  function stop() {
+    clearInterval(intervalIdRef.current);
+    intervalIdRef.current = null;
+  }
+
+  return (
+    &lt;section&gt;
+      &lt;p&gt;{seconds}초&lt;/p&gt;
+      &lt;button onClick={start}&gt;시작&lt;/button&gt;
+      &lt;button onClick={stop}&gt;정지&lt;/button&gt;
+    &lt;/section&gt;
+  );
+}</code></pre>
+
+  <p class="note">
+    왜 <code>useRef</code>인가: <code>seconds</code>는 화면에 보이므로 state다.
+    <code>intervalId</code>는 화면에 안 보이고 값 변경만 기억하면 되므로 ref다.
+  </p>
+
+  <h2>3. useMemo: 큰 목록 필터링 결과 재사용하기</h2>
+  <p class="situation">
+    상황: 상품 목록이 크고, 검색어/카테고리가 바뀔 때만 필터링을 다시 하고 싶다.
+    다른 state가 바뀌는 렌더링에서는 필터링 결과를 재사용한다.
+  </p>
+
+  <pre><code>import { useMemo, useState } from "react";
+
+function ProductList({ products }) {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("all");
+  const [selectedId, setSelectedId] = useState(null);
+
+  const visibleProducts = useMemo(() =&gt; {
+    return products
+      .filter((product) =&gt; {
+        return category === "all" || product.category === category;
+      })
+      .filter((product) =&gt; {
+        return product.name.toLowerCase().includes(query.toLowerCase());
+      });
+  }, [products, query, category]);
+
+  return (
+    &lt;section&gt;
+      &lt;input value={query} onChange={(event) =&gt; setQuery(event.target.value)} /&gt;
+      &lt;select value={category} onChange={(event) =&gt; setCategory(event.target.value)}&gt;
+        &lt;option value="all"&gt;전체&lt;/option&gt;
+        &lt;option value="book"&gt;도서&lt;/option&gt;
+        &lt;option value="tool"&gt;도구&lt;/option&gt;
+      &lt;/select&gt;
+
+      &lt;ul&gt;
+        {visibleProducts.map((product) =&gt; (
+          &lt;li key={product.id}&gt;
+            &lt;button onClick={() =&gt; setSelectedId(product.id)}&gt;
+              {product.name}
+            &lt;/button&gt;
+          &lt;/li&gt;
+        ))}
+      &lt;/ul&gt;
+
+      &lt;p&gt;선택한 상품: {selectedId ?? "없음"}&lt;/p&gt;
+    &lt;/section&gt;
+  );
+}</code></pre>
+
+  <p class="note">
+    왜 <code>useMemo</code>인가: <code>selectedId</code>만 바뀌어도 컴포넌트는 다시 렌더링된다.
+    하지만 필터링은 <code>products</code>, <code>query</code>, <code>category</code>가 같으면 다시 할 필요가 없다.
+  </p>
+
+  <h2>4. useCallback: memo된 자식에게 같은 함수 참조 넘기기</h2>
+  <p class="situation">
+    상황: 행 컴포넌트를 <code>memo</code>로 감쌌다. 부모가 다시 렌더링될 때마다 함수 prop이 새로 만들어지면 자식도 다시 렌더링될 수 있다.
+  </p>
+
+  <pre><code>import { memo, useCallback, useState } from "react";
+
+const TodoRow = memo(function TodoRow({ todo, onToggle }) {
+  console.log("render row:", todo.id);
+
+  return (
+    &lt;li&gt;
+      &lt;label&gt;
+        &lt;input
+          type="checkbox"
+          checked={todo.done}
+          onChange={() =&gt; onToggle(todo.id)}
+        /&gt;
+        {todo.title}
+      &lt;/label&gt;
+    &lt;/li&gt;
+  );
+});
+
+function TodoList({ initialTodos }) {
+  const [todos, setTodos] = useState(initialTodos);
+  const [keyword, setKeyword] = useState("");
+
+  const handleToggle = useCallback((id) =&gt; {
+    setTodos((currentTodos) =&gt; {
+      return currentTodos.map((todo) =&gt; {
+        return todo.id === id ? { ...todo, done: !todo.done } : todo;
+      });
+    });
+  }, []);
+
+  return (
+    &lt;section&gt;
+      &lt;input
+        value={keyword}
+        onChange={(event) =&gt; setKeyword(event.target.value)}
+        placeholder="검색어"
+      /&gt;
+
+      &lt;ul&gt;
+        {todos.map((todo) =&gt; (
+          &lt;TodoRow key={todo.id} todo={todo} onToggle={handleToggle} /&gt;
+        ))}
+      &lt;/ul&gt;
+    &lt;/section&gt;
+  );
+}</code></pre>
+
+  <p class="note">
+    왜 <code>useCallback</code>인가: <code>keyword</code>가 바뀌어 부모가 다시 렌더링되어도
+    <code>handleToggle</code> 함수 참조는 그대로라서 <code>memo</code>된 자식의 불필요한 렌더링을 줄일 수 있다.
+  </p>
+
+  <h2>5. useReducer: 폼 저장 흐름을 action으로 정리하기</h2>
+  <p class="situation">
+    상황: 글 작성 폼에는 제목, 내용, 저장 중 여부, 에러가 있다.
+    입력 변경, 저장 시작, 저장 성공, 저장 실패가 모두 state를 바꾼다.
+  </p>
+
+  <pre><code>import { useReducer } from "react";
+
+const initialState = {
+  title: "",
+  body: "",
+  isSaving: false,
+  error: null
+};
+
+function editorReducer(state, action) {
+  switch (action.type) {
+    case "titleChanged":
+      return { ...state, title: action.title };
+    case "bodyChanged":
+      return { ...state, body: action.body };
+    case "saveStarted":
+      return { ...state, isSaving: true, error: null };
+    case "saveSucceeded":
+      return { ...state, isSaving: false };
+    case "saveFailed":
+      return { ...state, isSaving: false, error: action.message };
+    default:
+      throw new Error("Unknown action: " + action.type);
+  }
+}
+
+function PostEditor() {
+  const [state, dispatch] = useReducer(editorReducer, initialState);
+
+  async function savePost() {
+    dispatch({ type: "saveStarted" });
+
+    try {
+      await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: state.title,
+          body: state.body
+        })
+      });
+
+      dispatch({ type: "saveSucceeded" });
+    } catch {
+      dispatch({ type: "saveFailed", message: "저장하지 못했습니다." });
+    }
+  }
+
+  return (
+    &lt;section&gt;
+      &lt;input
+        value={state.title}
+        onChange={(event) =&gt; {
+          dispatch({ type: "titleChanged", title: event.target.value });
+        }}
+      /&gt;
+
+      &lt;textarea
+        value={state.body}
+        onChange={(event) =&gt; {
+          dispatch({ type: "bodyChanged", body: event.target.value });
+        }}
+      /&gt;
+
+      &lt;button onClick={savePost} disabled={state.isSaving}&gt;
+        {state.isSaving ? "저장 중..." : "저장"}
+      &lt;/button&gt;
+
+      {state.error !== null &amp;&amp; &lt;p&gt;{state.error}&lt;/p&gt;}
+    &lt;/section&gt;
+  );
+}</code></pre>
+
+  <p class="note">
+    왜 <code>useReducer</code>인가: 상태 필드가 여러 개이고, 상태 변경 이유도 여러 개다.
+    reducer로 모으면 “어떤 사건이 어떤 상태 변화를 만드는지”가 한곳에 드러난다.
+  </p>
+
+  <h2>6. 상황별 선택 요약</h2>
+  <table class="choice-table">
+    <thead>
+      <tr>
+        <th>상황</th>
+        <th>Hook</th>
+        <th>판단 기준</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>검색어 변경에 맞춰 서버 요청</td>
+        <td><code>useEffect</code></td>
+        <td>서버라는 외부 시스템과 동기화한다.</td>
+      </tr>
+      <tr>
+        <td>interval id 보관</td>
+        <td><code>useRef</code></td>
+        <td>값은 기억해야 하지만 화면에는 안 보인다.</td>
+      </tr>
+      <tr>
+        <td>큰 배열 필터링 결과 재사용</td>
+        <td><code>useMemo</code></td>
+        <td>계산 결과를 dependency 기준으로 캐시한다.</td>
+      </tr>
+      <tr>
+        <td>memo 자식에게 함수 prop 전달</td>
+        <td><code>useCallback</code></td>
+        <td>함수 참조를 안정화한다.</td>
+      </tr>
+      <tr>
+        <td>복잡한 폼 저장 상태 관리</td>
+        <td><code>useReducer</code></td>
+        <td>상태 변경 규칙을 action으로 모은다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>7. 코드 판단 퀴즈</h2>
+  <section class="quiz" aria-label="React hooks code situation quiz">
+    <p><strong>Q1.</strong> 모달이 열릴 때 <code>document.body.style.overflow = "hidden"</code>을 적용하고 닫힐 때 되돌린다.</p>
+    <button type="button" data-target="answer-1" data-answer="correct">useEffect</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">useMemo</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">useReducer</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> 이전 검색어를 기억해 현재 검색어와 비교하지만, 그 값 자체는 화면에 표시하지 않는다.</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">useCallback</button>
+    <button type="button" data-target="answer-2" data-answer="correct">useRef</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">useEffect</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> 장바구니 state가 상품 추가, 수량 변경, 삭제, 쿠폰 적용으로 복잡하게 바뀐다.</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">useMemo</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">useRef</button>
+    <button type="button" data-target="answer-3" data-answer="correct">useReducer</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <h2>관련 자료</h2>
+  <ul>
+    <li><a href="./0011-react-hooks-when-to-use.html">React Hooks: 언제 어떤 Hook을 쓰는가</a></li>
+    <li><a href="../reference/0006-react-hooks-selection-cheatsheet.html">React Hooks 선택 치트시트</a></li>
+    <li><a href="https://react.dev/reference/react/useEffect">React: useEffect</a></li>
+    <li><a href="https://react.dev/reference/react/useRef">React: useRef</a></li>
+    <li><a href="https://react.dev/reference/react/useMemo">React: useMemo</a></li>
+    <li><a href="https://react.dev/reference/react/useCallback">React: useCallback</a></li>
+    <li><a href="https://react.dev/reference/react/useReducer">React: useReducer</a></li>
+  </ul>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect ? "정답." : "오답. 코드가 해결하려는 문제가 외부 동기화, 렌더링 없는 보관, 계산 캐시, 함수 참조, 상태 규칙 중 무엇인지 다시 보자.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>
