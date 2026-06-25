@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CSRF 토큰 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main>
+  <h1>CSRF 토큰 치트시트</h1>
+  <p class="note">
+    핵심: <strong>CSRF는 쿠키 기반 인증에서 브라우저가 쿠키를 자동 첨부하는 성질을 이용한다. CSRF 토큰은 공격자가 모르는 예측 불가능한 값을 상태 변경 요청에 요구해 위조 요청을 거절한다.</strong>
+  </p>
+
+  <h2>한 줄 모델</h2>
+  <pre><code>인증 쿠키 = 이 브라우저가 로그인된 사용자임을 보임
+CSRF 토큰 = 이 요청이 정상 화면/스크립트에서 출발했음을 보임</code></pre>
+
+  <h2>공격 조건</h2>
+  <pre><code>위험 조건:
+  쿠키 기반 로그인
+  상태 변경 요청 존재
+  서버가 쿠키만 보고 처리
+  공격자가 요청 파라미터를 예측 가능
+
+대표 상태 변경:
+  송금
+  이메일 변경
+  비밀번호 변경
+  게시글 작성/삭제
+  권한 변경</code></pre>
+
+  <h2>서버 렌더링 form</h2>
+  <pre><code>GET /settings
+  서버가 세션에 csrfToken 저장
+  HTML hidden input에 csrfToken 포함
+
+POST /settings
+  Cookie: JSESSIONID=...
+  _csrf=...
+
+검증:
+  session.csrfToken == request._csrf
+  맞으면 처리
+  틀리면 403</code></pre>
+
+  <h2>SPA/API</h2>
+  <pre><code>Spring Security CookieCsrfTokenRepository 기본 관례:
+  cookie: XSRF-TOKEN
+  header: X-XSRF-TOKEN
+  parameter: _csrf
+
+프론트:
+  XSRF-TOKEN 값을 읽음
+  POST/PUT/PATCH/DELETE 요청에 X-XSRF-TOKEN header 추가
+
+백엔드:
+  저장된 토큰과 header 값을 비교</code></pre>
+
+  <h2>왜 custom header인가</h2>
+  <pre><code>공격자 form:
+  쿠키 자동 첨부 가능
+  form field 전송 가능
+  custom header 첨부 불가
+
+공격자 fetch:
+  custom header를 붙이려면 CORS preflight 필요
+  서버가 공격자 origin/header를 허용하지 않으면 실제 요청 전 차단
+
+정상 프론트:
+  허용된 origin에서 토큰을 읽음
+  X-XSRF-TOKEN 같은 header로 전송</code></pre>
+
+  <h2>토큰 획득 시점</h2>
+  <pre><code>서버 렌더링:
+  GET /settings
+  HTML form hidden input 또는 meta tag로 토큰 수신
+
+SPA:
+  앱 시작 시 GET /csrf
+  또는 최초 HTML/JSON 응답
+  또는 XSRF-TOKEN 쿠키
+  또는 X-CSRF-TOKEN 응답 헤더
+
+다시 받아야 하는 시점:
+  로그인 성공 직후
+  로그아웃 직후
+  세션 만료 후 재인증
+  403 CSRF 실패 후 복구 플로우</code></pre>
+
+  <h2>공격자가 토큰을 얻는 경우</h2>
+  <pre><code>토큰을 읽으면 위험:
+  XSS로 DOM/cookie 읽기
+  URL query string에 토큰 노출
+  서버/프록시 로그에 토큰 기록
+  너무 넓은 CORS 허용
+  탈취된 하위 도메인 신뢰
+
+일반 cross-site 공격자가 어려운 이유:
+  다른 origin의 HTML/응답/cookie를 읽기 어려움
+  custom header 요청은 preflight와 CORS 허용이 필요함
+  단순 form 제출은 가능하지만 맞는 토큰을 넣기 어려움</code></pre>
+
+  <h2>/csrf 응답 전달 방식</h2>
+  <pre><code>JSON body:
+  { "headerName": "X-XSRF-TOKEN", "token": "..." }
+  명시적이고 단순함
+
+Response header:
+  X-CSRF-TOKEN: ...
+  본문 구조와 분리 가능
+  cross-origin이면 Access-Control-Expose-Headers 필요할 수 있음
+
+Cookie:
+  Set-Cookie: XSRF-TOKEN=...; Secure; SameSite=Lax; Path=/
+  프레임워크 관례와 자동 저장에 유리
+  JS가 읽어 header로 되돌려 보내야 하면 HttpOnly=false 필요
+
+주의:
+  CSRF 토큰 쿠키는 인증 쿠키가 아님
+  하지만 XSS나 과도한 CORS 허용이 있으면 탈취될 수 있음</code></pre>
+
+  <h2>Spring Security 기억할 점</h2>
+  <pre><code>기본값:
+  unsafe HTTP method에 CSRF 보호 적용
+  POST/PUT/PATCH/DELETE는 보호 대상
+
+세션 기반 앱:
+  기본 CSRF 보호를 유지하는 쪽이 일반적
+
+순수 Bearer token API:
+  쿠키 자동 인증이 아니라면 CSRF 위험은 낮아질 수 있음
+  대신 token 탈취/XSS/storage 정책을 따로 봐야 함</code></pre>
+
+  <h2>SameSite와의 관계</h2>
+  <pre><code>SameSite=Lax:
+  일부 cross-site 요청에서 쿠키 첨부 제한
+  로그인 페이지 표시 같은 용도에는 실용적
+
+SameSite=Strict:
+  더 강한 제한
+  외부 링크 유입 시 사용성 문제 가능
+
+판단:
+  SameSite는 방어 심화
+  CSRF token/custom header/origin 검증과 함께 보는 편이 안전</code></pre>
+
+  <h2>CORS와 Origin 검증</h2>
+  <pre><code>CORS:
+  브라우저가 cross-origin JS에게 응답 읽기/custom header 전송을 허용할지 결정
+  서버가 Access-Control-Allow-Origin으로 허용 origin을 알려줌
+  허용되지 않은 origin의 응답 읽기는 막지만, simple request가 서버에 도착하는 것까지 항상 막지는 않음
+
+Origin 검증:
+  서버가 상태 변경 요청의 Origin/Referer를 직접 보고 처리 여부를 결정
+  CORS를 우회하는 form simple request까지 서버에서 거를 수 있음
+  이메일 변경, 송금, 삭제 같은 상태 변경 로직 실행 전에 거절할 수 있음
+
+정리:
+  CORS 허용 목록은 필요하지만 CSRF 방어 전체가 아님
+  상태 변경 요청은 토큰, custom header, Origin/Referer, SameSite를 겹쳐 본다</code></pre>
+
+  <h2>실수 방지</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>하지 말 것</h3>
+      <p>상태 변경을 <code>GET</code>으로 만들지 않는다. CSRF 토큰을 URL query string에 싣지 않는다.</p>
+    </section>
+    <section class="card">
+      <h3>확인할 것</h3>
+      <p>모든 상태 변경 endpoint가 토큰, custom header, Fetch Metadata, Origin 검증 중 적절한 방어를 갖는지 본다.</p>
+    </section>
+  </div>
+
+  <h2>관련 자료</h2>
+  <ul>
+    <li><a href="../lessons/0010-csrf-token-attack-and-defense.html">CSRF 토큰이 막는 문제와 실제 사용 흐름</a></li>
+    <li><a href="https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html">OWASP CSRF Prevention Cheat Sheet</a></li>
+    <li><a href="https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html">Spring Security CSRF</a></li>
+  </ul>
+</main>
+</body>
+</html>
