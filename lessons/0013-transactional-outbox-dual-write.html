@@ -323,7 +323,66 @@ DB 폴링  →  Redis Stream  →  Kafka
     멱등성은 at-least-once의 짝꿍 개념이다. (다음 레슨에서 다룬다.)
   </p>
 
-  <h2>11. Sixmen 아키텍처와 연결</h2>
+  <h2>11. 재시도의 한계와 DLQ — "영원히 재시도하나?"</h2>
+  <p class="warn">
+    자연스러운 의문: "정상 발행(XADD)이 실패하면 polling이 재시도한다고 했는데, Redis가 계속 안 좋으면
+    영원히 재시도하는 건가?" — <strong>아니다. 재시도는 유한하고, 한계를 넘으면 에스컬레이션된다.</strong>
+  </p>
+
+  <h3>재시도를 제한하는 세 가지 장치</h3>
+  <div class="grid">
+    <section class="card">
+      <h3>① 재시도 횟수 제한 (attempt)</h3>
+      <p>outbox 행에 <code>attempt</code> 칼럼을 둔다. 실패할 때마다 증가. 한계치(예: 5회) 넘으면 더 이상 재시도 안 함.</p>
+    </section>
+    <section class="card">
+      <h3>② FAILED 상태 + DLQ 이동</h3>
+      <p>한계 도달 시 <code>status='FAILED'</code>로 전환하고 <strong>DLQ(Dead Letter Queue)</strong>로 보낸다. "여기까지 버티다 실패한 작업의 보관소".</p>
+    </section>
+    <section class="card">
+      <h3>③ 알림 → 운영자 개입</h3>
+      <p>FAILED/DLQ 진입 시 Mattermost 등으로 알림. 무한 루프 대신 "이제 사람 차례"로 넘김. 원인 조사·수동 처리·Redis 교체.</p>
+    </section>
+  </div>
+  <pre class="flow"><code>attempt=1 → 실패 → attempt=2 → 실패 → ... → attempt=5 (한계) → FAILED + DLQ + 알림
+(무한 재시도가 아니라 유한 + 에스컬레이션)</code></pre>
+
+  <h3>핵심 통찰: Redis가 통째로 죽었을 때</h3>
+  <p>
+    Redis가 안 될 때 발행 실패는 <strong>"어차피 처리 못 할 상황"</strong>이다. 왜냐하면 Worker도 Redis에 의존하므로,
+    Stream에 넣어봤자 Worker가 못 읽는다. 즉 <strong>Redis 없이는 Worker 파이프라인 자체가 안 돈다</strong>.
+    그래서 이때 진짜 보험은 따로 있다:
+  </p>
+  <p class="note">
+    <strong>outbox 행이 DB에 안전하게 남아있는 것</strong>이 진짜 보험이다.
+    Redis가 언젠가 살아나면, 그때 polling이 PENDING 행들을 순차적으로 밀어낸다.
+  </p>
+
+  <h3>시나리오: Redis가 1시간 다운됐다 복구된 경우</h3>
+  <pre class="flow"><code>Redis 다운 (1시간)
+  → webhook 계속 도착, DB commit은 계속 성공
+  → outbox 행 PENDING으로 계속 쌓임 (예: 5000개)
+  → ① 정상 XADD 전부 실패
+  → ② polling도 XADD 실패 → attempt 증가
+
+Redis 복구
+  → ② polling이 다음 주기에 PENDING 행 5000개 발견
+  → 순차적으로 XADD 재발행
+  → Worker가 몰려온 작업 처리
+  → 행들이 PUBLISHED로 정리됨   ← 누락 없이 복구</code></pre>
+  <p class="warn">
+    이게 Outbox의 진짜 가치다: 중간에 브로커가 1시간이고 1일이고 죽어도, <strong>DB만 살아있으면 누락 없이 복구</strong>된다.
+    "DB가 진실 공급원"이라는 말의 무게가 여기에 있다.
+  </p>
+
+  <h3>상황별 정리</h3>
+  <pre class="flow"><code>XADD 1회 실패       → polling이 다음 주기에 재시도
+반복 실패            → attempt 증가, polling이 계속 시도
+attempt 한계 도달    → FAILED + DLQ + 알림
+Redis 일시 다운 복구 → PENDING 행들 순차 일괄 발행 (누락 없음)
+Redis 영구 다운      → FAILED/DLQ로 분류, 운영자 개입. 시스템 자체는 멈추지 않음</code></pre>
+
+  <h2>12. Sixmen 아키텍처와 연결</h2>
   <pre class="flow"><code>webhook 도착
   → Spring: 서명/토큰/중복 검증
   → 하나의 트랜잭션:
@@ -339,7 +398,7 @@ DB 폴링  →  Redis Stream  →  Kafka
     무거운 처리는 복구 가능한 비동기 작업으로 넘긴다.
   </p>
 
-  <h2>12. 판단 기준 요약</h2>
+  <h2>13. 판단 기준 요약</h2>
   <pre class="flow"><code>Outbox가 필요한 신호:
   - DB 갱신과 메시지 발행이 둘 다 일어나야 한다
   - 둘 중 하나만 되면 안 된다
@@ -350,7 +409,7 @@ Outbox가 주는 것:
   - DB에 남는 발행 대기열 → 장애 후 복구 가능
   - 단, at-least-once → Consumer 멱등성 필수</code></pre>
 
-  <h2>13. 회상 퀴즈</h2>
+  <h2>14. 회상 퀴즈</h2>
   <section class="quiz" aria-label="Outbox quiz">
     <p><strong>Q1.</strong> dual-write가 위험한 근본 이유는?</p>
     <button type="button" data-target="answer-1" data-answer="wrong">트랜잭션이 너무 김</button>
@@ -381,6 +440,18 @@ Outbox가 주는 것:
     <button type="button" data-target="answer-5" data-answer="correct">XADD 발행 실패</button>
     <button type="button" data-target="answer-5" data-answer="wrong">Worker 처리 실패</button>
     <p class="answer" id="answer-5"></p>
+
+    <p><strong>Q6.</strong> 반복 실패로 attempt 한계 도달 시 가는 곳?</p>
+    <button type="button" data-target="answer-6" data-answer="wrong">무한 재시도 루프</button>
+    <button type="button" data-target="answer-6" data-answer="correct">FAILED 상태와 DLQ</button>
+    <button type="button" data-target="answer-6" data-answer="wrong">outbox 행 삭제</button>
+    <p class="answer" id="answer-6"></p>
+
+    <p><strong>Q7.</strong> Redis가 1시간 다운된 동안 도착한 webhook는?</p>
+    <button type="button" data-target="answer-7" data-answer="wrong">전부 유실됨</button>
+    <button type="button" data-target="answer-7" data-answer="correct">DB에 쌓여 복구</button>
+    <button type="button" data-target="answer-7" data-answer="wrong">거절되어 재전송</button>
+    <p class="answer" id="answer-7"></p>
   </section>
 
   <h2>공식 자료</h2>
