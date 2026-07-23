@@ -1,6 +1,6 @@
 ---
 name: teach
-description: Teach the user a new skill or concept within this workspace, create durable lessons/references/learning records, and produce final topic summaries when the user asks for a final recap, final summary, or completed-topic synthesis.
+description: Teach the user a new skill or concept, within this workspace.
 disable-model-invocation: true
 argument-hint: "What would you like to learn about?"
 ---
@@ -13,7 +13,6 @@ Treat the current directory as a teaching workspace. The state of their learning
 
 - `MISSION.md`: A document capturing the _reason_ the user is interested in the topic. This should be used to ground all teaching. Use the format in [MISSION-FORMAT.md](./MISSION-FORMAT.md).
 - `./reference/*.html`: A directory of reference materials. These are the compressed learnings from the lessons - cheat sheets, reference algorithms, syntax, yoga poses, glossaries. They are the raw units of learning. They should be beautiful documents which print out well, and are designed for quick reference.
-- `./summaries/*.md`: A directory of topic summaries. These are long-form final syntheses created when the user indicates that a topic's questions have been resolved and asks for a final summary, recap, or consolidated write-up.
 - `RESOURCES.md`: A list of resources which can be explored to ground your teaching in contextual knowledge, or to acquire knowledge and wisdom. Use the format in [RESOURCES-FORMAT.md](./RESOURCES-FORMAT.md).
 - `./learning-records/*.md`: A directory of learning records, which capture what the user has learned. These are loosely equivalent to architectural decision records in software development - they capture non-obvious lessons and key insights that may need to be revised later, or drive future sessions. These should be used to calculate the zone of proximal development. They are titled `0001-<dash-case-name>.md`, where the number increments each time. Use the format in [LEARNING-RECORD-FORMAT.md](./LEARNING-RECORD-FORMAT.md).
 - `./lessons/*.html`: A directory of lessons. A **lesson** is a single, self-contained HTML output that teaches one tightly-scoped thing tied to the mission. This is the primary unit of teaching in this workspace.
@@ -135,29 +134,6 @@ Some learning topics lend themselves to reference:
 - Glossaries for any topic with its own nomenclature
 
 Glossaries, in particular, are an essential reference. Once one is created, it should be adhered to in every lesson.
-
-## Topic Summaries
-
-Create a topic summary when the user indicates that their original topic-level curiosity has been resolved and asks for a final summary, final recap, consolidated summary, wrap-up, or similar. Save it to `./summaries/` as `0001-<dash-case-name>.md`, incrementing the number from the highest existing summary.
-
-A topic summary is different from a reference document and a learning record:
-
-- Use `summaries/*.md` for long-form synthesis of a completed learning thread.
-- Use `reference/*.html` for compressed lookup material, cheat sheets, algorithms, glossaries, and quick references.
-- Use `learning-records/*.md` for short records of non-obvious learning, misconceptions corrected, prior knowledge established, or mission shifts.
-
-When writing a topic summary:
-
-1. Review the current conversation, related lessons, reference documents, and learning records for that topic.
-2. Capture the final correct mental model in enough detail that the user can reread the file later and understand the topic without the original conversation.
-3. Include the user's misconception patterns and repeated follow-up question patterns, phrased constructively and concretely.
-4. Include the sequence of understanding: what they first thought, what was clarified, and what mental model should replace it.
-5. Add a practical checklist for future use or debugging when the topic is technical.
-6. Link to related lessons, references, and learning records.
-7. Cite high-trust resources already in `RESOURCES.md`, adding missing official resources when needed.
-8. Keep the tone clear, accurate, and reviewable. Prefer structured Markdown with headings, diagrams, and short code/request examples where useful.
-
-After creating or updating a topic summary, update `INDEX.md` in the same turn with a **Topic Summaries** entry under the relevant topic. If the summary reveals a new durable learning pattern, also add a concise learning record that points to the summary rather than duplicating it.
 
 ## `NOTES.md`
 

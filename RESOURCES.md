@@ -74,6 +74,21 @@
 - [Let's Encrypt: How It Works](https://letsencrypt.org/how-it-works/)
   공개 CA인 Let's Encrypt의 인증서 발급 흐름 설명. Use for: 도메인 검증, 인증서 발급, 자동 갱신의 큰 흐름 확인.
 
+## Distributed Backend Architecture Knowledge
+
+- [microservices.io: Pattern — Transactional Outbox](https://microservices.io/patterns/data/transactional-outbox.html)
+  Chris Richardson의 마이크로서비스 패턴 카탈로그. Use for: dual-write 문제, outbox 테이블, Message Relay, Polling Publisher vs Transaction Log Tailing(CDC) 구분.
+- [Confluent: Understanding the Dual-Write Problem and Its Solutions](https://www.confluent.io/blog/dual-write-problem/)
+  Dual-write 문제의 정설. Use for: 두 독립 시스템을 원자적으로 갱신할 수 없는 이유, 부분 실패 시나리오, 2PC를 피하는 이유.
+- [Redis: Redis Streams intro](https://redis.io/docs/latest/develop/use/data-types/streams/)
+  Redis Streams 공식 문서. Use for: XADD/XREADGROUP/XACK, Consumer Group, Pending Entries List 기본 개념.
+- [Redis: XAUTOCLAIM command](https://redis.io/docs/latest/commands/xautoclaim/)
+  XAUTOCLAIM 공식 문서. Use for: 죽은 Consumer의 Pending 메시지를 다른 Consumer가 회수하는 메커니즘.
+- [microservices.io: Pattern — Polling Publisher](https://microservices.io/patterns/data/polling-publisher.html)
+  Polling Publisher 패턴. Use for: outbox를 polling으로 relay하는 방식과 그 한계.
+- [microservices.io: Pattern — Transaction Log Tailing](https://microservices.io/patterns/data/transaction-log-tailing.html)
+  Transaction Log Tailing(CDC) 패턴. Use for: DB 트랜잭션 로그를 읽어 relay하는 방식(Debezium).
+
 ## Wisdom (Communities)
 
 - [Stack Overflow: git tag](https://stackoverflow.com/questions/tagged/git)

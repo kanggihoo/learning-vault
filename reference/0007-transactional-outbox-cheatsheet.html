@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transactional Outbox 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main>
+  <h1>Transactional Outbox 치트시트</h1>
+  <p class="note">
+    핵심: <strong>DB 갱신과 메시지 발행을 원자적으로 하려면, "나중에 보낼 메시지"를 outbox 테이블에 같은 DB 트랜잭션으로 적는다. Relay가 그 outbox를 브로커로 옮긴다.</strong>
+  </p>
+
+  <h2>한 줄 모델</h2>
+  <pre><code>dual-write(두 시스템을 따로 쓰기) = 부분 실패로 불일치
+Outbox = 두 번째 쓰기를 DB 안으로 → 같은 트랜잭션 → 원자성
+Relay = DB outbox → 브로커로 이동 (정상: 즉시, 장애: polling 복구)
+대가 = at-least-once → Consumer 멱등 필수</code></pre>
+
+  <h2>핵심 용어</h2>
+  <pre><code>dual-write          DB와 브로커를 각각 따로 쓰는 방식. 찰나 실패에 불일치.
+outbox table        "나중에 발행할 메시지"를 담는 DB 테이블.
+Message Relay       outbox를 읽어 브로커(Redis/Kafka)로 옮기는 컴포넌트.
+Polling Publisher   Relay 구현 A. 주기적 SELECT. 단순, 주기만큼 지연.
+Tx Log Tailing(CDC) Relay 구현 B. DB 트랜잭션 로그 tailing(Debezium). 거의 실시간, 무거움.
+at-least-once       메시지가 최소 한 번(중복 가능) 전달되는 보장.
+idempotent          같은 작업을 여러 번 실행해도 결과 동일. 중복 방어.</code></pre>
+
+  <h2>트랜잭션 구조</h2>
+  <pre><code>BEGIN;
+  INSERT INTO webhook_inbox (...);   -- 업무 기록
+  INSERT INTO outbox_event (...);    -- 발행 대기 메시지
+COMMIT;
+-- 둘 다 커밋되거나 둘 다 롤백. PostgreSQL이 원자성 보장.</code></pre>
+
+  <h2>Relay 정상 vs 장애 경로</h2>
+  <pre><code>정상: commit → 즉시 XADD → Consumer 수신   (실시간에 가까움)
+장애: commit → XADD 실패/Relay 사망
+      → outbox_event는 DB에 남음
+      → polling이 미발행 행만 골라 재발행 (안전망)</code></pre>
+
+  <h2>왜 일반 트랜잭션/2PC로 안 푸나</h2>
+  <pre><code>일반 트랜잭션 = DB 안에서만 원자성. 외부 시스템 경계 안 닿음.
+                DB rollback해도 이미 나간 XADD는 못 되돌림.
+2PC/XA        = 가능은 하나 모든 시스템이 지원해야, 성능·복잡도 큼. 실무에선 회피.
+Outbox        = DB 하나의 원자성만 빌려 해결. 가볍고 견고.</code></pre>
+
+  <h2>판단 기준</h2>
+  <pre><code>Outbox 신호:
+  DB 갱신 + 메시지 발행이 둘 다 일어나야 함
+  둘 중 하나만 되면 안 됨
+  둘이 다른 시스템임
+
+복구 전제:
+  Redis가 날아가도 DB의 outbox_event + 작업 상태 테이블로 복구
+  → "DB가 진실 공급원"의 실체</code></pre>
+
+  <h2>다음 개념으로 연결</h2>
+  <pre><code>at-least-once → 멱등성(idempotency) → 재시도 상태 머신
+Outbox 메시지 → Redis Stream → Consumer Group → XACK/XAUTOCLAIM/DLQ</code></pre>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://microservices.io/patterns/data/transactional-outbox.html">microservices.io: Transactional Outbox</a></li>
+    <li><a href="https://www.confluent.io/blog/dual-write-problem/">Confluent: Dual-Write Problem</a></li>
+    <li><a href="https://microservices.io/patterns/data/polling-publisher.html">microservices.io: Polling Publisher</a></li>
+    <li><a href="https://microservices.io/patterns/data/transaction-log-tailing.html">microservices.io: Transaction Log Tailing</a></li>
+  </ul>
+
+  <p>
+    관련 레슨:
+    <a href="../lessons/0013-transactional-outbox-dual-write.html">Dual-write 문제와 Transactional Outbox</a>.
+  </p>
+</main>
+</body>
+</html>

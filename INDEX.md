@@ -112,3 +112,19 @@ This index points to saved learning material in this Learning Vault.
 - [0012 - TLS session key와 로그인 session 구분](./learning-records/0012-tls-session-key-vs-login-session.md)
 - [0013 - 인증서 형태와 TLS session key 물리적 모양 구분](./learning-records/0013-certificate-shape-and-session-key-bytes.md)
 - [0014 - SSL/TLS 최종 멘탈 모델 확립](./learning-records/0014-ssl-tls-final-mental-model.md)
+
+## Distributed Backend Architecture
+
+### Transactional Outbox
+
+**Lessons**
+
+- [0013 - Dual-write 문제와 Transactional Outbox](./lessons/0013-transactional-outbox-dual-write.html)
+
+**References**
+
+- [0007 - Transactional Outbox 치트시트](./reference/0007-transactional-outbox-cheatsheet.html)
+
+**Learning Records**
+
+- [0019 - Transactional Outbox 학습 기준점](./learning-records/0019-transactional-outbox-baseline.md)

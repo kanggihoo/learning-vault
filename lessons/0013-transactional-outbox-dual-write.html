@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dual-write 문제와 Transactional Outbox</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Dual-write 문제와 Transactional Outbox</h1>
+  <p class="note">
+    목표: "DB에 쓰면서 메시지도 발행해야 할 때 왜 그냥 두 번 쓰면 안 되는지"를 이해하고,
+    Outbox 테이블이 어떻게 두 쓰기를 <strong>하나의 트랜잭션</strong>으로 만들어 원자성을 보장하는지 설명한다.
+  </p>
+
+  <h2>1. 문제 상황: DB와 브로커를 동시에 바꿔야 할 때</h2>
+  <p>
+    Sixmen 아키텍처에서 webhook이 들어오면, Spring API는 두 가지를 해야 한다:
+  </p>
+  <ol>
+    <li>PostgreSQL에 webhook 수신 기록을 <strong>확실히 저장</strong>한다.</li>
+    <li>Redis Stream에 "이 작업을 처리해라"는 이벤트를 <strong>발행</strong>한다.</li>
+  </ol>
+  <p>
+    둘 다 성공해야 의미가 있다. 그런데 이 둘은 서로 다른 시스템이다.
+  </p>
+
+  <h2>2. Redis Stream과 XADD가 뭔가?</h2>
+  <p>
+    이 레슨에서 계속 "Redis Stream에 메시지를 넣는다"고 한다. 먼저 이게 뭔지만 잡고 가자.
+  </p>
+  <p>
+    <strong>Redis Stream</strong>은 "메시지가 차례로 줄서는 큐"다. 영속성이 있고, 여러 Worker가
+    나눠 가져갈 수 있다(Consumer Group). 작업을 쌓아두고 Worker들에게 나르는 역할.
+  </p>
+  <p>
+    <strong>XADD</strong>는 그 큐에 메시지 한 줄을 <em>추가하는 명령어</em>다.
+    List의 <code>LPUSH</code>처럼 생겼지만, 자동 ID(시간순)와 Consumer Group 지원이 붙은 버전이다.
+  </p>
+  <pre class="flow"><code>XADD jobs:ai * jobId ai-job-123 jobType JENKINS_FAILURE_SUMMARY
+  │     │       │ └─ 메시지 내용 (key-value)
+  │     │       └─ 자동 ID 생성 (시간순)
+  │     └─ Stream 이름 = 큐 역할
+  └─ 명령: "이 Stream에 메시지를 추가해라"</code></pre>
+  <p class="note">
+    비유: Stream은 컨베이어 벨트, <code>XADD</code>는 거기에 상자를 하나 올리는 행위.
+    상자를 올리면 Worker가 벨트에서 가져가 처리한다. Stream 자체의 자세한 동작
+    (Consumer Group, ACK 등)은 다음 레슨에서 깊이 다룬다.
+  </p>
+
+  <h2>3. 가장 단순한 시도: 두 번 순서대로 쓰기</h2>
+  <pre class="flow"><code>시도 A: DB 먼저, 그 다음 브로커
+1. PostgreSQL commit
+2. Redis XADD
+   → 1이 성공하고 2 직전에 프로세스가 죽으면?
+     DB에는 기록이 있는데, 작업은 영영 실행되지 않는다.
+
+시도 B: 브로커 먼저, 그 다음 DB
+1. Redis XADD
+2. PostgreSQL commit
+   → 1이 성공하고 2가 실패하면?
+     작업은 실행되는데, DB에 근거가 없다. 이벤트만 떠돈다.</code></pre>
+
+  <p class="warn">
+    순서를 바꿔도 소용없다. 두 시스템 사이의 <strong>찰나</strong>에 실패가 끼어들면
+    한쪽만 바뀐 불일치 상태가 된다. 이것이 <strong>dual-write 문제</strong>다.
+  </p>
+
+  <h2>4. 왜 그냥 "하나의 트랜잭션"으로 묶으면 안 되나?</h2>
+  <p>
+    일반적인 데이터베이스 트랜잭션은 <strong>자기 DB 안에서만</strong> 원자성을 보장한다.
+    트랜잭션 경계가 외부 시스템(Redis, Kafka)까지 뻗지 않는다. PostgreSQL이 commit을 rollback해도
+    이미 Redis로 나간 XADD는 되돌릴 수 없다.
+  </p>
+  <p>
+    분산 트랜잭션(2PC, XA)으로 억지로 묶을 수는 있지만, 모든 시스템이 2PC를 지원하지 않고,
+    성능·복잡도 비용이 크다. 실무에서는 대개 피한다.
+  </p>
+
+  <h2>5. Outbox의 직관: "두 번째 쓰기를 DB 안으로 들여놓기"</h2>
+  <p>
+    핵심 아이디어: 브로커로 메시지를 직접 보내지 말고,
+    <strong>"나중에 보낼 메시지"를 DB 테이블에 같이 적는다.</strong>
+    그러면 두 쓰기가 모두 같은 DB 트랜잭션 안에 들어간다.
+  </p>
+
+  <pre class="flow"><code>하나의 PostgreSQL 트랜잭션:
+BEGIN;
+  INSERT INTO webhook_inbox (...);    -- 업무 기록
+  INSERT INTO outbox_event (...);     -- "이 이벤트를 나중에 발행해라"는 메시지
+COMMIT;                               -- 둘 다 같이 커밋 or 같이 롤백</code></pre>
+
+  <p class="note">
+    이제 원자성은 PostgreSQL이 보장한다. 둘 다 커밋되거나, 둘 다 사라진다.
+    찰나에 죽어도 <strong>DB 상태만 보면 일관</strong>되어 있다.
+  </p>
+
+  <h2>6. 잠깐: 왜 하필 inbox, outbox라는 이름인가?</h2>
+  <p>
+    우편함(pigeonhole/mailbox) 비유에서 온 이름이다. 이메일 클라이언트나 메시징 시스템 전반에서 쓰이는
+    전통적인 용어라 같은 단어가 아키텍처에도 그대로 넘어왔다.
+  </p>
+  <div class="grid">
+    <section class="card">
+      <h3>inbox = 받는 편지함</h3>
+      <p><strong>외부에서 들어온 것</strong>을 담는다.<br>
+      Sixmen의 <code>webhook_inbox</code>: GitLab/Jira에서 온 이벤트를 접수해 두는 곳. 중복 수신을 걸러내는 기준(provider event ID)도 여기서.</p>
+    </section>
+    <section class="card">
+      <h3>outbox = 보낼 편지함</h3>
+      <p><strong>밖으로 내보낼 것</strong>을 담는다.<br>
+      Sixmen의 <code>outbox_event</code>: 아직 브로커로 안 나간 "발송 대기 메시지". Relay가 여기서 꺼내 Redis Stream으로 보낸다.</p>
+    </section>
+  </div>
+  <pre class="flow"><code>외부 도구 → webhook → [webhook_inbox]      "들어온 이벤트, 아직 처리 안 됨"
+[outbox_event] → Redis Stream → Worker      "내보낼 작업, 아직 발행 안 됨"</code></pre>
+  <p class="note">
+    이름이 곧 <strong>방향</strong>을 말한다. inbox는 수신 쪽, outbox는 발신 쪽.
+    "Transactional Outbox 패턴"이라는 정식 명칭도 이 우편함 비유에서 비롯됐다.
+  </p>
+
+  <h2>7. 그럼 누가 outbox를 실제 브로커로 옮기나? (Message Relay)</h2>
+  <p>
+    outbox 테이블에 메시지를 쌓아두기만 하면 작업은 영영 실행되지 않는다.
+    DB의 outbox를 읽어 Redis Stream으로 옮기는 역할을 <strong>Message Relay</strong>라 부른다.
+  </p>
+
+  <p class="warn">
+    가장 흔한 오해: "Relay = polling만 한다"로 읽으면 전체 흐름이 안 보인다.
+    Sixmen에서 Relay는 <strong>두 경로</strong>로 동작한다. 정상은 polling이 <em>아니다</em>.
+  </p>
+
+  <h3>Relay의 두 경로 — 이 구분이 핵심</h3>
+  <div class="grid">
+    <section class="card">
+      <h3>① 정상 경로: 즉시 발행</h3>
+      <p>DB commit 성공 직후, <strong>Spring이 곧바로 XADD</strong>를 호출한다. polling 아님. commit이라는 이벤트에 반응해 바로 Stream에 넣는다. 사실상 0지연.</p>
+    </section>
+    <section class="card">
+      <h3>② 복구 경로: polling</h3>
+      <p>①의 XADD가 <strong>실패했을 때만</strong> <code>@Scheduled</code>가 주기적으로 DB를 조회해 미발행 행을 골라 재발행한다. 비상용 안전망.</p>
+    </section>
+  </div>
+
+  <h3>Relay는 구체적으로 무엇인가?</h3>
+  <p>
+    역할이지 별개 물건이 아니다. Spring API가 commit 직후 곧바로 XADD하면 그 순간 Spring이 Relay 역할을 하는 것이고,
+    <code>@Scheduled</code> 폴링 스레드 역시 Relay 역할의 일환이다. 핵심은
+    <strong>웹 요청을 받는 API 코드와 발행 코드는 역할이 분리</strong>되어 있다는 것 — API는 빠르게 응답하고,
+    발행은 뒤에서 진행된다.
+  </p>
+
+  <h3>정상 경로의 전체 흐름</h3>
+  <pre class="flow"><code>1. webhook 도착 → Spring이 서명·중복 검증
+2. 트랜잭션: webhook_inbox INSERT + outbox_event INSERT (status='PENDING')
+3. COMMIT
+4. ── commit 직후, Spring이 곧바로 Redis XADD 호출 ──   ← 정상 발행 (polling 아님)
+5. XADD 성공 → 그 outbox 행을 '발행 완료' 표시 (status='PUBLISHED')
+6. Stream Consumer: 메시지 수신 → 실제 작업 실행</code></pre>
+
+  <h3>발행이 끝난 outbox 행은 어떻게 되나?</h3>
+  <p>두 방식이 실무에서 쓰인다. Sixmen은 상태 갱신 쪽이다.</p>
+  <div class="grid">
+    <section class="card">
+      <h3>상태 갱신 (보존)</h3>
+      <p><code>status</code> 칼럼: <code>PENDING</code> → <code>PUBLISHED</code>. 행은 그대로 둔다.<br>
+      <span class="ok">장점</span>: 이력·복구·감사에 유리. "이미 보낸 건" 구분 가능 → 중복 발행 감소.</p>
+    </section>
+    <section class="card">
+      <h3>삭제</h3>
+      <p>발행 후 행 자체를 <code>DELETE</code>. outbox는 "잠깐 거치는 곳"만 됨.<br>
+      <span class="ok">장점</span>: 테이블이 계속 작게 유지. 단 이력이 사라진다.</p>
+    </section>
+  </div>
+
+  <h3>그럼 polling은 언제, 무엇을 회수하나? — "어떤 실패"인지가 핵심</h3>
+  <p class="warn">
+    자주 헷갈리는 점: "DB 쓰기 실패를 polling이 회수한다" — <strong>틀리다</strong>.
+    polling이 회수하는 건 <strong>"DB엔 기록됐는데 Redis로 못 나간 행"</strong>이다. 두 실패를 구분하자.
+  </p>
+  <div class="grid">
+    <section class="card">
+      <h3>DB commit 실패</h3>
+      <p>트랜잭션 자체가 롤백. outbox 행 자체가 <strong>없음</strong>.<br>
+      polling이 회수할 것도 없음. <strong>처음부터 없던 일.</strong> ❌ polling 관여 안 함.</p>
+    </section>
+    <section class="card">
+      <h3>XADD 실패 (commit 후)</h3>
+      <p>commit은 성공해 outbox 행이 <strong>PENDING으로 DB에 남음</strong>. 그런데 Redis로 못 보냄.<br>
+      <strong>이 행을 polling이 나중에 회수.</strong> ✅</p>
+    </section>
+  </div>
+  <pre class="flow"><code>복구 경로 (정상 발행이 실패했을 때만):
+3. COMMIT 성공 → outbox 행이 PENDING으로 DB에 확실히 있음
+4. Spring이 곧바로 Redis XADD 시도
+   └─ 실패 (Redis 다운/네트워크 끊김/Spring 프로세스 사망)
+      → 행은 여전히 PENDING
+5. @Scheduled polling (10~30초 주기)이 PENDING 행 발견 → 재발행 XADD
+   → 성공하면 PUBLISHED 표시</code></pre>
+  <p class="note">
+    핵심: <strong>DB commit이 성공하기만 하면</strong> outbox 행이 DB에 남아, Redis가 어떻게 되든
+    나중에 무조건 복구된다. 이것이 "DB가 진실 공급원"이라는 말의 실체이며, polling이 느려도(초 단위)
+    괜찮은 이유 — 어차피 비상용이라 거의 안 돈다.
+  </p>
+
+  <h2>8. "outbox를 어떻게 브로커로 옮길까"의 설계 스펙트럼</h2>
+  <p>
+    Relay를 구현하는 방식에는 크게 두 흐름이 있다. 이건 <strong>"누가 DB 변화를 잡아서 브로커로 보내나"</strong>에 대한
+    설계 선택지이고, Sixmen은 둘을 섞되 polling을 비상용으로 쓴다.
+  </p>
+  <div class="grid">
+    <section class="card">
+      <h3>Polling Publisher</h3>
+      <p>Relay가 일정 주기(예: 10~30초)로 <code>SELECT ... WHERE 미발행</code> 조회. 단순하지만 주기만큼 지연.<br>
+      Sixmen에선 <strong>복구 경로</strong>로만 쓰인다.</p>
+    </section>
+    <section class="card">
+      <h3>Transaction Log Tailing (CDC)</h3>
+      <p>DB 트랜잭션 로그를 tailing(Debezium 등). 거의 실시간이지만 인프라가 무겁다.<br>
+      Sixmen은 채택 안 함 — 대신 commit 직후 즉시 XADD로 실시간성을 확보.</p>
+    </section>
+  </div>
+
+  <p class="warn">
+    Sixmen의 조합: <strong>정상은 commit 직후 Spring이 즉시 XADD</strong>(실시간) +
+    <strong>실패분만 polling이 회수</strong>(안전망). polling이 실시간 실행의 주체가 <em>아니다</em>는 점이 핵심이다.
+    CDC 없이도 실시간성을 얻는 이유는, 발행 트리거를 "폴링 주기"가 아니라 <strong>"commit 이벤트 자체"</strong>에 걸었기 때문.
+  </p>
+
+  <h2>9. "그냥 Redis 안 쓰고 DB만 써도 되는 거 아닌가?"</h2>
+  <p>
+    자연스러운 의문이다. Worker들이 DB를 직접 폴링하면 Redis 없이도 작업 큐를 만들 수 있다.
+    실제로 쓰이는 패턴(<strong>"DB를 잡 큐로 쓰기"</strong>)이다.
+  </p>
+  <pre class="flow"><code>-- Worker가 DB를 직접 폴링하는 방식
+SELECT * FROM job_queue
+WHERE status = 'PENDING'
+LIMIT 1 FOR UPDATE SKIP LOCKED;     -- 다른 Worker가 잡은 행은 건너뜀
+→ 처리 → status='PROCESSING' → ... → 'SUCCEEDED'</code></pre>
+  <p>이게 동작은 한다. 그런데 왜 Sixmen은 Redis Stream을 끼웠을까? 핵심은 <strong>Worker가 작업을 가져오는 방식</strong>의 차이다.</p>
+
+  <h3>Worker 시점에서 두 방식 비교 — "누가 시그널을 주나"</h3>
+  <pre class="flow"><code>A. DB polling 방식 — Worker가 계속 묻는다
+   Worker 루프:
+     1. "DB야, 할 일 있어?" (SELECT ... status='PENDING')
+     2. 없음 → 1초 쉼
+     3. "DB야, 할 일 있어?" (또 SELECT)
+     ... (할 일 없어도 1초마다 DB를 때림)
+     99. 드디어 있음 → 작업
+   → 메시지 생겨도 다음 폴링 주기까지 모름 (최대 1초 지연)
+   → Worker N대면 DB에 N배의 조회 부하
+
+B. Redis Stream blocking 방식 — Worker가 잔다, Redis가 깸
+   Worker:
+     XREADGROUP BLOCK 0 STREAMS jobs:ai >
+     (Stream에 뭔가 들어올 때까지 잠)
+     ...
+     → 누군가 XADD로 메시지를 넣는 순간, Redis가 Worker를 "지금" 깸
+     → 즉시 작업 시작
+   → 할 일 없으면 아무것도 안 함 (CPU·DB 안 씀)
+   → 메시지 도착 즉시 깸 (사실상 0지연)</code></pre>
+  <p class="warn">
+    자주 묻는 질문: "B에서 Stream에 뭔가 들어올 때까지 잔다는데, <strong>도대체 누가 Stream에 데이터를 넣나?</strong>"
+    <br>→ 답: <strong>정상 경로의 즉시 XADD</strong>(섹션 7의 ①). webhook → DB commit 직후 Spring이 곧바로 XADD하면,
+    그 메시지가 잠자던 Worker를 즉시 깨운다. polling이 아니다.
+  </p>
+
+  <div class="grid">
+    <section class="card">
+      <h3>작업 전달 지연</h3>
+      <p><strong>DB만</strong>: 폴링 주기(초)마다 조회 → 느리다.<br>
+      <strong>Redis Stream</strong>: 메시지 오면 <strong>즉시</strong> 깸 → 밀리초.</p>
+    </section>
+    <section class="card">
+      <h3>"작업 올 때까지 대기"</h3>
+      <p><strong>DB만</strong>: 못 함. 계속 폴링 → CPU 낭비.<br>
+      <strong>Redis Stream</strong>: <code>XREADGROUP BLOCK</code>으로 이벤트 올 때까지 잔다.</p>
+    </section>
+    <section class="card">
+      <h3>DB 부하·역할</h3>
+      <p><strong>DB만</strong>: Worker N개가 매초 SELECT → DB가 잡 큐 역할까지 떠안음 → 락 경합.<br>
+      <strong>Redis Stream</strong>: 폴링 부하를 Redis가 흡수, DB는 업무 데이터에 집중.</p>
+    </section>
+    <section class="card">
+      <h3>Worker 확장·분배</h3>
+      <p><strong>DB만</strong>: <code>SKIP LOCKED</code> 등으로 조심해야 함.<br>
+      <strong>Redis Stream</strong>: Consumer Group이 자동 분배.</p>
+    </section>
+  </div>
+  <p class="note">
+    핵심: <strong>DB는 저장·원자성에 강하고, Redis Stream은 작업 분배·전달에 강하다.</strong>
+    Sixmen은 둘의 역할을 나눴다 — PostgreSQL은 진실·이력·복구 기준, Redis Stream은 Worker에게
+    작업을 빠르고 유연하게 나르는 브로커. 작업량이 적고 초 단위 지연이 괜찮다면 DB 폴링으로도 충분하지만,
+    실시간 webhook + 긴 AI 작업 + Worker 확장이 필요하면 Redis Stream(또는 Kafka)이 의미 있다.
+  </p>
+  <pre class="flow"><code>진화 경로 (부하에 따라):
+DB 폴링  →  Redis Stream  →  Kafka
+(충분하면 여기)  (실시간+확장)  (처리량/보관 한계 도달 시)</code></pre>
+
+  <h2>10. Outbox가 만드는 새로운 조건: at-least-once + 멱등성</h2>
+  <p>
+    Relay는 XADD에 성공했어도, "성공을 DB에 기록"하기 직전에 죽을 수 있다.
+    그러면 다음 polling이 같은 메시지를 또 발행한다. 즉 <strong>같은 메시지가 두 번 이상</strong>
+    전달될 수 있다(at-least-once delivery).
+  </p>
+
+  <pre class="flow"><code>Relay 장애 시나리오:
+1. outbox 행 읽음
+2. Redis XADD 성공  ← 메시지는 이미 Stream에 있음
+3. "발행 완료" 표시 직전에 프로세스 사망
+4. 다음 polling이 같은 행을 또 XADD
+   → Consumer는 같은 작업을 두 번 받음</code></pre>
+
+  <p class="note">
+    그래서 Consumer는 반드시 <strong>멱등(idempotent)</strong>해야 한다.
+    <code>eventId</code> 같은 값으로 "이미 처리한 작업인가?"를 확인한다.
+    멱등성은 at-least-once의 짝꿍 개념이다. (다음 레슨에서 다룬다.)
+  </p>
+
+  <h2>11. Sixmen 아키텍처와 연결</h2>
+  <pre class="flow"><code>webhook 도착
+  → Spring: 서명/토큰/중복 검증
+  → 하나의 트랜잭션:
+       webhook_inbox INSERT
+       outbox_event  INSERT
+  → 2xx 즉시 반환 (외부 도구에 빠르게 응답)
+  → Outbox Relay가 outbox_event를 Redis Stream으로 발행
+  → Worker가 실제 동기화/알림/AI 실행</code></pre>
+
+  <p>
+    webhook 안에서 외부 API·Mattermost·AI를 직접 부르지 않는 이유도 같은 맥락이다.
+    외부 호출은 느리고 실패하기 쉬워 "접수"를 위협한다. 접수는 DB에만 확실히 기록하고,
+    무거운 처리는 복구 가능한 비동기 작업으로 넘긴다.
+  </p>
+
+  <h2>12. 판단 기준 요약</h2>
+  <pre class="flow"><code>Outbox가 필요한 신호:
+  - DB 갱신과 메시지 발행이 둘 다 일어나야 한다
+  - 둘 중 하나만 되면 안 된다
+  - 그런데 둘이 다른 시스템이다
+
+Outbox가 주는 것:
+  - 같은 DB 트랜잭션 → 원자성
+  - DB에 남는 발행 대기열 → 장애 후 복구 가능
+  - 단, at-least-once → Consumer 멱등성 필수</code></pre>
+
+  <h2>13. 회상 퀴즈</h2>
+  <section class="quiz" aria-label="Outbox quiz">
+    <p><strong>Q1.</strong> dual-write가 위험한 근본 이유는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">트랜잭션이 너무 김</button>
+    <button type="button" data-target="answer-1" data-answer="correct">두 시스템 비원자</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">Redis가 느려서</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> Outbox가 원자성을 만드는 수단은?</p>
+    <button type="button" data-target="answer-2" data-answer="correct">같은 DB 트랜잭션</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">2PC 분산 트랜잭션</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">Redis 동기화</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> Sixmen에서 @Scheduled polling의 역할은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">실시간 실행 주체</button>
+    <button type="button" data-target="answer-3" data-answer="correct">누락 복구 안전망</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">DB 백업</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> 정상 경로에서 Stream에 메시지를 넣는 주체는?</p>
+    <button type="button" data-target="answer-4" data-answer="correct">commit 직후 Spring</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">Worker 직접 발행</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">DB 트리거만</button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> polling이 회수하는 "실패"는?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong">DB 커밋 실패</button>
+    <button type="button" data-target="answer-5" data-answer="correct">XADD 발행 실패</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">Worker 처리 실패</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://microservices.io/patterns/data/transactional-outbox.html">microservices.io: Pattern — Transactional Outbox</a> — 패턴의 정규 정의, Polling vs CDC 구분.</li>
+    <li><a href="https://www.confluent.io/blog/dual-write-problem/">Confluent: Understanding the Dual-Write Problem</a> — dual-write가 원자적으로 못 푸는 이유, 2PC 회피 배경.</li>
+    <li><a href="https://microservices.io/patterns/data/polling-publisher.html">microservices.io: Polling Publisher</a></li>
+    <li><a href="https://microservices.io/patterns/data/transaction-log-tailing.html">microservices.io: Transaction Log Tailing</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="../reference/0007-transactional-outbox-cheatsheet.html">Transactional Outbox 치트시트</a>.
+    다음 레슨은 Redis Streams Consumer Group로 이어진다.
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect ? "정답." : "오답. dual-write, 같은 트랜잭션, polling의 복구 역할을 다시 연결하자.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>
