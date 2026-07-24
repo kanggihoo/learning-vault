@@ -120,11 +120,14 @@ This index points to saved learning material in this Learning Vault.
 **Lessons**
 
 - [0013 - Dual-write 문제와 Transactional Outbox](./lessons/0013-transactional-outbox-dual-write.html)
+- [0014 - Redis Streams Consumer Group: 작업 분배와 회수](./lessons/0014-redis-streams-consumer-group.html)
 
 **References**
 
 - [0007 - Transactional Outbox 치트시트](./reference/0007-transactional-outbox-cheatsheet.html)
+- [0008 - Redis Streams Consumer Group 치트시트](./reference/0008-redis-streams-consumer-group-cheatsheet.html)
 
 **Learning Records**
 
 - [0019 - Transactional Outbox 학습 기준점](./learning-records/0019-transactional-outbox-baseline.md)
+- [0020 - Redis Streams Consumer Group 학습 기준점](./learning-records/0020-redis-streams-consumer-group-baseline.md)

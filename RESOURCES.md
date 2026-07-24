@@ -80,10 +80,16 @@
   Chris Richardson의 마이크로서비스 패턴 카탈로그. Use for: dual-write 문제, outbox 테이블, Message Relay, Polling Publisher vs Transaction Log Tailing(CDC) 구분.
 - [Confluent: Understanding the Dual-Write Problem and Its Solutions](https://www.confluent.io/blog/dual-write-problem/)
   Dual-write 문제의 정설. Use for: 두 독립 시스템을 원자적으로 갱신할 수 없는 이유, 부분 실패 시나리오, 2PC를 피하는 이유.
-- [Redis: Redis Streams intro](https://redis.io/docs/latest/develop/use/data-types/streams/)
-  Redis Streams 공식 문서. Use for: XADD/XREADGROUP/XACK, Consumer Group, Pending Entries List 기본 개념.
+- [Redis: Introduction to Redis Streams](https://redis.io/docs/latest/develop/data-types/streams/)
+  Redis Streams 공식 소개. Use for: XADD, Consumer Group 전체 개념, Pending Entries List 기본.
+- [Redis: XREADGROUP command](https://redis.io/docs/latest/commands/xreadgroup/)
+  XREADGROUP 공식 문서. Use for: `>`(새 메시지) vs `0`(내 pending) 구분, PEL 생성, Worker crash 복구 루프 의사코드.
+- [Redis: XACK command](https://redis.io/docs/latest/commands/xack/)
+  XACK 공식 문서. Use for: PEL에서 메시지 제거 = "처리 완료 확정"의 의미, ack 안 하면 영원히 pending에 남는 점.
+- [Redis: XPENDING command](https://redis.io/docs/latest/commands/xpending/)
+  XPENDING 공식 문서. Use for: PEL 조회(요약/상세 형태), consumer별 pending, delivery count, idle 필터.
 - [Redis: XAUTOCLAIM command](https://redis.io/docs/latest/commands/xautoclaim/)
-  XAUTOCLAIM 공식 문서. Use for: 죽은 Consumer의 Pending 메시지를 다른 Consumer가 회수하는 메커니즘.
+  XAUTOCLAIM 공식 문서. Use for: 죽은 Consumer의 Pending 메시지 회수, min-idle-time 임계값, delivery count 증가, cursor 반환.
 - [microservices.io: Pattern — Polling Publisher](https://microservices.io/patterns/data/polling-publisher.html)
   Polling Publisher 패턴. Use for: outbox를 polling으로 relay하는 방식과 그 한계.
 - [microservices.io: Pattern — Transaction Log Tailing](https://microservices.io/patterns/data/transaction-log-tailing.html)
