@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>쿠버네티스 전체 구조: Docker에서 K8s로</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .diagram {
+      background: #fff;
+      border: 1px solid #deded6;
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    .diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>쿠버네티스 전체 구조: Docker에서 K8s로</h1>
+  <p class="note">
+    목표: 쿠버네티스 클러스터의 <strong>전체 지도</strong>를 머릿속에 그리고,
+    자주 나오는 용어(Pod, Node, Deployment, Service, kubelet, etcd…)가
+    <strong>그 지도의 어디에 있는 무엇인지</strong> 말할 수 있게 된다.
+    이미 아는 Docker를 출발점으로 삼는다.
+  </p>
+
+  <h2>0. 출발점 — Docker는 되는데, 왜 쿠버네티스가 필요한가</h2>
+  <p>
+    Docker로 컨테이너 하나 띄우는 건 이미 할 수 있다. 문제는 <strong>그게 여러 대의 서버에서,
+    계속 살아있어야 할 때</strong> 생긴다.
+  </p>
+  <pre class="flow"><code>Docker만 있을 때 직접 해야 하는 일:
+
+  "컨테이너가 죽었다"        → 누가 감지하고 누가 다시 띄우나?
+  "서버 3대에 나눠 띄우자"    → 어느 서버에 여유가 있는지 누가 판단하나?
+  "트래픽 늘었다, 10개로"     → 10번 docker run? 그리고 어디에?
+  "새 버전 배포한다"          → 무중단으로 하나씩 교체를 누가 순서대로 하나?
+  "컨테이너 IP가 계속 바뀐다" → 앞단에서 어느 IP로 요청을 보내나?
+
+→ 이걸 사람이 아니라 <strong>시스템이 자동으로</strong> 하게 만든 것이 쿠버네티스.</code></pre>
+  <p class="warn">
+    이 레슨에서 가장 중요한 한 문장: 쿠버네티스는
+    <strong>"내가 원하는 상태(desired state)를 선언하면, 시스템이 현재 상태를 거기에 계속 맞추는"</strong>
+    구조다. 명령이 아니라 <strong>선언</strong>이다.
+    "컨테이너를 띄워라"가 아니라 <strong>"항상 3개가 떠 있어야 한다"</strong>고 적어두면,
+    누가 죽든 시스템이 알아서 3개를 유지한다.
+  </p>
+
+  <h2>1. 클러스터 전체 지도 — 이 그림 하나가 이 레슨의 전부다</h2>
+  <p>
+    쿠버네티스 클러스터는 크게 <strong>두 덩어리</strong>다.
+    <strong>Control Plane</strong>(두뇌: 무엇을 할지 결정)과
+    <strong>Node</strong>(손발: 실제로 컨테이너를 실행).
+    아래 그림을 먼저 눈에 익히고, 이후 섹션에서 각 상자를 하나씩 연다.
+  </p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 860 560" role="img" aria-label="쿠버네티스 클러스터 아키텍처 다이어그램">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+        <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+        </marker>
+      </defs>
+
+      <!-- 사용자 -->
+      <rect x="20" y="20" width="130" height="46" rx="6" fill="#fff7ed" stroke="#b45309"/>
+      <text x="85" y="41" font-size="13" font-weight="700" text-anchor="middle" fill="#7c2d12">사용자 / CI</text>
+      <text x="85" y="58" font-size="11" text-anchor="middle" fill="#7c2d12">kubectl apply</text>
+
+      <!-- Control Plane 박스 -->
+      <rect x="20" y="90" width="400" height="250" rx="10" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="36" y="113" font-size="14" font-weight="700" fill="#0f766e">Control Plane (두뇌)</text>
+
+      <!-- API Server -->
+      <rect x="40" y="126" width="150" height="54" rx="6" fill="#fff" stroke="#0f766e" stroke-width="2"/>
+      <text x="115" y="147" font-size="12.5" font-weight="700" text-anchor="middle" fill="#111827">kube-apiserver</text>
+      <text x="115" y="166" font-size="10.5" text-anchor="middle" fill="#4b5563">모든 통신의 정문</text>
+
+      <!-- etcd -->
+      <rect x="240" y="126" width="150" height="54" rx="6" fill="#fff" stroke="#0f766e"/>
+      <text x="315" y="147" font-size="12.5" font-weight="700" text-anchor="middle" fill="#111827">etcd</text>
+      <text x="315" y="166" font-size="10.5" text-anchor="middle" fill="#4b5563">유일한 저장소(key-value)</text>
+
+      <!-- Scheduler -->
+      <rect x="40" y="210" width="150" height="54" rx="6" fill="#fff" stroke="#0f766e"/>
+      <text x="115" y="231" font-size="12.5" font-weight="700" text-anchor="middle" fill="#111827">kube-scheduler</text>
+      <text x="115" y="250" font-size="10.5" text-anchor="middle" fill="#4b5563">Pod를 어느 Node에</text>
+
+      <!-- Controller Manager -->
+      <rect x="240" y="210" width="150" height="54" rx="6" fill="#fff" stroke="#0f766e"/>
+      <text x="315" y="228" font-size="12.5" font-weight="700" text-anchor="middle" fill="#111827">controller-manager</text>
+      <text x="315" y="245" font-size="10.5" text-anchor="middle" fill="#4b5563">현재≠희망이면</text>
+      <text x="315" y="258" font-size="10.5" text-anchor="middle" fill="#4b5563">맞출 때까지 조정</text>
+
+      <!-- cloud controller -->
+      <rect x="40" y="286" width="350" height="38" rx="6" fill="#fafaf8" stroke="#9ca3af" stroke-dasharray="4 3"/>
+      <text x="215" y="310" font-size="11" text-anchor="middle" fill="#4b5563">cloud-controller-manager (클라우드 환경에서만 · LB/라우팅 연동)</text>
+
+      <!-- 화살표: 사용자 -> apiserver -->
+      <line x1="85" y1="66" x2="85" y2="120" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <!-- apiserver <-> etcd -->
+      <line x1="190" y1="153" x2="234" y2="153" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+
+      <!-- scheduler/cm -> apiserver -->
+      <line x1="115" y1="206" x2="115" y2="184" stroke="#0f766e" stroke-width="1.5" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+      <line x1="290" y1="206" x2="160" y2="184" stroke="#0f766e" stroke-width="1.5" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+
+      <!-- Node 1 -->
+      <rect x="470" y="90" width="370" height="200" rx="10" fill="#f9fafb" stroke="#374151" stroke-width="2"/>
+      <text x="486" y="113" font-size="14" font-weight="700" fill="#111827">Node 1 (실제 서버 / VM)</text>
+
+      <rect x="490" y="126" width="120" height="46" rx="6" fill="#fff" stroke="#374151" stroke-width="2"/>
+      <text x="550" y="146" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">kubelet</text>
+      <text x="550" y="163" font-size="10" text-anchor="middle" fill="#4b5563">Node의 대리인</text>
+
+      <rect x="630" y="126" width="90" height="46" rx="6" fill="#fff" stroke="#374151"/>
+      <text x="675" y="146" font-size="11.5" font-weight="700" text-anchor="middle" fill="#111827">kube-proxy</text>
+      <text x="675" y="163" font-size="10" text-anchor="middle" fill="#4b5563">네트워크 규칙</text>
+
+      <rect x="740" y="126" width="85" height="46" rx="6" fill="#fff" stroke="#374151"/>
+      <text x="782" y="146" font-size="11" font-weight="700" text-anchor="middle" fill="#111827">containerd</text>
+      <text x="782" y="163" font-size="10" text-anchor="middle" fill="#4b5563">컨테이너 런타임</text>
+
+      <!-- Pods on node1 -->
+      <rect x="490" y="192" width="150" height="80" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-dasharray="5 3"/>
+      <text x="565" y="211" font-size="11.5" font-weight="700" text-anchor="middle" fill="#0f766e">Pod (IP 하나)</text>
+      <rect x="502" y="220" width="60" height="42" rx="4" fill="#fff" stroke="#374151"/>
+      <text x="532" y="245" font-size="10" text-anchor="middle" fill="#111827">컨테이너</text>
+      <rect x="570" y="220" width="60" height="42" rx="4" fill="#fff" stroke="#374151"/>
+      <text x="600" y="245" font-size="10" text-anchor="middle" fill="#111827">컨테이너</text>
+
+      <rect x="660" y="192" width="165" height="80" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-dasharray="5 3"/>
+      <text x="742" y="211" font-size="11.5" font-weight="700" text-anchor="middle" fill="#0f766e">Pod (IP 하나)</text>
+      <rect x="700" y="220" width="85" height="42" rx="4" fill="#fff" stroke="#374151"/>
+      <text x="742" y="245" font-size="10" text-anchor="middle" fill="#111827">컨테이너</text>
+
+      <!-- Node 2 -->
+      <rect x="470" y="310" width="370" height="130" rx="10" fill="#f9fafb" stroke="#374151" stroke-width="2"/>
+      <text x="486" y="333" font-size="14" font-weight="700" fill="#111827">Node 2 (같은 구성 반복)</text>
+      <rect x="490" y="346" width="120" height="36" rx="6" fill="#fff" stroke="#374151" stroke-width="2"/>
+      <text x="550" y="369" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">kubelet</text>
+      <rect x="630" y="346" width="90" height="36" rx="6" fill="#fff" stroke="#374151"/>
+      <text x="675" y="369" font-size="11.5" font-weight="700" text-anchor="middle" fill="#111827">kube-proxy</text>
+      <rect x="740" y="346" width="85" height="36" rx="6" fill="#fff" stroke="#374151"/>
+      <text x="782" y="369" font-size="10.5" font-weight="700" text-anchor="middle" fill="#111827">containerd</text>
+      <rect x="490" y="394" width="335" height="34" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-dasharray="5 3"/>
+      <text x="657" y="416" font-size="11.5" font-weight="700" text-anchor="middle" fill="#0f766e">Pod · Pod · Pod …</text>
+
+      <!-- kubelet -> apiserver 화살표 -->
+      <line x1="486" y1="149" x2="196" y2="153" stroke="#0f766e" stroke-width="2" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+      <text x="340" y="143" font-size="10.5" text-anchor="middle" fill="#0f766e">watch: "내 Pod 뭐야?"</text>
+
+      <line x1="486" y1="364" x2="200" y2="172" stroke="#0f766e" stroke-width="1.5" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+
+      <!-- 핵심 규칙 -->
+      <rect x="20" y="464" width="820" height="76" rx="8" fill="#fff7ed" stroke="#b45309"/>
+      <text x="40" y="488" font-size="13" font-weight="700" fill="#7c2d12">핵심 규칙 두 개</text>
+      <text x="40" y="509" font-size="12" fill="#7c2d12">① 모든 컴포넌트는 서로 직접 말하지 않는다. 전부 kube-apiserver를 거친다. (etcd에 쓰는 것도 apiserver만)</text>
+      <text x="40" y="529" font-size="12" fill="#7c2d12">② 아무도 명령받지 않는다. 각자 apiserver를 <tspan font-style="italic">지켜보다가(watch)</tspan> "내 일이 생겼네" 하고 스스로 움직인다.</text>
+    </svg>
+  </div>
+
+  <p class="note">
+    이 그림에서 <strong>딱 두 가지만</strong> 먼저 가져가자.<br>
+    ① <strong>Control Plane = 결정, Node = 실행.</strong> 두 덩어리다.<br>
+    ② <strong>모든 대화는 kube-apiserver를 통과한다.</strong> scheduler도, kubelet도, 나(kubectl)도.
+    apiserver는 클러스터의 <strong>유일한 정문</strong>이다.
+  </p>
+
+  <h2>2. Docker 개념 → 쿠버네티스 개념 대응표</h2>
+  <p>
+    이미 아는 것에 붙이면 훨씬 빨리 붙는다. 왼쪽은 알고 있는 것, 오른쪽이 새로 배울 것이다.
+  </p>
+  <table>
+    <thead>
+      <tr><th style="width:26%">Docker에서</th><th style="width:26%">쿠버네티스에서</th><th>달라지는 핵심</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>docker run</code>으로 띄운 <strong>컨테이너</strong></td>
+        <td><strong>Pod</strong> 안의 컨테이너</td>
+        <td>K8s는 컨테이너를 <em>직접</em> 다루지 않는다. 항상 <strong>Pod</strong>라는 껍데기로 감싼다.</td>
+      </tr>
+      <tr>
+        <td>컨테이너를 실행하는 <strong>서버 1대</strong></td>
+        <td><strong>Node</strong></td>
+        <td>여러 대가 모여 하나의 <strong>Cluster</strong>. 나는 이제 "어느 서버"를 신경 쓰지 않는다.</td>
+      </tr>
+      <tr>
+        <td><code>docker-compose.yml</code></td>
+        <td><strong>매니페스트 YAML</strong> (<code>kubectl apply -f</code>)</td>
+        <td>compose는 "실행 명령"에 가깝고, K8s YAML은 <strong>"유지되어야 할 상태"</strong>의 선언이다.</td>
+      </tr>
+      <tr>
+        <td><code>--restart=always</code></td>
+        <td><strong>Deployment</strong> (ReplicaSet)</td>
+        <td>재시작만이 아니라 <strong>개수 유지 + 무중단 버전 교체 + 롤백</strong>까지 한다.</td>
+      </tr>
+      <tr>
+        <td><code>docker run --scale</code> / 수동 여러 번</td>
+        <td><code>replicas: 3</code></td>
+        <td>몇 개인지만 적으면 <strong>어느 Node에 배치할지는 scheduler가</strong> 정한다.</td>
+      </tr>
+      <tr>
+        <td>compose의 서비스 이름으로 통신</td>
+        <td><strong>Service</strong> (ClusterIP)</td>
+        <td>Pod IP는 계속 바뀐다. Service가 <strong>고정된 이름·IP</strong>를 제공한다.</td>
+      </tr>
+      <tr>
+        <td><code>docker ps</code>, <code>docker logs</code></td>
+        <td><code>kubectl get pods</code>, <code>kubectl logs</code></td>
+        <td>대상이 <em>한 서버</em>가 아니라 <strong>클러스터 전체</strong>다.</td>
+      </tr>
+      <tr>
+        <td>이미지 (<code>nginx:1.25</code>)</td>
+        <td>이미지 (<strong>그대로</strong>)</td>
+        <td>바뀌지 않는다. K8s도 결국 같은 컨테이너 이미지를 실행한다.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="warn">
+    가장 자주 넘어지는 지점: <strong>"Pod = 컨테이너"라고 외우면 안 된다.</strong>
+    Pod는 <strong>컨테이너 한 개 이상을 담는 상자</strong>이고, 상자 안 컨테이너들은
+    <strong>IP 하나와 저장소를 공유</strong>한다. 실무에선 대부분 Pod 하나에 컨테이너 하나지만,
+    "왜 굳이 껍데기를 씌웠나"의 답은 다음 섹션에 있다.
+  </p>
+
+  <h2>3. Pod — 쿠버네티스가 다루는 가장 작은 단위</h2>
+  <p>
+    공식 문서의 정의는 이렇다:
+  </p>
+  <blockquote>
+    "저장소와 네트워크 리소스를 공유하는 하나 이상의 컨테이너 그룹이자, 그 컨테이너들을
+    어떻게 실행할지에 대한 명세. Pod의 내용물은 항상 같은 곳에 배치되고 함께 스케줄된다."
+    — <a href="https://kubernetes.io/docs/concepts/workloads/pods/">Kubernetes Docs: Pods</a>
+  </blockquote>
+  <pre class="flow"><code>Pod 하나 = "논리적인 서버 한 대"라고 생각하면 정확하다.
+
+┌─ Pod (IP: 10.1.2.3) ────────────────┐
+│  컨테이너 A (app)   :8080           │
+│  컨테이너 B (로그 수집)              │
+│                                      │
+│  → 둘은 localhost 로 서로 통신 가능   │  ← IP·포트 공간 공유
+│  → 같은 볼륨을 함께 마운트 가능        │  ← 저장소 공유
+│  → 항상 <strong>같은 Node</strong>에 함께 뜬다      │  ← 함께 스케줄
+└──────────────────────────────────────┘</code></pre>
+  <p>
+    <strong>왜 껍데기가 필요한가?</strong> 어떤 프로세스들은 "붙어 있어야만" 의미가 있다.
+    앱 컨테이너와 그 앱의 로그를 긁어가는 컨테이너는 <strong>같은 디스크·같은 네트워크</strong>를
+    봐야 한다. Docker에서 이걸 하려면 네트워크·볼륨을 수동으로 엮어야 했지만,
+    K8s는 <strong>Pod라는 단위 자체</strong>로 이 묶음을 표현한다.
+  </p>
+  <p class="warn">
+    <strong>Pod는 일회용이다(ephemeral).</strong> 죽으면 <em>고쳐지지 않는다</em>. 버려지고,
+    <strong>새 IP를 가진 새 Pod</strong>가 생긴다. 이 성질이 뒤에 나올 두 개념의 존재 이유가 된다:
+    개수를 유지하는 <strong>Deployment</strong>, 그리고 바뀌는 IP를 가려주는 <strong>Service</strong>.
+  </p>
+
+  <h2>4. Control Plane 4형제 — 각자 무슨 일을 하는가</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>① kube-apiserver</h3>
+      <p>"쿠버네티스 API를 노출하는 컨트롤 플레인 컴포넌트."<br>
+      <strong>클러스터의 유일한 정문.</strong> kubectl도, scheduler도, kubelet도 전부 여기로만 말한다.
+      etcd에 직접 쓰는 것도 오직 apiserver뿐.<br>
+      <em>기억법: 모든 화살표가 모이는 곳.</em></p>
+    </section>
+    <section class="card">
+      <h3>② etcd</h3>
+      <p>"모든 클러스터 데이터를 담는, 일관성 있고 고가용성인 key-value 저장소."<br>
+      <strong>클러스터의 유일한 진실</strong>. "Pod 3개가 있어야 한다"는 <em>희망</em>도,
+      "지금 2개 떠 있다"는 <em>현실</em>도 전부 여기 적힌다.<br>
+      <em>기억법: 여기가 날아가면 클러스터의 기억이 사라진다.</em></p>
+    </section>
+    <section class="card">
+      <h3>③ kube-scheduler</h3>
+      <p>"Node가 배정되지 않은 새 Pod를 감시하다가, 실행될 Node를 골라주는 컴포넌트."<br>
+      하는 일은 <strong>딱 하나: 배치 결정</strong>. CPU/메모리 여유, 제약 조건을 보고 고른다.
+      <strong>직접 실행하지는 않는다.</strong> "이 Pod는 Node 2로" 라고 <em>적기만</em> 한다.<br>
+      <em>기억법: 정하는 사람, 만드는 사람 아님.</em></p>
+    </section>
+    <section class="card">
+      <h3>④ kube-controller-manager</h3>
+      <p>"컨트롤러 프로세스들을 실행하는 컴포넌트."<br>
+      <strong>희망 상태 ≠ 현재 상태</strong>이면 같아질 때까지 계속 조정하는 <strong>무한 루프들</strong>의 모음.
+      Node 컨트롤러, Job 컨트롤러 등 여러 개가 한 바이너리에 들어있다.<br>
+      <em>기억법: 쿠버네티스의 "자동 복구"는 전부 여기서 나온다.</em></p>
+    </section>
+  </div>
+  <p class="note">
+    <strong>cloud-controller-manager</strong>는 다섯 번째지만 조건부다. AWS·GCP 같은
+    클라우드에서 돌 때만 있고, 클라우드 쪽 로드밸런서·라우팅을 연결해준다.
+    노트북의 로컬 클러스터(minikube 등)에는 없다. 지금은 "클라우드 붙일 때 나오는 것"으로만 알아두면 충분하다.
+    — <a href="https://kubernetes.io/docs/concepts/architecture/">Kubernetes Docs: Cluster Architecture</a>
+  </p>
+
+  <h2>5. Node 3형제 — 실제로 컨테이너를 띄우는 쪽</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>① kubelet</h3>
+      <p>"클러스터의 각 Node에서 실행되는 에이전트. Pod 안의 컨테이너들이 실행 중인지 보장한다."<br>
+      <strong>Node에 파견된 대리인.</strong> apiserver를 지켜보다 "내 Node에 배정된 Pod"를 발견하면,
+      런타임에게 컨테이너를 띄우라고 시키고 <strong>상태를 다시 보고</strong>한다.</p>
+    </section>
+    <section class="card">
+      <h3>② kube-proxy</h3>
+      <p>"각 Node에서 실행되는 네트워크 프록시. Service 개념의 일부를 구현한다."<br>
+      Service로 온 요청이 <strong>실제 Pod에 도달하도록 Node의 네트워크 규칙</strong>을 관리한다.
+      6장의 Service를 <em>실제로 동작하게</em> 만드는 손.</p>
+    </section>
+    <section class="card">
+      <h3>③ 컨테이너 런타임</h3>
+      <p>컨테이너의 실행과 생명주기를 실제로 관리하는 소프트웨어.
+      <strong>containerd</strong>, <strong>CRI-O</strong> 등.<br>
+      <strong>Docker로 이미 아는 그 부분</strong>이다. 이미지를 받아 컨테이너로 띄우는 최하단 계층.</p>
+    </section>
+  </div>
+  <p class="warn">
+    자주 나오는 오해: "쿠버네티스가 Docker를 대체했다"가 아니다.
+    쿠버네티스는 <strong>컨테이너 런타임 위에서 오케스트레이션(배치·유지·연결)을 하는 계층</strong>이고,
+    맨 아래에서 컨테이너를 실제로 돌리는 일은 여전히 런타임(containerd 등)이 한다.
+    <strong>이미지 만드는 법(Dockerfile)은 그대로 쓴다.</strong>
+  </p>
+
+  <h2>6. Deployment와 Service — 실무에서 가장 많이 쓰는 두 개</h2>
+  <h3>Deployment: "몇 개가, 어떤 버전으로 떠 있어야 하는가"</h3>
+  <p>
+    공식 정의: <strong>"Pod와 ReplicaSet에 대한 선언적 업데이트를 제공한다.
+    Deployment에 희망 상태를 기술하면, Deployment 컨트롤러가 실제 상태를 그 희망 상태로
+    통제된 속도로 바꾼다."</strong>
+    (<a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Deployment 문서</a>)
+  </p>
+  <pre class="flow"><code>Deployment  ─ 내가 쓴다. "nginx:1.25를 3개 유지해줘"
+     │
+     ↓ 만든다
+ReplicaSet  ─ 자동 생성. "이 버전의 Pod 개수를 정확히 3개로 유지"
+     │
+     ↓ 만든다
+  Pod  Pod  Pod   ─ 실제로 도는 것
+
+내가 손대는 건 <strong>Deployment 하나</strong>. ReplicaSet은 직접 만지지 않는다.</code></pre>
+  <pre><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 3                 # ← "3개가 항상 떠 있어야 한다" (희망 상태)
+  selector:
+    matchLabels:
+      app: my-app             # ← 이 라벨을 가진 Pod가 내 담당
+  template:                   # ← 이 아래가 "Pod를 어떻게 만들지"의 틀
+    metadata:
+      labels:
+        app: my-app           # ← 위 selector와 반드시 맞아야 한다
+    spec:
+      containers:
+      - name: my-app
+        image: nginx:1.25     # ← 여기만 바꾸면 무중단 롤링 업데이트
+        ports:
+        - containerPort: 80</code></pre>
+  <p class="note">
+    <strong>롤링 업데이트가 공짜로 따라온다.</strong> <code>image</code>만 새 버전으로 바꿔 <code>apply</code>하면,
+    Deployment가 <strong>새 ReplicaSet을 만들어 천천히 늘리고, 옛 것을 천천히 줄인다.</strong>
+    그래서 무중단이다. 잘못됐으면 <code>kubectl rollout undo</code>로 되돌린다.
+    이게 <code>--restart=always</code>와 결정적으로 다른 점이다.
+  </p>
+
+  <h3>Service: "계속 바뀌는 Pod IP를 어떻게 부르는가"</h3>
+  <p>
+    Pod는 죽고 살아나며 <strong>매번 IP가 바뀐다</strong>. 프론트엔드가 백엔드 Pod IP를
+    하드코딩하면 다음 재시작에 바로 깨진다. 공식 문서가 던지는 질문 그대로다:
+    <em>"프론트엔드는 어느 IP로 접속해야 하는지를 어떻게 알아내고 계속 추적하는가?"</em>
+  </p>
+  <pre class="flow"><code>Service 없이:
+  frontend → 10.1.2.3:8080 에 직접 요청
+    → 그 Pod 죽음 → 새 Pod는 10.1.9.7 → frontend는 <strong>깨진 IP를 계속 호출</strong> ✗
+
+Service 있을 때:
+  frontend → "my-backend" 라는 <strong>고정된 이름</strong>으로 요청
+    → Service가 라벨(app: my-backend)이 붙은 <strong>살아있는 Pod들</strong>을 항상 추적
+    → 그중 하나로 자동 분배 (로드밸런싱)
+    → Pod가 몇 번 죽고 살아나든 frontend 코드는 <strong>그대로</strong> ✓</code></pre>
+  <pre><code>apiVersion: v1
+kind: Service
+metadata:
+  name: my-backend
+spec:
+  selector:
+    app: my-app        # ← 이 라벨이 붙은 Pod들에게 요청을 보낸다
+  ports:
+    - port: 80         # ← Service가 여는 포트
+      targetPort: 8080 # ← Pod 안 컨테이너의 실제 포트</code></pre>
+  <p class="warn">
+    <strong>라벨(label)과 셀렉터(selector)가 쿠버네티스를 엮는 접착제다.</strong>
+    Service는 Pod를 IP나 이름으로 지목하지 않는다. <strong>"<code>app: my-app</code> 라벨이 붙은 것 전부"</strong>라고
+    조건만 건다. 그래서 Pod가 새로 생기든 없어지든 자동으로 목록이 갱신된다.
+    Deployment가 Pod를 관리하는 방식도 똑같이 라벨이다.
+  </p>
+
+  <h3>Service 타입 세 가지 — "누가 접근할 수 있는가"의 차이</h3>
+  <div class="grid">
+    <section class="card">
+      <h3>ClusterIP <em>(기본값)</em></h3>
+      <p><strong>클러스터 내부에서만</strong> 접근 가능한 IP를 부여.<br>
+      백엔드 ↔ DB처럼 <strong>내부 통신용</strong>. 외부에는 안 열린다.<br>
+      대부분의 Service가 이것.</p>
+    </section>
+    <section class="card">
+      <h3>NodePort</h3>
+      <p><strong>모든 Node의 IP에 고정 포트</strong>(30000–32767)를 연다.<br>
+      <code>&lt;NodeIP&gt;:&lt;NodePort&gt;</code>로 외부 접근.<br>
+      개발·테스트용. 운영에는 잘 안 쓴다.</p>
+    </section>
+    <section class="card">
+      <h3>LoadBalancer</h3>
+      <p><strong>클라우드의 외부 로드밸런서</strong>를 붙여 고정 외부 IP를 받는다.<br>
+      운영 환경에서 외부 트래픽을 받는 표준 방법.<br>
+      클라우드 제공자가 있어야 동작.</p>
+    </section>
+  </div>
+
+  <h2>7. 전체 흐름 — <code>kubectl apply</code> 한 번에 무슨 일이 벌어지나</h2>
+  <p>
+    지금까지의 모든 조각이 <strong>한 줄기로 이어지는</strong> 장면이다. 이 흐름을 말로 설명할 수 있으면
+    이 레슨의 목표는 달성이다.
+  </p>
+  <pre class="flow"><code>내가: kubectl apply -f my-app.yaml   (replicas: 3)
+
+1. <strong>kubectl → kube-apiserver</strong>
+   "Deployment my-app, 3개 원함" 이라는 <em>희망 상태</em>를 제출
+
+2. <strong>apiserver → etcd</strong>
+   희망 상태를 저장. 이 시점엔 <strong>아직 아무것도 안 떠 있다.</strong>
+
+3. <strong>controller-manager</strong> (apiserver를 watch 중)
+   "Deployment가 3개 원하는데 현재 0개네" → ReplicaSet 생성
+   → ReplicaSet 컨트롤러: "3개 원하는데 0개" → <strong>Pod 3개 생성 요청</strong>
+   → 이때 Pod들은 아직 <strong>Node가 안 정해진 상태</strong>
+
+4. <strong>kube-scheduler</strong> (apiserver를 watch 중)
+   "Node 미배정 Pod 3개 발견" → 자원 여유를 보고 배치 결정
+   → "Pod-1은 Node1, Pod-2는 Node2, Pod-3은 Node1"이라고 <strong>apiserver에 기록</strong>
+   → scheduler는 여기까지. 실행은 안 한다.
+
+5. <strong>kubelet</strong> (각 Node에서 apiserver를 watch 중)
+   Node1의 kubelet: "내 Node에 Pod-1, Pod-3이 배정됐네"
+   → <strong>컨테이너 런타임(containerd)에게 실행 지시</strong>
+   → 이미지 pull → 컨테이너 시작
+   → "떴다"고 <strong>apiserver에 상태 보고</strong> → etcd에 현재 상태 기록
+
+6. 이제 <strong>희망(3개) == 현재(3개)</strong>. 컨트롤러는 조용해진다.
+
+── 그런데 Pod 하나가 죽는다면? ──
+
+7. kubelet이 감지 → apiserver에 보고 → etcd의 현재 상태가 2개로 바뀜
+8. ReplicaSet 컨트롤러: "3개 원하는데 2개네" → <strong>새 Pod 생성</strong>
+9. scheduler가 Node 배정 → kubelet이 실행 → 다시 3개
+
+→ <strong>아무도 나에게 묻지 않았고, 내가 아무것도 안 했다.</strong>
+   이것이 쿠버네티스의 <strong>reconciliation loop(조정 루프)</strong>다.</code></pre>
+  <p class="note">
+    <strong>이 구조가 왜 이렇게 됐는가:</strong> 각 컴포넌트는 서로를 <em>모른다</em>.
+    scheduler는 kubelet의 존재를 모르고, kubelet은 controller-manager를 모른다.
+    전부 <strong>apiserver라는 게시판만 보고</strong> "내가 할 일이 올라왔나?"를 확인할 뿐이다.
+    그래서 컴포넌트 하나가 잠시 죽어도 나머지가 계속 돌고,
+    살아나면 게시판을 다시 읽고 따라잡는다. <strong>느슨한 결합(loose coupling)</strong>이 이 설계의 핵심이다.
+  </p>
+
+  <h2>8. 자주 나오는 용어 — 한 줄 정리</h2>
+  <table>
+    <thead><tr><th style="width:22%">용어</th><th style="width:14%">어디에</th><th>한 줄 설명</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Cluster</strong></td><td>전체</td><td>Control Plane + Node들을 묶은 전체 단위. "쿠버네티스 한 채".</td></tr>
+      <tr><td><strong>Node</strong></td><td>실행</td><td>컨테이너가 실제로 도는 서버 1대(물리/VM). Worker Node라고도 함.</td></tr>
+      <tr><td><strong>Pod</strong></td><td>실행</td><td>배포 가능한 <strong>가장 작은 단위</strong>. IP·저장소를 공유하는 컨테이너 1개 이상의 묶음.</td></tr>
+      <tr><td><strong>kube-apiserver</strong></td><td>두뇌</td><td>클러스터의 유일한 정문. 모든 통신이 여기를 거친다.</td></tr>
+      <tr><td><strong>etcd</strong></td><td>두뇌</td><td>희망 상태와 현재 상태를 모두 담는 유일한 key-value 저장소.</td></tr>
+      <tr><td><strong>kube-scheduler</strong></td><td>두뇌</td><td>Node 미배정 Pod에게 <strong>어느 Node에서 돌지</strong>만 정해준다. 실행은 안 함.</td></tr>
+      <tr><td><strong>controller-manager</strong></td><td>두뇌</td><td>희망≠현재이면 같아질 때까지 조정하는 컨트롤러 루프들의 집합.</td></tr>
+      <tr><td><strong>kubelet</strong></td><td>실행</td><td>각 Node의 에이전트. Pod 안 컨테이너가 실행 중임을 보장하고 상태를 보고.</td></tr>
+      <tr><td><strong>kube-proxy</strong></td><td>실행</td><td>각 Node의 네트워크 규칙 관리. Service를 실제로 동작하게 한다.</td></tr>
+      <tr><td><strong>컨테이너 런타임</strong></td><td>실행</td><td>containerd/CRI-O. 이미지를 받아 컨테이너를 실제로 띄우는 최하단.</td></tr>
+      <tr><td><strong>Deployment</strong></td><td>선언</td><td>"이 버전 Pod 몇 개 유지"를 선언. 롤링 업데이트·롤백 담당.</td></tr>
+      <tr><td><strong>ReplicaSet</strong></td><td>선언</td><td>Deployment가 자동 생성. <strong>개수 유지</strong>만 담당. 직접 만지지 않음.</td></tr>
+      <tr><td><strong>Service</strong></td><td>연결</td><td>바뀌는 Pod IP를 <strong>고정된 이름·IP</strong>로 가려주고 로드밸런싱.</td></tr>
+      <tr><td><strong>Label / Selector</strong></td><td>연결</td><td>라벨은 리소스에 붙이는 꼬리표, 셀렉터는 "이 꼬리표인 것 전부"라는 조건. K8s의 접착제.</td></tr>
+      <tr><td><strong>Namespace</strong></td><td>구획</td><td>한 클러스터를 논리적으로 나누는 칸막이(dev/prod 등). 이름 충돌 방지.</td></tr>
+      <tr><td><strong>Manifest</strong></td><td>선언</td><td>희망 상태를 적은 YAML 파일. <code>kubectl apply -f</code>로 제출.</td></tr>
+      <tr><td><strong>Desired state</strong></td><td>개념</td><td>"이렇게 되어 있어야 한다"고 내가 선언한 상태. 쿠버네티스 전체를 관통하는 핵심.</td></tr>
+      <tr><td><strong>Reconciliation</strong></td><td>개념</td><td>현재 상태를 희망 상태에 계속 맞추는 무한 루프. 자동 복구의 정체.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>9. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자. 틀리는 게 오히려 기억에 남는다.</p>
+  <section class="quiz" aria-label="쿠버네티스 구조 퀴즈">
+    <p><strong>Q1.</strong> 쿠버네티스에서 배포 가능한 가장 작은 단위는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">컨테이너 하나</button>
+    <button type="button" data-target="answer-1" data-answer="correct">Pod 하나</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">Node 하나</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> 모든 컴포넌트가 반드시 거쳐야 하는 곳은?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">kube-scheduler</button>
+    <button type="button" data-target="answer-2" data-answer="correct">kube-apiserver</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">kube-proxy</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> 클러스터의 모든 상태가 저장되는 곳은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">kubelet</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">Deployment</button>
+    <button type="button" data-target="answer-3" data-answer="correct">etcd</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> kube-scheduler가 하는 일은?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong">컨테이너를 직접 실행한다</button>
+    <button type="button" data-target="answer-4" data-answer="correct">Pod의 Node를 정해준다</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">네트워크 규칙을 관리한다</button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> 각 Node에서 컨테이너 실행을 보장하는 것은?</p>
+    <button type="button" data-target="answer-5" data-answer="correct">kubelet</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">etcd</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">ReplicaSet</button>
+    <p class="answer" id="answer-5"></p>
+
+    <p><strong>Q6.</strong> Pod가 죽었을 때 개수를 다시 채우는 것은?</p>
+    <button type="button" data-target="answer-6" data-answer="wrong">kube-proxy가 채운다</button>
+    <button type="button" data-target="answer-6" data-answer="correct">컨트롤러가 채운다</button>
+    <button type="button" data-target="answer-6" data-answer="wrong">사용자가 채운다</button>
+    <p class="answer" id="answer-6"></p>
+
+    <p><strong>Q7.</strong> Service가 푸는 문제는?</p>
+    <button type="button" data-target="answer-7" data-answer="wrong">컨테이너 이미지 빌드</button>
+    <button type="button" data-target="answer-7" data-answer="correct">Pod IP가 계속 바뀜</button>
+    <button type="button" data-target="answer-7" data-answer="wrong">노드의 디스크 부족</button>
+    <p class="answer" id="answer-7"></p>
+
+    <p><strong>Q8.</strong> Service가 대상 Pod를 찾는 방법은?</p>
+    <button type="button" data-target="answer-8" data-answer="wrong">Pod의 IP 목록</button>
+    <button type="button" data-target="answer-8" data-answer="correct">Pod의 라벨 조건</button>
+    <button type="button" data-target="answer-8" data-answer="wrong">Pod의 생성 순서</button>
+    <p class="answer" id="answer-8"></p>
+
+    <p><strong>Q9.</strong> Deployment가 직접 만들어 관리하는 것은?</p>
+    <button type="button" data-target="answer-9" data-answer="wrong">Service</button>
+    <button type="button" data-target="answer-9" data-answer="correct">ReplicaSet</button>
+    <button type="button" data-target="answer-9" data-answer="wrong">Namespace</button>
+    <p class="answer" id="answer-9"></p>
+
+    <p><strong>Q10.</strong> 클러스터 내부 전용 기본 Service 타입은?</p>
+    <button type="button" data-target="answer-10" data-answer="correct">ClusterIP 타입이다</button>
+    <button type="button" data-target="answer-10" data-answer="wrong">NodePort 타입이다</button>
+    <button type="button" data-target="answer-10" data-answer="wrong">LoadBalancer 타입</button>
+    <p class="answer" id="answer-10"></p>
+
+    <p><strong>Q11.</strong> 쿠버네티스 동작 방식을 한 단어로?</p>
+    <button type="button" data-target="answer-11" data-answer="wrong">명령형(imperative)</button>
+    <button type="button" data-target="answer-11" data-answer="correct">선언형(declarative)</button>
+    <button type="button" data-target="answer-11" data-answer="wrong">대화형(interactive)</button>
+    <p class="answer" id="answer-11"></p>
+
+    <p><strong>Q12.</strong> Pod 안 컨테이너들이 공유하는 것은?</p>
+    <button type="button" data-target="answer-12" data-answer="wrong">CPU 코어 번호</button>
+    <button type="button" data-target="answer-12" data-answer="correct">IP와 저장소 볼륨</button>
+    <button type="button" data-target="answer-12" data-answer="wrong">컨테이너 이미지</button>
+    <p class="answer" id="answer-12"></p>
+  </section>
+
+  <h2>10. 다음에 직접 해볼 것 (선택)</h2>
+  <p>
+    구조는 <strong>한 번 직접 띄워보면</strong> 훨씬 단단해진다. Docker Desktop을 쓰고 있다면
+    설정에서 Kubernetes를 켜는 것만으로 로컬 클러스터가 생긴다.
+  </p>
+  <pre><code>kubectl get nodes                    # 내 클러스터의 Node 목록
+kubectl create deployment web --image=nginx --replicas=3
+kubectl get pods -o wide             # 어느 Node에 배치됐는지 확인 (scheduler의 결정)
+kubectl delete pod &lt;pod-이름&gt;         # 하나 지워보기
+kubectl get pods                     # ← 잠시 뒤 다시 3개가 된다 (reconciliation!)</code></pre>
+  <p class="note">
+    마지막 두 줄이 이 레슨의 핵심을 <strong>눈으로 확인</strong>시켜준다.
+    Pod를 지웠는데 다시 생긴다 — 아무도 명령하지 않았는데.
+  </p>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kubernetes.io/docs/concepts/architecture/">Kubernetes Docs: Cluster Architecture</a>
+      — 이 레슨의 1·4·5장 원본. Control Plane / Node 컴포넌트의 공식 정의와 클러스터 다이어그램.</li>
+    <li><a href="https://kubernetes.io/docs/concepts/overview/">Kubernetes Docs: Overview</a> — 쿠버네티스가 무엇을 해주고 무엇을 안 해주는지.</li>
+    <li><a href="https://kubernetes.io/docs/concepts/workloads/pods/">Kubernetes Docs: Pods</a> — Pod의 공식 정의, 공유 네트워크·저장소, 왜 직접 만들지 않는지.</li>
+    <li><a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Kubernetes Docs: Deployments</a> — 선언적 업데이트, ReplicaSet 관계, 롤링 업데이트·롤백.</li>
+    <li><a href="https://kubernetes.io/docs/concepts/services-networking/service/">Kubernetes Docs: Service</a> — Pod IP 문제, 셀렉터, ClusterIP/NodePort/LoadBalancer.</li>
+    <li><a href="https://kubernetes.io/docs/tutorials/kubernetes-basics/">Kubernetes Basics 튜토리얼</a> — 브라우저에서 바로 해보는 공식 인터랙티브 입문.</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/kubernetes/">r/kubernetes</a> — 실무자들의 운영 사례와 질문. 입문자 질문도 환영하는 편.</li>
+    <li><a href="https://slack.k8s.io/">Kubernetes 공식 Slack</a> — <code>#kubernetes-novice</code> 채널이 입문자 전용이다.</li>
+    <li><a href="https://stackoverflow.com/questions/tagged/kubernetes">Stack Overflow: kubernetes 태그</a> — 에러 메시지로 검색하기 좋다.</li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="../reference/0009-kubernetes-architecture-cheatsheet.html">쿠버네티스 구조·용어 치트시트</a>
+    (인쇄해서 옆에 두기 좋게 만들었다).<br>
+    <strong>다음 레슨 후보:</strong> ① YAML 매니페스트를 직접 읽고 쓰기,
+    ② Service와 Ingress로 외부 트래픽 받기, ③ ConfigMap·Secret으로 설정 분리하기.
+    <strong>어느 쪽이든 원하는 방향을 말해주면 그걸로 다음 레슨을 만든다.</strong><br>
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자 —
+    "6번 흐름에서 왜 scheduler가 실행까지 안 하나?" 같은 질문이 가장 좋은 질문이다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. Control Plane(결정) / Node(실행) 두 덩어리와, 모든 통신이 apiserver를 거친다는 규칙을 다시 떠올려보자.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>
