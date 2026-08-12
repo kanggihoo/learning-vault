@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>쿠버네티스 구조·용어 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+    th, td { border: 1px solid #deded6; padding: 6px 9px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>쿠버네티스 구조·용어 치트시트</h1>
+  <p class="note">
+    핵심: <strong>희망 상태를 선언하면, 컨트롤러가 현재 상태를 계속 거기에 맞춘다.
+    Control Plane은 결정하고, Node는 실행한다. 모든 통신은 kube-apiserver를 거친다.</strong>
+  </p>
+
+  <h2>한 줄 모델</h2>
+  <pre><code>Cluster       = Control Plane(두뇌) + Node들(손발)
+Control Plane = 무엇을 할지 결정        (apiserver, etcd, scheduler, controller-manager)
+Node          = 실제로 컨테이너 실행     (kubelet, kube-proxy, 컨테이너 런타임)
+apiserver     = 유일한 정문. 모든 컴포넌트가 여기만 보고 스스로 움직인다
+etcd          = 유일한 저장소. 희망 상태 + 현재 상태
+reconciliation= 희망 ≠ 현재 이면 같아질 때까지 조정하는 무한 루프 = 자동 복구의 정체</code></pre>
+
+  <h2>Docker → 쿠버네티스 대응</h2>
+  <pre><code>컨테이너            → Pod 안의 컨테이너 (K8s는 항상 Pod 단위)
+서버 1대            → Node          (여러 대 = Cluster)
+docker-compose.yml → 매니페스트 YAML (명령이 아니라 "유지될 상태"의 선언)
+--restart=always   → Deployment    (개수 유지 + 롤링 업데이트 + 롤백)
+수동 여러 번 실행    → replicas: 3   (배치는 scheduler가 결정)
+compose 서비스 이름 → Service       (바뀌는 Pod IP를 고정 이름으로 가림)
+docker ps / logs   → kubectl get pods / kubectl logs
+이미지              → 이미지 (그대로. Dockerfile 그대로 쓴다)</code></pre>
+
+  <h2>컴포넌트 역할</h2>
+  <table>
+    <thead><tr><th style="width:24%">컴포넌트</th><th style="width:12%">위치</th><th>한 줄</th></tr></thead>
+    <tbody>
+      <tr><td><strong>kube-apiserver</strong></td><td>Control Plane</td><td>쿠버네티스 API를 노출. 유일한 정문. etcd에 쓰는 것도 오직 여기.</td></tr>
+      <tr><td><strong>etcd</strong></td><td>Control Plane</td><td>모든 클러스터 데이터를 담는 일관성·고가용성 key-value 저장소.</td></tr>
+      <tr><td><strong>kube-scheduler</strong></td><td>Control Plane</td><td>Node 미배정 Pod를 감시하다 실행될 Node를 고른다. <strong>실행은 안 함.</strong></td></tr>
+      <tr><td><strong>controller-manager</strong></td><td>Control Plane</td><td>컨트롤러 루프들의 집합. 희망≠현재이면 조정. 자동 복구는 전부 여기서.</td></tr>
+      <tr><td><strong>cloud-controller-manager</strong></td><td>Control Plane</td><td>클라우드 전용 로직(LB·라우팅). 클라우드 환경에서만 존재.</td></tr>
+      <tr><td><strong>kubelet</strong></td><td>Node</td><td>각 Node의 에이전트. Pod 안 컨테이너 실행을 보장하고 상태를 보고.</td></tr>
+      <tr><td><strong>kube-proxy</strong></td><td>Node</td><td>Node의 네트워크 규칙 관리. Service를 실제로 동작하게 만든다.</td></tr>
+      <tr><td><strong>컨테이너 런타임</strong></td><td>Node</td><td>containerd / CRI-O. 이미지를 받아 컨테이너를 실제로 띄우는 최하단.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>핵심 용어</h2>
+  <pre><code>Cluster         Control Plane + Node들 전체.
+Node            컨테이너가 실제로 도는 서버 1대(물리/VM).
+Pod             배포 가능한 <strong>가장 작은 단위</strong>. IP·볼륨을 공유하는 컨테이너 1개 이상.
+                일회용(ephemeral). 죽으면 고쳐지지 않고 새 IP의 새 Pod가 생긴다.
+Deployment      "이 버전 Pod 몇 개 유지"를 선언. 롤링 업데이트·롤백 담당. 내가 쓰는 것.
+ReplicaSet      Deployment가 자동 생성. <strong>개수 유지만</strong> 담당. 직접 만지지 않음.
+Service         바뀌는 Pod IP를 고정 이름·IP로 가리고 로드밸런싱.
+Label/Selector  라벨=꼬리표, 셀렉터="이 꼬리표인 것 전부". <strong>K8s를 엮는 접착제.</strong>
+Namespace       한 클러스터를 논리적으로 나누는 칸막이(dev/prod). 이름 충돌 방지.
+Manifest        희망 상태를 적은 YAML. kubectl apply -f 로 제출.
+Desired state   "이렇게 되어 있어야 한다"고 선언한 상태.
+Reconciliation  현재를 희망에 계속 맞추는 루프.</code></pre>
+
+  <h2>Deployment 최소 YAML</h2>
+  <pre><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 3              # 희망 상태
+  selector:
+    matchLabels:
+      app: my-app          # 이 라벨의 Pod가 내 담당
+  template:                # 아래는 Pod를 만드는 틀
+    metadata:
+      labels:
+        app: my-app        # selector와 반드시 일치
+    spec:
+      containers:
+      - name: my-app
+        image: nginx:1.25  # 여기만 바꿔 apply → 무중단 롤링 업데이트
+        ports:
+        - containerPort: 80</code></pre>
+
+  <h2>Service 최소 YAML · 타입</h2>
+  <pre><code>apiVersion: v1
+kind: Service
+metadata:
+  name: my-backend
+spec:
+  selector:
+    app: my-app       # 이 라벨의 Pod들에게 보낸다
+  ports:
+    - port: 80        # Service가 여는 포트
+      targetPort: 8080 # Pod 컨테이너의 실제 포트
+
+타입:
+  ClusterIP    (기본) 클러스터 <strong>내부 전용</strong> IP. 대부분 이것.
+  NodePort     모든 Node IP에 고정 포트(30000-32767). 개발·테스트용.
+  LoadBalancer 클라우드 외부 LB + 고정 외부 IP. 운영 표준.
+  ExternalName 외부 DNS 이름으로 매핑(CNAME). 엔드포인트 없음.
+
+내부 DNS 이름: &lt;service&gt;.&lt;namespace&gt;.svc.cluster.local</code></pre>
+
+  <h2>kubectl apply 전체 흐름 (외울 것)</h2>
+  <pre><code>1. kubectl → apiserver        희망 상태 제출 ("3개 원함")
+2. apiserver → etcd           저장. 아직 아무것도 안 떠 있음.
+3. controller-manager         "3개 원하는데 0개" → ReplicaSet → Pod 3개 생성
+                              (아직 Node 미배정 상태)
+4. kube-scheduler             미배정 Pod 발견 → Node 배정을 <strong>기록만</strong> 함
+5. kubelet (각 Node)          "내 Node 배정분이네" → 런타임에 실행 지시 → 상태 보고
+6. 희망 == 현재. 조용해짐.
+
+Pod가 죽으면:
+7. kubelet 감지 → 보고 → etcd 현재 2개
+8. ReplicaSet 컨트롤러 "3개 원하는데 2개" → 새 Pod 생성
+9. scheduler 배정 → kubelet 실행 → 다시 3개   ← 내가 한 것: 없음</code></pre>
+
+  <h2>자주 쓰는 kubectl</h2>
+  <pre><code>kubectl get nodes                     # Node 목록
+kubectl get pods                      # Pod 목록 (현재 namespace)
+kubectl get pods -o wide              # 어느 Node에 배치됐는지까지
+kubectl get pods -A                   # 모든 namespace
+kubectl apply -f app.yaml             # 희망 상태 제출(생성·수정 공용)
+kubectl describe pod &lt;이름&gt;            # 상세 + 이벤트 (장애 원인 1순위)
+kubectl logs &lt;pod&gt;                    # 로그
+kubectl logs &lt;pod&gt; -c &lt;컨테이너&gt;       # Pod에 컨테이너 여러 개일 때
+kubectl exec -it &lt;pod&gt; -- /bin/sh     # 컨테이너 안으로
+kubectl delete pod &lt;이름&gt;              # 지워도 컨트롤러가 다시 만든다
+kubectl scale deployment web --replicas=5
+kubectl rollout status deployment/web  # 롤링 업데이트 진행 확인
+kubectl rollout undo deployment/web    # 이전 버전으로 롤백</code></pre>
+
+  <h2>자주 하는 오해</h2>
+  <pre><code>✗ "Pod = 컨테이너"              → Pod는 컨테이너 1개 이상을 담는 <strong>상자</strong>. IP·볼륨 공유.
+✗ "K8s가 Docker를 대체했다"      → K8s는 런타임 <strong>위</strong>의 오케스트레이션 계층.
+                                 컨테이너는 여전히 containerd가 띄운다. Dockerfile 그대로.
+✗ "scheduler가 Pod를 실행한다"    → scheduler는 <strong>Node를 정하기만</strong> 한다. 실행은 kubelet.
+✗ "Pod IP로 통신하면 된다"        → Pod IP는 재생성마다 바뀐다. 반드시 Service.
+✗ "ReplicaSet을 직접 만든다"      → Deployment가 자동 생성·관리. 직접 만지지 않는다.
+✗ "명령을 내리는 것"              → <strong>상태를 선언</strong>하는 것. 나머지는 컨트롤러가 맞춘다.</code></pre>
+
+  <h2>공식 문서</h2>
+  <ul>
+    <li><a href="https://kubernetes.io/docs/concepts/architecture/">Cluster Architecture</a> — 컴포넌트 공식 정의</li>
+    <li><a href="https://kubernetes.io/docs/concepts/workloads/pods/">Pods</a></li>
+    <li><a href="https://kubernetes.io/docs/concepts/workloads/controllers/deployment/">Deployments</a></li>
+    <li><a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service</a></li>
+    <li><a href="https://kubernetes.io/docs/reference/kubectl/quick-reference/">kubectl 치트시트 (공식)</a></li>
+  </ul>
+  <p>관련 레슨: <a href="../lessons/0015-kubernetes-architecture-overview.html">쿠버네티스 전체 구조: Docker에서 K8s로</a></p>
+</main>
+</body>
+</html>

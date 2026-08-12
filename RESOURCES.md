@@ -95,9 +95,32 @@
 - [microservices.io: Pattern — Transaction Log Tailing](https://microservices.io/patterns/data/transaction-log-tailing.html)
   Transaction Log Tailing(CDC) 패턴. Use for: DB 트랜잭션 로그를 읽어 relay하는 방식(Debezium).
 
+## Kubernetes Knowledge
+
+- [Kubernetes: Cluster Architecture](https://kubernetes.io/docs/concepts/architecture/)
+  쿠버네티스 공식 아키텍처 문서. Use for: Control Plane(kube-apiserver, etcd, kube-scheduler, kube-controller-manager, cloud-controller-manager)과 Node(kubelet, kube-proxy, 컨테이너 런타임) 컴포넌트의 공식 정의 확인.
+- [Kubernetes: Overview](https://kubernetes.io/docs/concepts/overview/)
+  쿠버네티스 개요. Use for: K8s가 해주는 것과 해주지 않는 것, 컨테이너 오케스트레이션의 목적 확인.
+- [Kubernetes: Pods](https://kubernetes.io/docs/concepts/workloads/pods/)
+  Pod 공식 문서. Use for: 배포 가능한 최소 단위 정의, 네트워크·저장소 공유, Pod를 직접 만들지 않는 이유 확인.
+- [Kubernetes: Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+  Deployment 공식 문서. Use for: 선언적 업데이트, Deployment→ReplicaSet→Pod 관계, 롤링 업데이트·롤백 확인.
+- [Kubernetes: Service](https://kubernetes.io/docs/concepts/services-networking/service/)
+  Service 공식 문서. Use for: Pod IP 변동 문제, 라벨 셀렉터, ClusterIP/NodePort/LoadBalancer/ExternalName 확인.
+- [Kubernetes Basics 튜토리얼](https://kubernetes.io/docs/tutorials/kubernetes-basics/)
+  공식 인터랙티브 입문 튜토리얼. Use for: 브라우저에서 직접 클러스터를 다뤄보는 실습.
+- [kubectl Quick Reference](https://kubernetes.io/docs/reference/kubectl/quick-reference/)
+  kubectl 공식 치트시트. Use for: 명령어와 옵션을 목적별로 찾을 때.
+
 ## Wisdom (Communities)
 
 - [Stack Overflow: git tag](https://stackoverflow.com/questions/tagged/git)
   실무에서 자주 터지는 Git 상황별 질문이 많다. Use for: 에러 메시지와 복구 절차를 실제 사례로 확인.
 - [GitHub Community: GitHub and Git](https://github.com/orgs/community/discussions/categories/github-and-git)
   GitHub 기반 협업 흐름 질문이 많다. Use for: PR, protected branch, fork workflow 관련 실무 감각 확인.
+- [r/kubernetes](https://www.reddit.com/r/kubernetes/)
+  쿠버네티스 실무자 커뮤니티. Use for: 실제 운영 사례, 입문자 질문, 도구 선택 감각 확인.
+- [Kubernetes 공식 Slack](https://slack.k8s.io/)
+  쿠버네티스 공식 Slack 워크스페이스. Use for: `#kubernetes-novice` 입문자 채널에서 직접 질문.
+- [Stack Overflow: kubernetes](https://stackoverflow.com/questions/tagged/kubernetes)
+  쿠버네티스 질문 태그. Use for: 에러 메시지 기반 검색과 해결 사례 확인.
