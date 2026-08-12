@@ -95,6 +95,7 @@
 - [microservices.io: Pattern — Transaction Log Tailing](https://microservices.io/patterns/data/transaction-log-tailing.html)
   Transaction Log Tailing(CDC) 패턴. Use for: DB 트랜잭션 로그를 읽어 relay하는 방식(Debezium).
 
+
 ## Kubernetes Knowledge
 
 - [Kubernetes: Cluster Architecture](https://kubernetes.io/docs/concepts/architecture/)
@@ -112,15 +113,36 @@
 - [kubectl Quick Reference](https://kubernetes.io/docs/reference/kubectl/quick-reference/)
   kubectl 공식 치트시트. Use for: 명령어와 옵션을 목적별로 찾을 때.
 
+## Kafka Knowledge
+
+- [Apache Kafka: Introduction](https://kafka.apache.org/intro)
+  Kafka 공식 입문 문서. Use for: event streaming 정의, Broker/Topic/Partition/Producer/Consumer/Replication 핵심 개념, Kafka API 5종.
+- [Apache Kafka: Use Cases](https://kafka.apache.org/uses)
+  Kafka 공식 사용 사례 문서. Use for: 메시징, 활동 추적, 메트릭, 로그 집계, 스트림 처리, 이벤트 소싱, 커밋 로그 등 실무 적용 예 확인.
+- [Apache Kafka Documentation: KRaft](https://kafka.apache.org/documentation/#kraft)
+  KRaft 공식 문서. Use for: ZooKeeper mode와의 설정/metric 차이, controller quorum, ZooKeeper to KRaft migration 절차 확인.
+- [Confluent: What is Apache Kafka?](https://developer.confluent.io/what-is-apache-kafka/)
+  입문자 친화적 보충 설명. Use for: event streaming 비유, 처음 배우는 사람 관점의 설명 확인.
+- [LinkedIn Engineering: The Log](https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying/)
+  Kafka 원작자 Jay Kreps의 글. Use for: Kafka의 다양한 사용 사례가 왜 하나의 로그 추상화에서 나오는지 확인.
+
+
 ## Wisdom (Communities)
 
 - [Stack Overflow: git tag](https://stackoverflow.com/questions/tagged/git)
   실무에서 자주 터지는 Git 상황별 질문이 많다. Use for: 에러 메시지와 복구 절차를 실제 사례로 확인.
 - [GitHub Community: GitHub and Git](https://github.com/orgs/community/discussions/categories/github-and-git)
   GitHub 기반 협업 흐름 질문이 많다. Use for: PR, protected branch, fork workflow 관련 실무 감각 확인.
+
 - [r/kubernetes](https://www.reddit.com/r/kubernetes/)
   쿠버네티스 실무자 커뮤니티. Use for: 실제 운영 사례, 입문자 질문, 도구 선택 감각 확인.
 - [Kubernetes 공식 Slack](https://slack.k8s.io/)
   쿠버네티스 공식 Slack 워크스페이스. Use for: `#kubernetes-novice` 입문자 채널에서 직접 질문.
 - [Stack Overflow: kubernetes](https://stackoverflow.com/questions/tagged/kubernetes)
   쿠버네티스 질문 태그. Use for: 에러 메시지 기반 검색과 해결 사례 확인.
+
+- [r/apachekafka](https://www.reddit.com/r/apachekafka/)
+  Kafka 실무 도입·운영·트러블슈팅 사례가 많다. Use for: 실제 도입 전 흔한 함정, KRaft 마이그레이션 경험담 확인.
+- [Stack Overflow: apache-kafka tag](https://stackoverflow.com/questions/tagged/apache-kafka)
+  Kafka 관련 에러/설정 질문이 많다. Use for: 구체적 에러 메시지 기반 검색.
+

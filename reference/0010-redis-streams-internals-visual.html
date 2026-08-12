@@ -1,0 +1,1128 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redis Streams 내부 구조 시각화</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    figure { margin: 24px 0; }
+    figure svg { width: 100%; height: auto; display: block; }
+    figcaption {
+      font-size: .9rem; color: #52606d; margin-top: 8px; text-align: center;
+    }
+    table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: .88rem; }
+    .scroll { overflow-x: auto; }
+    .lead { font-size: 1.05rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Redis Streams 내부 구조 시각화</h1>
+  <p class="lead note">
+    <a href="../lessons/0014-redis-streams-consumer-group.html">레슨 0014</a>의 보조 자료.
+    Spring이 작업을 밀어 넣고 → Worker가 가져가 <strong>실제로 일을 하고</strong> → 결과가 다시 Spring으로
+    돌아오는 <strong>왕복 전체</strong>를 먼저 보고, 그 다음 Stream과 Consumer Group의 내부를 열어본다.
+  </p>
+  <p class="note">
+    특히 헷갈리기 쉬운 네 지점을 따로 다룬다 —
+    <a href="#result">결과를 어떻게 돌려주나(XACK로는 안 된다)</a> ·
+    <a href="#wake">"Redis가 깨운다"는 게 정확히 무슨 뜻인가</a> ·
+    <a href="#groups">Producer는 Consumer Group을 지정하지 않는다</a> ·
+    <a href="#storage">그룹은 어디에 저장되나(Redis는 key-value인데?)</a>
+  </p>
+
+  <h2 id="term">1. 용어부터 — Consumer가 worker인가?</h2>
+  <p class="warn">
+    <strong>Consumer와 Worker는 서로 다른 층위의 말이다.</strong> 실무에서 1:1로 맞춰 쓰기 때문에
+    섞어 부르지만, 정확히는 이렇다.
+  </p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th style="width:14%">용어</th><th style="width:14%">누구의 개념</th><th>정확한 뜻</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Consumer</strong></td>
+          <td>Redis의 개념</td>
+          <td><code>XREADGROUP GROUP ai-workers <strong>ai-worker-1</strong></code> 에서 넘긴 <strong>이름 문자열</strong>.
+              Redis가 아는 건 이 이름뿐이다. 그 뒤에 프로세스가 있는지, 살아 있는지조차 모른다.</td>
+        </tr>
+        <tr>
+          <td><strong>Worker</strong></td>
+          <td>내 애플리케이션의 개념</td>
+          <td>실제로 돌아가는 <strong>프로세스</strong>. LLM을 호출하고 DB에 쓰는 주체.
+              Redis에는 이런 개념이 아예 없다.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <figure>
+    <svg viewBox="0 0 880 210" role="img" aria-label="Consumer 이름과 Worker 프로세스의 관계">
+      <rect x="30" y="30" width="360" height="150" rx="8" fill="#f0fdfa" stroke="#0f766e" stroke-width="2"/>
+      <text x="210" y="55" text-anchor="middle" font-size="13.5" font-weight="700" fill="#0f766e">Redis가 보는 세계</text>
+      <text x="210" y="76" text-anchor="middle" font-size="11.5" fill="#52606d">"이름표만 있는 명단"</text>
+      <rect x="52" y="90" width="316" height="30" rx="4" fill="#fff" stroke="#c9c9c1"/>
+      <text x="210" y="110" text-anchor="middle" font-size="12" font-family="monospace" fill="#1f2933">"ai-worker-1"  ← 그냥 문자열</text>
+      <rect x="52" y="128" width="316" height="30" rx="4" fill="#fff" stroke="#c9c9c1"/>
+      <text x="210" y="148" text-anchor="middle" font-size="12" font-family="monospace" fill="#1f2933">"ai-worker-2"  ← 그냥 문자열</text>
+
+      <rect x="490" y="30" width="360" height="150" rx="8" fill="#fff" stroke="#1f2933" stroke-width="2"/>
+      <text x="670" y="55" text-anchor="middle" font-size="13.5" font-weight="700" fill="#111827">실제 세계</text>
+      <text x="670" y="76" text-anchor="middle" font-size="11.5" fill="#52606d">"진짜 일하는 프로세스"</text>
+      <rect x="512" y="90" width="316" height="30" rx="4" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="670" y="110" text-anchor="middle" font-size="11.5" fill="#1f2933">Python 프로세스 (PID 1234) — LLM 호출 중</text>
+      <rect x="512" y="128" width="316" height="30" rx="4" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="670" y="148" text-anchor="middle" font-size="11.5" fill="#1f2933">Python 프로세스 (PID 5678) — LLM 호출 중</text>
+
+      <path d="M370,105 L488,105" stroke="#b45309" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <path d="M370,143 L488,143" stroke="#b45309" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text x="440" y="200" text-anchor="middle" font-size="12" fill="#b45309">
+        이 연결은 <tspan font-weight="700">내가 코드로 맺는 것</tspan> — Redis는 이 선의 존재를 모른다
+      </text>
+    </svg>
+    <figcaption>Consumer = 이름표, Worker = 그 이름표를 달고 일하는 프로세스. 프로세스가 죽어도 이름표는 그룹에 남는다.</figcaption>
+  </figure>
+  <p class="note">
+    <strong>그래서 "Consumer Group 안에 worker가 있다"는 말은 느슨한 표현이다.</strong>
+    정확히는 <em>"Consumer Group 안에 consumer 이름이 등록돼 있고, 그 이름을 내 worker 프로세스가 하나씩 쓰고 있다"</em>.
+    이 구분이 중요한 이유: worker 프로세스가 죽어도 <strong>consumer 이름과 그 PEL은 Redis에 그대로 남는다.</strong>
+    그래서 회수(XAUTOCLAIM)가 가능한 것이다. 이 문서에서는 편의상 worker라고 부르되, Redis 쪽 그림에서는 consumer로 표기한다.
+  </p>
+
+  <h2 id="layout">2. 전체 왕복 — 발행부터 결과가 돌아오기까지</h2>
+  <p>
+    Spring이 <code>XADD</code>로 밀어 넣는 것까지는 봤다. 그 다음 <strong>누가 실제로 일을 하고,
+    그 결과가 어떻게 Spring에게 돌아오는지</strong>가 아래 그림이다.
+    화살표 방향에 주목 — Redis는 아무것도 밀어주지 않는다. <strong>양쪽 모두 자기가 물어본다.</strong>
+  </p>
+  <figure>
+    <svg viewBox="0 0 880 690" role="img" aria-label="Spring 발행부터 Worker 처리, 결과 반환까지의 전체 왕복 흐름">
+      <defs>
+        <marker id="ad" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0f766e"/>
+        </marker>
+        <marker id="au" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#b45309"/>
+        </marker>
+      </defs>
+
+      <!-- ① Spring producer -->
+      <rect x="240" y="14" width="400" height="66" rx="8" fill="#fff" stroke="#0f766e" stroke-width="2"/>
+      <text x="440" y="40" text-anchor="middle" font-size="14.5" font-weight="700" fill="#111827">Spring 서버 — Producer 역할</text>
+      <text x="440" y="63" text-anchor="middle" font-size="11.5" font-family="monospace" fill="#0f766e">XADD jobs:ai * jobId 42 type ANALYZE_RESUME</text>
+
+      <path d="M440,84 L440,114" stroke="#0f766e" stroke-width="2.5" marker-end="url(#ad)"/>
+      <text x="228" y="104" text-anchor="end" font-size="12" font-weight="700" fill="#0f766e">① 작업 발행</text>
+      <text x="652" y="104" font-size="11" fill="#52606d">DB 커밋 직후 즉시 (밀어 넣기)</text>
+
+      <!-- ② Redis jobs:ai -->
+      <rect x="240" y="118" width="400" height="94" rx="8" fill="#111827"/>
+      <text x="256" y="140" font-size="12" font-family="monospace" fill="#f9fafb">Redis · Stream: jobs:ai</text>
+      <rect x="252" y="150" width="88" height="32" rx="4" fill="#0f766e"/>
+      <text x="296" y="171" text-anchor="middle" font-size="11.5" fill="#fff">job 42</text>
+      <rect x="348" y="150" width="88" height="32" rx="4" fill="#374151"/>
+      <text x="392" y="171" text-anchor="middle" font-size="11.5" fill="#f9fafb">job 43</text>
+      <rect x="444" y="150" width="88" height="32" rx="4" fill="#374151"/>
+      <text x="488" y="171" text-anchor="middle" font-size="11.5" fill="#f9fafb">job 44</text>
+      <rect x="540" y="150" width="88" height="32" rx="4" fill="#374151"/>
+      <text x="584" y="171" text-anchor="middle" font-size="11.5" fill="#f9fafb">job 45</text>
+      <text x="256" y="202" font-size="10.5" fill="#9aa5b1">↑ 대기 중인 AI 작업들 · Consumer Group "ai-workers"의 커서와 PEL이 이 Stream에 붙어 있다</text>
+
+      <!-- pull arrows: worker asks first -->
+      <path d="M360,262 L360,216" stroke="#b45309" stroke-width="2.5" marker-end="url(#au)"/>
+      <path d="M520,216 L520,262" stroke="#0f766e" stroke-width="2.5" marker-end="url(#ad)"/>
+      <text x="228" y="234" text-anchor="end" font-size="12" font-weight="700" fill="#b45309">② worker가 먼저 물어봄</text>
+      <text x="228" y="252" text-anchor="end" font-size="11" fill="#52606d">(pull — Redis는 안 밀어줌)</text>
+      <text x="652" y="234" font-size="11" fill="#b45309">← XREADGROUP 요청</text>
+      <text x="652" y="252" font-size="11" fill="#0f766e">→ job 42 응답</text>
+
+      <!-- ③ worker -->
+      <rect x="240" y="266" width="400" height="158" rx="8" fill="#fff" stroke="#1f2933" stroke-width="2"/>
+      <text x="256" y="290" font-size="14" font-weight="700" fill="#111827">ai-worker-1 — 실제 작업 프로세스 (Python)</text>
+      <text x="256" y="312" font-size="10" font-family="monospace" fill="#b45309">XREADGROUP GROUP ai-workers ai-worker-1 BLOCK 5000 STREAMS jobs:ai &gt;</text>
+      <line x1="256" y1="322" x2="624" y2="322" stroke="#deded6"/>
+      <text x="256" y="342" font-size="12" font-weight="700" fill="#111827">▼ 여기가 진짜 일하는 곳</text>
+      <text x="256" y="362" font-size="11.5" fill="#1f2933">job 42의 payload를 파싱 → 프롬프트 조립 → LLM 호출 → 결과 정제</text>
+      <text x="256" y="382" font-size="11.5" fill="#52606d">이 동안 Redis 입장에서 job 42는 계속 "PEL에 pending" 상태다</text>
+      <text x="256" y="408" font-size="10.5" font-family="monospace" fill="#047857">XACK jobs:ai ai-workers 1765…-0   ← 성공했을 때만. 이때 PEL에서 빠짐</text>
+
+      <!-- LLM side box -->
+      <rect x="676" y="300" width="192" height="90" rx="8" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="772" y="326" text-anchor="middle" font-size="12.5" font-weight="700" fill="#b45309">외부 LLM API</text>
+      <text x="772" y="348" text-anchor="middle" font-size="11" fill="#1f2933">응답까지 수 초 ~ 수 분</text>
+      <text x="772" y="368" text-anchor="middle" font-size="11" fill="#52606d">worker는 여기서 대기</text>
+      <path d="M642,326 L672,326" stroke="#b45309" stroke-width="2" marker-end="url(#au)"/>
+      <path d="M672,360 L642,360" stroke="#b45309" stroke-width="2" marker-end="url(#au)"/>
+      <text x="658" y="292" text-anchor="middle" font-size="11" font-weight="700" fill="#b45309">③</text>
+
+      <!-- ⑤ result publish -->
+      <path d="M440,428 L440,458" stroke="#0f766e" stroke-width="2.5" marker-end="url(#ad)"/>
+      <text x="228" y="448" text-anchor="end" font-size="12" font-weight="700" fill="#0f766e">④ 결과를 다시 발행</text>
+      <text x="652" y="448" font-size="11" fill="#52606d">worker가 이번엔 Producer가 된다</text>
+
+      <!-- Redis events:ai-result -->
+      <rect x="240" y="462" width="400" height="94" rx="8" fill="#111827"/>
+      <text x="256" y="484" font-size="12" font-family="monospace" fill="#f9fafb">Redis · Stream: events:ai-result</text>
+      <rect x="252" y="494" width="118" height="32" rx="4" fill="#0f766e"/>
+      <text x="311" y="515" text-anchor="middle" font-size="11.5" fill="#fff">result 42</text>
+      <rect x="378" y="494" width="118" height="32" rx="4" fill="#374151"/>
+      <text x="437" y="515" text-anchor="middle" font-size="11.5" fill="#f9fafb">result 40</text>
+      <rect x="504" y="494" width="118" height="32" rx="4" fill="#374151"/>
+      <text x="563" y="515" text-anchor="middle" font-size="11.5" fill="#f9fafb">result 39</text>
+      <text x="256" y="546" font-size="10.5" fill="#9aa5b1">↑ 별도 Stream · 별도 Consumer Group "result-savers"가 붙는다</text>
+
+      <!-- pull arrows again -->
+      <path d="M360,606 L360,560" stroke="#b45309" stroke-width="2.5" marker-end="url(#au)"/>
+      <path d="M520,560 L520,606" stroke="#0f766e" stroke-width="2.5" marker-end="url(#ad)"/>
+      <text x="228" y="578" text-anchor="end" font-size="12" font-weight="700" fill="#b45309">⑤ Spring이 먼저 물어봄</text>
+      <text x="228" y="596" text-anchor="end" font-size="11" fill="#52606d">(여기서도 pull)</text>
+      <text x="652" y="578" font-size="11" fill="#b45309">← XREADGROUP 요청</text>
+      <text x="652" y="596" font-size="11" fill="#0f766e">→ result 42 응답</text>
+
+      <!-- Spring consumer -->
+      <rect x="240" y="610" width="400" height="66" rx="8" fill="#fff" stroke="#0f766e" stroke-width="2"/>
+      <text x="440" y="636" text-anchor="middle" font-size="14.5" font-weight="700" fill="#111827">Spring 서버 — 이번엔 Consumer 역할</text>
+      <text x="440" y="659" text-anchor="middle" font-size="11.5" fill="#1f2933">결과를 DB에 저장 · 사용자에게 알림 발송 → XACK</text>
+    </svg>
+    <figcaption>
+      맨 위와 맨 아래의 Spring은 <strong>같은 서버</strong>다. 발행할 땐 Producer, 결과를 받을 땐 Consumer —
+      역할이 두 개일 뿐이다. Worker도 마찬가지로 소비하고(jobs:ai) 발행한다(events:ai-result).
+    </figcaption>
+  </figure>
+
+  <div class="grid">
+    <section class="card">
+      <h3>왜 화살표가 위로 향하나</h3>
+      <p>Redis Streams에는 <strong>서버 푸시가 없다.</strong> Redis는 연결된 클라이언트를 찾아가 메시지를
+      밀어주지 않는다. worker가 <code>XREADGROUP</code>을 호출해야만 그때 응답한다.
+      "요청(위) → 응답(아래)" 두 화살표가 정확한 그림이다.</p>
+    </section>
+    <section class="card">
+      <h3>Stream이 두 개인 이유</h3>
+      <p><code>jobs:ai</code>는 <strong>할 일</strong>, <code>events:ai-result</code>는 <strong>끝난 일</strong>.
+      방향이 반대이므로 같은 Stream을 쓰면 worker가 자기가 만든 결과를 다시 집어가는 사고가 난다.
+      요청/응답은 항상 채널을 나눈다.</p>
+    </section>
+    <section class="card">
+      <h3>job 42, job 43 … 은 무엇인가</h3>
+      <p>Stream에 쌓인 <strong>엔트리 하나 = 작업 요청 한 건</strong>이다.
+      "이력서 42번을 AI로 분석해줘" 같은 실제 요청이 JSON으로 들어 있다.
+      <a href="#entry">7절</a>에서 엔트리 하나를 열어본다.</p>
+    </section>
+    <section class="card">
+      <h3>왜 굳이 결과도 Stream으로</h3>
+      <p>worker가 Spring API를 직접 호출해도 되지만, 그러면 Spring이 죽어 있을 때 결과가 날아간다.
+      Stream에 넣으면 <strong>Spring이 되살아난 뒤 이어서 소비</strong>한다. 발행 때와 같은 이유다.</p>
+    </section>
+  </div>
+
+  <h2 id="result">3. 결과는 어떻게 돌려주나 — XACK로는 못 보낸다</h2>
+  <p class="warn">
+    "작업이 끝났으면 XACK로 결과를 돌려주면 되지 않나?" — <strong>불가능하다.</strong>
+    XACK에는 데이터를 담을 자리가 아예 없다.
+  </p>
+  <pre><code>XACK jobs:ai ai-workers 1765432100123-0
+     ───────  ──────────  ────────────────
+     스트림    그룹         메시지 ID          ← payload를 넣을 인자가 없다
+
+→ 반환값: (integer) 1        "PEL에서 1개 지웠다"는 숫자일 뿐</code></pre>
+  <p>
+    XACK는 <strong>Redis와의 정산</strong>이지 Spring에게 보내는 메시지가 아니다.
+    결과 전달은 <strong>완전히 별개의 XADD</strong>로 이뤄진다 — 2절 그림의 ④번이 그것이다.
+  </p>
+  <pre><code>result = call_llm(job)                       # 실제 작업
+
+r.xadd("events:ai-result", {...})            # ④ 결과 발행  ← Spring에게 전달
+r.xack("jobs:ai", "ai-workers", msg_id)      # ⑤ 완료 확정  ← Redis와 정산
+
+# 순서 중요: XADD 먼저, XACK 나중.
+# 반대로 하면 XACK 직후 죽었을 때
+#   → 작업은 "완료"로 확정됐는데 결과는 어디에도 없는 상태가 된다.</code></pre>
+
+  <h3>결과가 클 때 — Stream에 큰 데이터를 넣으면 안 되는 이유</h3>
+  <div class="grid">
+    <section class="card">
+      <h3>메모리</h3>
+      <p>Redis는 <strong>인메모리</strong>다. 디스크가 아니다.
+      8MB 결과 × 1,000건 = <strong>8GB RAM</strong>이 그대로 물린다.
+      게다가 XACK해도 엔트리는 Stream에 남으므로 트리밍 전까지 계속 차지한다.</p>
+    </section>
+    <section class="card">
+      <h3>블로킹 (더 위험)</h3>
+      <p>Redis는 <strong>싱글 스레드</strong>다. 8MB 값 하나를 읽고 쓰는 동안
+      <strong>다른 모든 클라이언트의 명령이 전부 멈춘다.</strong>
+      전혀 무관한 서비스의 <code>GET</code> 하나까지 밀린다.</p>
+    </section>
+  </div>
+  <p class="note">
+    실무 기준선: <strong>엔트리 하나 수 KB 이하.</strong> 넘어갈 것 같으면 아래 Claim Check로 간다.
+  </p>
+
+  <h3>Claim Check 패턴 — 데이터 대신 보관증을 보낸다</h3>
+  <figure>
+    <svg viewBox="0 0 880 330" role="img" aria-label="큰 결과를 Stream에 직접 넣는 방식과 Claim Check 패턴 비교">
+      <defs>
+        <marker id="ac" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0f766e"/>
+        </marker>
+        <marker id="acr" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#b91c1c"/>
+        </marker>
+      </defs>
+
+      <text x="20" y="24" font-size="13" font-weight="700" fill="#b91c1c">✗ 나쁨 — 본문을 Stream에 직접</text>
+      <rect x="20" y="38" width="150" height="66" rx="6" fill="#fff" stroke="#1f2933" stroke-width="2"/>
+      <text x="95" y="66" text-anchor="middle" font-size="12" font-weight="700" fill="#111827">ai-worker-1</text>
+      <text x="95" y="88" text-anchor="middle" font-size="10.5" fill="#52606d">결과 8MB 생성</text>
+      <path d="M174,71 L216,71" stroke="#b91c1c" stroke-width="2.5" marker-end="url(#acr)"/>
+      <rect x="222" y="38" width="398" height="66" rx="6" fill="#111827" stroke="#b91c1c" stroke-width="2"/>
+      <text x="238" y="62" font-size="11" font-family="monospace" fill="#f9fafb">Stream: events:ai-result</text>
+      <text x="238" y="86" font-size="11" font-family="monospace" fill="#fca5a5">jobId=42  result="{…8MB JSON…}"</text>
+      <rect x="640" y="38" width="220" height="66" rx="6" fill="#fef2f2" stroke="#b91c1c"/>
+      <text x="750" y="62" text-anchor="middle" font-size="11" fill="#b91c1c">RAM 폭증 · 싱글스레드</text>
+      <text x="750" y="82" text-anchor="middle" font-size="11" fill="#b91c1c">전체 Redis가 멈춘다</text>
+
+      <line x1="20" y1="126" x2="860" y2="126" stroke="#deded6"/>
+
+      <text x="20" y="152" font-size="13" font-weight="700" fill="#047857">✓ 좋음 — 본문은 밖에, Stream엔 보관증만</text>
+      <rect x="20" y="168" width="150" height="124" rx="6" fill="#fff" stroke="#1f2933" stroke-width="2"/>
+      <text x="95" y="196" text-anchor="middle" font-size="12" font-weight="700" fill="#111827">ai-worker-1</text>
+      <text x="95" y="218" text-anchor="middle" font-size="10.5" fill="#52606d">결과 8MB 생성</text>
+
+      <path d="M174,196 L200,196" stroke="#0f766e" stroke-width="2.5" marker-end="url(#ac)"/>
+      <rect x="206" y="172" width="190" height="48" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="301" y="192" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0f766e">① DB (또는 S3)</text>
+      <text x="301" y="210" text-anchor="middle" font-size="10.5" fill="#1f2933">본문 8MB 저장</text>
+
+      <path d="M174,258 L200,258" stroke="#0f766e" stroke-width="2.5" marker-end="url(#ac)"/>
+      <rect x="206" y="234" width="190" height="48" rx="6" fill="#111827"/>
+      <text x="301" y="254" text-anchor="middle" font-size="11" font-family="monospace" fill="#f9fafb">② XADD 결과 스트림</text>
+      <text x="301" y="272" text-anchor="middle" font-size="10.5" font-family="monospace" fill="#6ee7b7">jobId=42 · 200 bytes</text>
+
+      <path d="M400,258 L428,258" stroke="#0f766e" stroke-width="2.5" marker-end="url(#ac)"/>
+      <rect x="434" y="234" width="180" height="48" rx="6" fill="#fff" stroke="#0f766e" stroke-width="2"/>
+      <text x="524" y="254" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">③ Spring</text>
+      <text x="524" y="272" text-anchor="middle" font-size="10.5" fill="#52606d">"42번 끝났다" 신호 수신</text>
+
+      <path d="M524,230 L524,214 L400,214 L400,200" fill="none" stroke="#b45309"
+            stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ac)"/>
+      <text x="462" y="208" text-anchor="middle" font-size="10.5" fill="#b45309">④ jobId로 본문 조회</text>
+
+      <rect x="640" y="200" width="220" height="82" rx="6" fill="#f0fdfa" stroke="#0f766e"/>
+      <text x="750" y="224" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0f766e">Stream의 역할이 바뀐다</text>
+      <text x="750" y="246" text-anchor="middle" font-size="11" fill="#1f2933">"데이터 운반" →</text>
+      <text x="750" y="264" text-anchor="middle" font-size="11" fill="#1f2933">"완료 신호(트리거)"</text>
+
+      <text x="440" y="318" text-anchor="middle" font-size="12" fill="#52606d">
+        본문이 몇 MB든 Stream 엔트리는 수백 바이트로 고정된다
+      </text>
+    </svg>
+    <figcaption>이미 DB가 있는 구조라면 S3보다 DB가 단순하다. 결과 row를 쓰고 Stream엔 jobId만 흘린다.</figcaption>
+  </figure>
+  <p class="warn">
+    <strong>여기서 dual-write 문제가 다시 나온다.</strong> DB 저장은 성공했는데 XADD 직전에 worker가 죽으면?
+    → <a href="../lessons/0013-transactional-outbox-dual-write.html">레슨 0013의 Outbox</a>가 그대로 적용되는 자리다.
+    다만 이 방향은 "결과 전달이 늦어질 뿐 유실은 아니다" — XACK를 안 한 채 남겨두면 XAUTOCLAIM이 회수해
+    재처리하기 때문이다. 그래서 <strong>재처리해도 안전하도록 멱등하게</strong> 짜는 게 전제다.
+  </p>
+
+  <h2 id="pull">4. pull의 주기는? — 주기가 없다 (BLOCK)</h2>
+  <p class="warn">
+    "worker가 당겨간다"고 하면 <strong>"몇 초마다 폴링하나?"</strong>가 자연스러운 질문인데,
+    Redis Streams는 <strong>폴링하지 않는다.</strong> <code>BLOCK</code> 옵션 때문이다.
+  </p>
+  <p>
+    <code>XREADGROUP ... <strong>BLOCK 5000</strong> ...</code> 를 호출하면 worker는 그 자리에서 <strong>잠든다</strong>
+    (CPU 0%, 네트워크 0). 메시지가 도착하는 순간 <strong>Redis가 잠든 클라이언트를 깨워</strong> 즉시 응답한다.
+    그래서 "주기"라는 개념이 없고, 발행-수신 지연은 <strong>사실상 0</strong>이다.
+  </p>
+  <figure>
+    <svg viewBox="0 0 880 250" role="img" aria-label="BLOCK 옵션을 쓴 worker 루프의 시간 흐름">
+      <rect x="30" y="96" width="180" height="58" rx="5" fill="#eef7f5" stroke="#0f766e" stroke-dasharray="5 4"/>
+      <text x="120" y="122" text-anchor="middle" font-size="12" font-weight="700" fill="#0f766e">BLOCK 대기</text>
+      <text x="120" y="141" text-anchor="middle" font-size="10.5" fill="#52606d">잠듦 · CPU 0%</text>
+
+      <rect x="216" y="96" width="290" height="58" rx="5" fill="#111827"/>
+      <text x="361" y="122" text-anchor="middle" font-size="12" font-weight="700" fill="#f9fafb">job 42 처리 (2분)</text>
+      <text x="361" y="141" text-anchor="middle" font-size="10.5" fill="#9aa5b1">LLM 호출 → 결과 정제 → XADD 결과</text>
+
+      <rect x="512" y="96" width="200" height="58" rx="5" fill="#eef7f5" stroke="#0f766e" stroke-dasharray="5 4"/>
+      <text x="612" y="122" text-anchor="middle" font-size="12" font-weight="700" fill="#0f766e">BLOCK 대기</text>
+      <text x="612" y="141" text-anchor="middle" font-size="10.5" fill="#52606d">5초간 아무것도 안 옴</text>
+
+      <rect x="718" y="96" width="132" height="58" rx="5" fill="#fff7ed" stroke="#b45309"/>
+      <text x="784" y="122" text-anchor="middle" font-size="11.5" font-weight="700" fill="#b45309">빈 응답</text>
+      <text x="784" y="141" text-anchor="middle" font-size="10.5" fill="#52606d">루프 재진입</text>
+
+      <line x1="30" y1="170" x2="850" y2="170" stroke="#c9c9c1"/>
+      <text x="440" y="188" text-anchor="middle" font-size="11" fill="#9aa5b1">시간 →</text>
+
+      <path d="M214,88 L214,60" stroke="#b45309" stroke-width="2"/>
+      <text x="214" y="50" text-anchor="middle" font-size="11.5" font-weight="700" fill="#b45309">XADD 도착 → Redis가 즉시 깨움</text>
+      <text x="214" y="32" text-anchor="middle" font-size="11" fill="#52606d">지연 ≈ 0ms · 폴링 주기 기다림 없음</text>
+
+      <path d="M510,88 L510,66" stroke="#047857" stroke-width="2"/>
+      <text x="510" y="56" text-anchor="middle" font-size="11" font-weight="700" fill="#047857">XACK</text>
+
+      <text x="440" y="222" text-anchor="middle" font-size="12" fill="#1f2933">
+        <tspan font-weight="700">BLOCK 5000의 5초는 "폴링 주기"가 아니라 "최대 대기 시간"</tspan>이다 —
+        메시지가 오면 5초를 안 기다리고 바로 반환한다
+      </text>
+      <text x="440" y="242" text-anchor="middle" font-size="11.5" fill="#52606d">
+        타임아웃이 필요한 이유: 종료 신호 확인, XAUTOCLAIM 같은 주기 작업 실행
+      </text>
+    </svg>
+    <figcaption>BLOCK 0을 주면 무한 대기한다. 실무에선 5초 정도를 줘서 주기적으로 루프를 한 바퀴 돌게 한다.</figcaption>
+  </figure>
+
+  <h3 id="wake">"Redis가 깨운다"는 게 정확히 무슨 뜻인가</h3>
+  <p class="warn">
+    여기서 모순처럼 보이는 지점이 있다. <strong>"Redis는 worker가 누군지 모른다"</strong>고 했는데
+    <strong>"Redis가 잠든 worker를 깨운다"</strong>고도 했다. 둘 다 맞다 —
+    Redis가 아는 건 <em>consumer의 신원</em>이 아니라 <em>지금 답을 기다리고 있는 소켓</em>이기 때문이다.
+  </p>
+  <p>
+    Redis는 <strong>요청-응답 프로토콜</strong>이다. 클라이언트가 보낸 요청에 답만 할 수 있고,
+    아무 때나 먼저 말을 걸 수는 없다. <code>BLOCK</code>은 이 제약 안에서 만들어진 장치다 —
+    <strong>응답을 즉시 주지 않고 미뤄두는 것</strong>이 전부다.
+  </p>
+  <figure>
+    <svg viewBox="0 0 880 400" role="img" aria-label="BLOCK된 클라이언트를 Redis가 깨우는 3단계 메커니즘">
+      <defs>
+        <marker id="aw" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#b45309"/>
+        </marker>
+        <marker id="aw2" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+
+      <!-- panel 1 -->
+      <rect x="8" y="30" width="278" height="240" rx="8" fill="#fff" stroke="#deded6"/>
+      <text x="147" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#b45309">① worker가 먼저 말을 건다</text>
+      <text x="147" y="70" text-anchor="middle" font-size="10.5" fill="#9aa5b1">t = 0</text>
+      <rect x="24" y="80" width="246" height="76" rx="6" fill="#f0fdfa" stroke="#0f766e"/>
+      <text x="147" y="102" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0f766e">Redis</text>
+      <text x="147" y="122" text-anchor="middle" font-size="10.5" fill="#1f2933">줄 게 없음 → 응답을 보류</text>
+      <text x="147" y="142" text-anchor="middle" font-size="10" font-family="monospace" fill="#b45309">jobs:ai 대기목록 = [소켓#7]</text>
+      <path d="M147,214 L147,162" stroke="#b45309" stroke-width="2.5" marker-end="url(#aw)"/>
+      <text x="147" y="186" text-anchor="middle" font-size="9.5" font-family="monospace" fill="#b45309">XREADGROUP BLOCK 5000</text>
+      <rect x="24" y="218" width="246" height="40" rx="6" fill="#fff" stroke="#1f2933"/>
+      <text x="147" y="243" text-anchor="middle" font-size="10.5" fill="#1f2933">worker-1: read() 대기 · CPU 0%</text>
+
+      <!-- panel 2 -->
+      <rect x="300" y="30" width="278" height="240" rx="8" fill="#fff" stroke="#deded6"/>
+      <text x="439" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f766e">② XADD 도착</text>
+      <text x="439" y="70" text-anchor="middle" font-size="10.5" fill="#9aa5b1">t = 3s</text>
+      <rect x="316" y="80" width="246" height="76" rx="6" fill="#f0fdfa" stroke="#0f766e"/>
+      <text x="439" y="100" text-anchor="middle" font-size="10.5" fill="#1f2933">jobs:ai에 데이터 생김</text>
+      <text x="439" y="120" text-anchor="middle" font-size="10.5" fill="#1f2933">→ 대기목록 확인</text>
+      <text x="439" y="140" text-anchor="middle" font-size="10.5" font-weight="700" fill="#b45309">→ 소켓#7 발견</text>
+      <path d="M439,214 L439,162" stroke="#c9c9c1" stroke-width="2" stroke-dasharray="4 4"/>
+      <text x="439" y="186" text-anchor="middle" font-size="10" fill="#9aa5b1">소켓은 계속 열려 있음</text>
+      <rect x="316" y="218" width="246" height="40" rx="6" fill="#fff" stroke="#1f2933"/>
+      <text x="439" y="243" text-anchor="middle" font-size="10.5" fill="#9aa5b1">worker-1: 여전히 잠든 중</text>
+
+      <!-- panel 3 -->
+      <rect x="592" y="30" width="278" height="240" rx="8" fill="#fff" stroke="#deded6"/>
+      <text x="731" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#047857">③ 미뤄둔 응답을 쓴다</text>
+      <text x="731" y="70" text-anchor="middle" font-size="10.5" fill="#9aa5b1">t = 3s (같은 순간)</text>
+      <rect x="608" y="80" width="246" height="76" rx="6" fill="#f0fdfa" stroke="#0f766e"/>
+      <text x="731" y="104" text-anchor="middle" font-size="10.5" fill="#1f2933">보류했던 XREADGROUP을</text>
+      <text x="731" y="124" text-anchor="middle" font-size="10.5" fill="#1f2933">지금 실행 → 소켓#7에 write</text>
+      <text x="731" y="144" text-anchor="middle" font-size="10" fill="#b45309">PEL에 소유자 기록 = 이때 배정</text>
+      <path d="M731,162 L731,214" stroke="#0f766e" stroke-width="2.5" marker-end="url(#aw2)"/>
+      <text x="731" y="188" text-anchor="middle" font-size="10" font-family="monospace" fill="#0f766e">job 42 응답</text>
+      <rect x="608" y="218" width="246" height="40" rx="6" fill="#eef7f5" stroke="#047857"/>
+      <text x="731" y="243" text-anchor="middle" font-size="10.5" font-weight="700" fill="#047857">worker-1: read() 리턴 → 깨어남</text>
+
+      <!-- bottom band -->
+      <rect x="8" y="286" width="862" height="96" rx="8" fill="#fef2f2" stroke="#b91c1c"/>
+      <text x="28" y="310" font-size="12.5" font-weight="700" fill="#b91c1c">같은 시각, ai-worker-3 (LLM 호출 중)</text>
+      <text x="28" y="332" font-size="11.5" fill="#1f2933">TCP 커넥션은 열려 있지만 <tspan font-weight="700">보류 중인 요청이 없다</tspan> → Redis는 이쪽으로 아무것도 보낼 수 없다</text>
+      <text x="28" y="352" font-size="11.5" fill="#1f2933">Redis는 <tspan font-weight="700">응답만</tspan> 보낼 수 있고 먼저 말을 걸 수는 없기 때문 — 그래서 배분 후보에조차 오르지 않는다</text>
+      <text x="28" y="374" font-size="11.5" fill="#b91c1c">→ 바쁜 worker가 자동으로 제외되는 이유. 부하 분산이 공짜로 되는 진짜 메커니즘이다</text>
+    </svg>
+    <figcaption>
+      worker가 전화를 걸어놓고 <strong>끊지 않은 채</strong> 기다리는 상태다. Redis는 전화번호를 몰라도
+      이미 연결된 수화기에 대고 말하면 된다. 전화를 끊은(=처리 중인) worker에게는 말할 방법이 없다.
+    </figcaption>
+  </figure>
+  <div class="grid">
+    <section class="card">
+      <h3>주소록이 필요 없는 이유</h3>
+      <p><strong>push 구조</strong>라면 "worker-1 = 192.168.0.5" 같은 주소록을 영구 저장하고
+      죽은 항목을 정리해야 한다.<br>
+      <strong>pull 구조</strong>에서는 요청이 도착하는 순간 소켓이 손에 쥐어진다.
+      저장할 필요가 없는 게 아니라, <strong>저장할 대상이 생기지 않는다.</strong></p>
+    </section>
+    <section class="card">
+      <h3>consumer 이름은 매번 통보받는다</h3>
+      <p><code>XREADGROUP GROUP ai-workers <strong>ai-worker-1</strong> …</code><br>
+      이름이 <strong>매 요청마다 실려 온다.</strong> Redis가 "이 소켓이 누구인지"를 기억할 이유가 없다.
+      그 이름은 오직 PEL에 소유자를 적을 때만 쓰인다.</p>
+    </section>
+    <section class="card">
+      <h3>누구부터 깨우나</h3>
+      <p>먼저 대기하기 시작한 커넥션부터 순서대로 서비스된다.
+      다만 이건 <strong>구현 세부사항이지 보장된 계약이 아니다.</strong>
+      "공평하게 나눠진다"에 의존하는 설계를 하면 안 된다.</p>
+    </section>
+    <section class="card">
+      <h3>커넥션이 끊기면</h3>
+      <p>대기목록에서 그 소켓만 빠진다. <strong>consumer 이름과 PEL은 그대로 남는다.</strong>
+      둘은 저장 위치가 다르기 때문이다 — 소켓은 휘발성 런타임 상태, PEL은 Stream 안의 영속 데이터.
+      그래서 프로세스가 죽어도 회수가 가능하다.</p>
+    </section>
+  </div>
+
+  <h3>worker의 실제 루프</h3>
+  <pre><code>while not shutting_down:
+    # ① 최대 5초 잠들어 대기. 메시지 오면 즉시 깨어남
+    msgs = r.xreadgroup("ai-workers", "ai-worker-1", {"jobs:ai": "&gt;"},
+                        count=1, block=5000)
+
+    if not msgs:              # ② 5초 타임아웃 — 할 일 없음
+        maybe_run_autoclaim() # 이 틈에 죽은 worker 것 회수 시도
+        continue              # 다시 ①로
+
+    for id, fields in msgs:
+        try:
+            do_the_actual_work(fields)          # ③ 진짜 작업 (LLM 호출 등)
+            r.xack("jobs:ai", "ai-workers", id) # ④ 성공했을 때만 XACK
+        except Exception:
+            pass  # XACK 안 함 → PEL에 남음 → 나중에 XAUTOCLAIM이 회수</code></pre>
+  <p class="note">
+    <code>count=1</code>인 것에 주목. LLM 호출처럼 오래 걸리는 작업은 한 번에 하나씩 가져와야
+    다른 worker가 놀지 않는다. 반대로 짧은 작업(알림 발송 등)은 count를 키워 왕복 비용을 아낀다.
+  </p>
+
+  <h2 id="groups">5. Consumer Group은 여러 개일 수 있다 — 두 개의 축</h2>
+  <p>
+    여기서 헷갈리기 쉬운 게 <strong>"나눠 갖기"와 "다 받기"가 서로 다른 축</strong>이라는 점이다.
+    같은 Stream에 그룹을 여러 개 붙이면 의미가 완전히 달라진다.
+  </p>
+  <p class="warn">
+    <strong>"모든 Consumer Group이 데이터를 다 읽어가면, 작업이 중복되는 것 아닌가?"</strong><br>
+    아주 자연스러운 의문이고, <strong>모든 그룹이 같은 데이터를 다 읽어가는 것은 사실이다.</strong>
+    다만 이건 <em>같은 일을 3번 하는 것</em>이 아니라
+    <strong>하나의 사건을 가지고 서로 전혀 다른 일 3가지를 동시에 처리하는 것</strong>(Fan-out)이다.
+    "메시지가 3번 배달됐다"와 "같은 작업이 3번 실행됐다"는 다른 이야기다.
+  </p>
+  <figure>
+    <svg viewBox="0 0 880 400" role="img" aria-label="한 Stream에 두 개의 Consumer Group이 붙은 팬아웃 구조">
+      <defs>
+        <marker id="ag" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+
+      <rect x="250" y="14" width="380" height="82" rx="8" fill="#111827"/>
+      <text x="266" y="36" font-size="12" font-family="monospace" fill="#f9fafb">Stream: events:ai-result</text>
+      <rect x="264" y="46" width="110" height="32" rx="4" fill="#374151"/>
+      <text x="319" y="67" text-anchor="middle" font-size="11.5" fill="#f9fafb">result 42</text>
+      <rect x="384" y="46" width="110" height="32" rx="4" fill="#374151"/>
+      <text x="439" y="67" text-anchor="middle" font-size="11.5" fill="#f9fafb">result 43</text>
+      <rect x="504" y="46" width="110" height="32" rx="4" fill="#374151"/>
+      <text x="559" y="67" text-anchor="middle" font-size="11.5" fill="#f9fafb">result 44</text>
+
+      <path d="M350,100 L230,142" stroke="#0f766e" stroke-width="2" marker-end="url(#ag)"/>
+      <path d="M530,100 L650,142" stroke="#0f766e" stroke-width="2" marker-end="url(#ag)"/>
+      <text x="440" y="122" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0f766e">같은 메시지가 양쪽 그룹 모두에게 복사되어 간다</text>
+
+      <!-- group 1 -->
+      <rect x="18" y="148" width="410" height="196" rx="8" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="34" y="172" font-size="13" font-weight="700" fill="#b45309">Consumer Group: result-savers</text>
+      <text x="34" y="192" font-size="11" font-family="monospace" fill="#52606d">커서 + PEL — 이 그룹 전용</text>
+      <text x="34" y="214" font-size="11.5" fill="#1f2933">받은 42, 43, 44를 <tspan font-weight="700">둘이 나눠</tspan> 갖는다</text>
+      <rect x="34" y="226" width="378" height="46" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="48" y="245" font-size="11.5" font-weight="700" fill="#111827">spring-1</text>
+      <text x="48" y="263" font-size="11" fill="#52606d">result 42, 44 처리 → DB 저장</text>
+      <rect x="34" y="280" width="378" height="46" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="48" y="299" font-size="11.5" font-weight="700" fill="#111827">spring-2</text>
+      <text x="48" y="317" font-size="11" fill="#52606d">result 43 처리 → DB 저장</text>
+
+      <!-- group 2 -->
+      <rect x="452" y="148" width="410" height="196" rx="8" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="468" y="172" font-size="13" font-weight="700" fill="#b45309">Consumer Group: notifiers</text>
+      <text x="468" y="192" font-size="11" font-family="monospace" fill="#52606d">커서 + PEL — 완전히 별개</text>
+      <text x="468" y="214" font-size="11.5" fill="#1f2933">얘도 42, 43, 44를 <tspan font-weight="700">전부</tspan> 받는다</text>
+      <rect x="468" y="226" width="378" height="100" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="482" y="245" font-size="11.5" font-weight="700" fill="#111827">notifier-1</text>
+      <text x="482" y="265" font-size="11" fill="#52606d">result 42, 43, 44 전부 처리</text>
+      <text x="482" y="285" font-size="11" fill="#52606d">→ 사용자에게 푸시 알림 발송</text>
+      <text x="482" y="311" font-size="10.5" fill="#b45309">혼자니까 전부 자기 몫</text>
+
+      <text x="440" y="370" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">
+        그룹을 나누는 기준 = "이 메시지로 무엇을 할 것인가" (용도)
+      </text>
+      <text x="440" y="390" text-anchor="middle" font-size="12" fill="#52606d">
+        그룹 안에서 consumer를 늘리는 기준 = "처리량이 부족한가" (규모)
+      </text>
+    </svg>
+    <figcaption>
+      spring-1이 result 42를 XACK해도 notifiers 그룹의 PEL에는 result 42가 그대로 남아 있다. 그룹끼리는 완전히 독립이다.
+    </figcaption>
+  </figure>
+
+  <h3>실무 예시 — 쇼핑몰 [결제 완료] 이벤트 하나가 만드는 세 가지 일</h3>
+  <p>
+    사용자가 결제를 마치면 <code>orders-stream</code>에 <strong>메시지가 딱 하나</strong> 찍힌다.
+    그런데 그 뒤에 일어나야 할 일은 하나가 아니다.
+  </p>
+  <figure>
+    <svg viewBox="0 0 880 400" role="img" aria-label="결제 완료 이벤트 하나를 세 개의 Consumer Group이 각자 다른 용도로 처리하는 구조">
+      <defs>
+        <marker id="af" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#52606d"/>
+        </marker>
+      </defs>
+
+      <text x="440" y="20" text-anchor="middle" font-size="11.5" fill="#52606d">결제 1건 = 메시지 1개</text>
+      <rect x="240" y="30" width="400" height="56" rx="8" fill="#111827"/>
+      <text x="440" y="52" text-anchor="middle" font-size="12" font-family="monospace" fill="#6ee7b7">Stream: orders-stream</text>
+      <text x="440" y="73" text-anchor="middle" font-size="11.5" fill="#f9fafb">"홍길동님 5만원 결제 완료"</text>
+
+      <path d="M400,90 L160,132" stroke="#52606d" stroke-width="2" marker-end="url(#af)"/>
+      <path d="M440,90 L440,132" stroke="#52606d" stroke-width="2" marker-end="url(#af)"/>
+      <path d="M480,90 L720,132" stroke="#52606d" stroke-width="2" marker-end="url(#af)"/>
+
+      <!-- Group A -->
+      <rect x="14" y="138" width="270" height="202" rx="8" fill="#fff" stroke="#0f766e" stroke-width="2"/>
+      <text x="149" y="163" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f766e">Consumer Group A</text>
+      <text x="149" y="182" text-anchor="middle" font-size="11" fill="#52606d">결제 · 정산 팀</text>
+      <rect x="30" y="194" width="238" height="28" rx="4" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="149" y="213" text-anchor="middle" font-size="10.5" fill="#1f2933">worker-1</text>
+      <rect x="30" y="228" width="238" height="28" rx="4" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="149" y="247" text-anchor="middle" font-size="10.5" fill="#1f2933">worker-2</text>
+      <line x1="30" y1="270" x2="268" y2="270" stroke="#deded6"/>
+      <text x="149" y="291" text-anchor="middle" font-size="11" font-weight="700" fill="#111827">하는 일</text>
+      <text x="149" y="310" text-anchor="middle" font-size="10.5" fill="#52606d">DB에 결제 완료 상태 저장</text>
+      <text x="149" y="328" text-anchor="middle" font-size="10.5" fill="#52606d">정산 장부 기록</text>
+
+      <!-- Group B -->
+      <rect x="305" y="138" width="270" height="202" rx="8" fill="#fff" stroke="#b45309" stroke-width="2"/>
+      <text x="440" y="163" text-anchor="middle" font-size="12.5" font-weight="700" fill="#b45309">Consumer Group B</text>
+      <text x="440" y="182" text-anchor="middle" font-size="11" fill="#52606d">알림 발송 팀</text>
+      <rect x="321" y="194" width="238" height="28" rx="4" fill="#fff7ed" stroke="#b45309"/>
+      <text x="440" y="213" text-anchor="middle" font-size="10.5" fill="#1f2933">worker-1</text>
+      <rect x="321" y="228" width="238" height="28" rx="4" fill="#fff7ed" stroke="#b45309"/>
+      <text x="440" y="247" text-anchor="middle" font-size="10.5" fill="#1f2933">worker-2</text>
+      <line x1="321" y1="270" x2="559" y2="270" stroke="#deded6"/>
+      <text x="440" y="291" text-anchor="middle" font-size="11" font-weight="700" fill="#111827">하는 일</text>
+      <text x="440" y="310" text-anchor="middle" font-size="10.5" fill="#52606d">카카오톡으로 구매 영수증</text>
+      <text x="440" y="328" text-anchor="middle" font-size="10.5" fill="#52606d">발송</text>
+
+      <!-- Group C -->
+      <rect x="596" y="138" width="270" height="202" rx="8" fill="#fff" stroke="#1f2933" stroke-width="2"/>
+      <text x="731" y="163" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">Consumer Group C</text>
+      <text x="731" y="182" text-anchor="middle" font-size="11" fill="#52606d">빅데이터 · 통계 팀</text>
+      <rect x="612" y="194" width="238" height="28" rx="4" fill="#f7f7f4" stroke="#c9c9c1"/>
+      <text x="731" y="213" text-anchor="middle" font-size="10.5" fill="#1f2933">worker-1</text>
+      <rect x="612" y="228" width="238" height="28" rx="4" fill="#f7f7f4" stroke="#c9c9c1"/>
+      <text x="731" y="247" text-anchor="middle" font-size="10.5" fill="#1f2933">worker-2</text>
+      <line x1="612" y1="270" x2="850" y2="270" stroke="#deded6"/>
+      <text x="731" y="291" text-anchor="middle" font-size="11" font-weight="700" fill="#111827">하는 일</text>
+      <text x="731" y="310" text-anchor="middle" font-size="10.5" fill="#52606d">실시간 인기 상품 순위에</text>
+      <text x="731" y="328" text-anchor="middle" font-size="10.5" fill="#52606d">+1점 반영</text>
+
+      <text x="440" y="368" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">
+        같은 메시지를 3번 처리한 게 아니라, 서로 다른 일 3개를 한 것이다
+      </text>
+      <text x="440" y="390" text-anchor="middle" font-size="11.5" fill="#52606d">
+        각 그룹 <tspan font-weight="700">안에서는</tspan> worker 2대가 나눠 가지므로, 그룹 내 중복은 여전히 없다
+      </text>
+    </svg>
+    <figcaption>메시지 1개 → 그룹 3개에 복사본. 그룹 안에서는 다시 1/N로 분배. 두 축이 동시에 작동한다.</figcaption>
+  </figure>
+
+  <h3>굳이 왜 그룹을 나누나 — 한 worker가 다 하면 안 되나</h3>
+  <p>
+    "결제 저장 + 카카오톡 발송 + 통계 반영"을 <strong>한 worker가 순서대로 다 처리</strong>하게 만들 수도 있다.
+    그러면 이런 일이 생긴다.
+  </p>
+  <pre><code>def handle(msg):
+    save_payment(msg)        # ①
+    send_kakao(msg)          # ② ← 카카오 API 장애로 여기서 예외
+    update_ranking(msg)      # ③ ← 실행조차 안 됨
+
+→ XACK 안 됨 → 메시지 재전달 → ①이 또 실행됨 (결제 중복 기록 위험)
+→ 카카오 장애 하나가 결제·통계까지 끌고 들어간다</code></pre>
+  <div class="grid">
+    <section class="card">
+      <h3>① 장애 격리</h3>
+      <p>카카오톡 시스템이 뻗어도 <strong>Group B만 멈춘다.</strong>
+      Group A의 결제 정산과 Group C의 통계는 아무 영향 없이 100% 정상 동작한다.<br>
+      PEL도 그룹마다 따로라, B가 쌓아둔 미처리 메시지가 A의 회수 로직을 건드리지 않는다.</p>
+    </section>
+    <section class="card">
+      <h3>② 확장이 무해하다</h3>
+      <p>"결제 완료되면 쿠폰 1,000원 지급도 해줘" 요구가 들어오면 —
+      기존 결제·알림 코드를 <strong>한 줄도 건드리지 않고</strong>
+      <code>Group D (쿠폰 지급)</code>를 만들어 같은 Stream에 붙이면 끝이다.
+      Producer(결제 서버)도 수정 대상이 아니다.</p>
+    </section>
+    <section class="card">
+      <h3>③ 재시도 단위가 정확해진다</h3>
+      <p>합쳐놓으면 카카오 발송이 실패했을 때 <strong>결제 저장까지 재실행</strong>된다.
+      나눠놓으면 실패한 그룹만 재시도하므로, 각 작업이 자기 실패에만 책임진다.
+      멱등성 부담도 그만큼 줄어든다.</p>
+    </section>
+    <section class="card">
+      <h3>④ 스케일 단위가 달라진다</h3>
+      <p>통계는 가볍고 알림은 외부 API 대기가 길다. 합쳐놓으면 가장 느린 것에 전체가 묶인다.
+      나눠놓으면 <strong>Group B만 worker를 5대로</strong> 늘리는 식의 조정이 가능하다.</p>
+    </section>
+  </div>
+
+  <p class="warn">
+    <strong>다만 그룹을 무한정 늘리면 생기는 비용:</strong>
+    ① 그룹마다 <strong>PEL을 따로</strong> 들고 있으므로 메모리가 그룹 수만큼 늘어난다.
+    ② <code>MAXLEN</code> 트리밍은 <strong>느린 그룹을 기다려주지 않는다</strong> —
+    한 그룹이 크게 밀려 있으면 아직 못 읽은 엔트리가 잘려나갈 수 있다.
+    그룹을 나눌 땐 <code>XINFO GROUPS</code>로 <strong>가장 뒤처진 그룹의 lag</strong>을 같이 봐야 한다.
+  </p>
+
+  <h3>두 축 정리</h3>
+  <pre><code>그룹 <b>안</b>의 worker들끼리   →  메시지를 1/N로 <b>나눠 가진다</b>   (중복 방지 · 일 분담)
+그룹 <b>과</b> 그룹 사이       →  메시지를 <b>똑같이 다 가져간다</b>  (서로 다른 목적 · Fan-out)</code></pre>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th style="width:26%">무엇을 늘리나</th><th style="width:22%">결과</th><th>이럴 때 쓴다</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>같은 그룹 안에 consumer 추가</strong></td>
+          <td>메시지를 <strong>나눠 가짐</strong><br>(작업 분배)</td>
+          <td>"AI 분석이 밀린다" → ai-workers 그룹에 ai-worker-4 투입. 총 처리량이 늘어난다.</td>
+        </tr>
+        <tr>
+          <td><strong>Consumer Group 추가</strong></td>
+          <td>각 그룹이 <strong>전부 받음</strong><br>(팬아웃 / 브로드캐스트)</td>
+          <td>"결과를 DB에도 저장하고 알림도 보내야 한다" → 용도별로 그룹을 나눈다. 서로 영향 없음.</td>
+        </tr>
+        <tr>
+          <td><strong>Stream 추가</strong></td>
+          <td>아예 <strong>다른 파이프라인</strong></td>
+          <td>"AI 작업과 알림 작업이 서로를 막는다" → <code>jobs:ai</code> / <code>jobs:notification</code>으로 분리.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="warn">
+    <strong>Producer는 Consumer Group을 지정하지 않는다 — 지정할 수도 없다.</strong>
+    <code>XADD jobs:ai * jobId 42</code> 에는 그룹을 적을 자리가 없다.
+    Spring은 어떤 그룹이 존재하는지조차 모르고, 알 필요도 없다.
+  </p>
+  <ul>
+    <li>그룹이 <strong>0개여도 XADD는 성공</strong>한다 (아무도 안 읽을 뿐)</li>
+    <li>나중에 그룹을 새로 만들어 붙여도 된다 — Producer 코드는 그대로</li>
+    <li>그룹이 5개면 5개 전부가 그 메시지를 받는다</li>
+  </ul>
+  <p>
+    <strong>그룹은 소비하는 쪽이 스스로 갖다 붙이는 것</strong>이고, 발행하는 쪽과 협상하지 않는다.
+    Producer를 건드리지 않고 소비자를 추가할 수 있는 게 이 구조의 핵심 목적이다.
+    그래서 발행 측과 소비 측을 잇는 유일한 접점은 <strong><code>"jobs:ai"</code>라는 문자열 하나</strong>다 —
+    양쪽 코드에 각각 하드코딩된, 서로 같기로 한 약속.
+  </p>
+  <pre><code># Spring 쪽 — 스트림 이름 하나만 안다
+XADD "jobs:ai" * jobId 42 type ANALYZE
+
+# Worker 쪽 — 세 개를 자기가 정해서 넘긴다
+STREAM   = "jobs:ai"                   # 어디서 읽을지  — 내 코드에 하드코딩
+GROUP    = "ai-workers"                # 어느 그룹으로  — 내 코드에 하드코딩
+CONSUMER = os.environ["POD_NAME"]      # 내 이름       — 내가 정함
+
+r.xgroup_create(STREAM, GROUP, id="$", mkstream=True)   # 그룹도 내가 만든다
+r.xreadgroup(GROUP, CONSUMER, {STREAM: "&gt;"}, block=5000)
+
+→ 세 값이 전부 worker 쪽에서 온다. Redis가 알려주는 건 하나도 없다.</code></pre>
+  <p class="note">
+    <strong>Redis는 중매쟁이가 아니라 게시판이다.</strong> 게시판은 글쓴이도 읽는 사람도 모른다.
+    다만 "3번 게시판"이라는 이름이 있어서, 3번에 붙이면 3번을 보러 온 사람이 볼 뿐이다.
+    "연결"이라는 게 애초에 존재하지 않는다.
+  </p>
+
+  <h2 id="storage">6. 그룹은 어디에 저장되나 — Redis는 key-value 아니었나</h2>
+  <p>
+    Redis가 key-value인 건 맞다. 다만 <strong>value가 단순 문자열만은 아니다</strong> —
+    string / list / hash / set / zset / <strong>stream</strong> 중 하나다.
+    그리고 <strong>Consumer Group은 별도의 key가 아니라 stream value 안에 들어 있다.</strong>
+  </p>
+  <figure>
+    <svg viewBox="0 0 880 470" role="img" aria-label="jobs:ai 키 안에 엔트리와 컨슈머 그룹이 함께 저장된 구조">
+      <defs>
+        <marker id="as" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+
+      <text x="20" y="24" font-size="11.5" font-weight="700" fill="#52606d">key</text>
+      <text x="256" y="24" font-size="11.5" font-weight="700" fill="#52606d">value &nbsp;(TYPE jobs:ai → "stream")</text>
+
+      <rect x="20" y="34" width="180" height="48" rx="6" fill="#0f766e"/>
+      <text x="110" y="64" text-anchor="middle" font-size="14" font-family="monospace" fill="#fff">"jobs:ai"</text>
+      <text x="110" y="102" text-anchor="middle" font-size="10.5" fill="#52606d">KEYS * 에 보이는</text>
+      <text x="110" y="118" text-anchor="middle" font-size="10.5" fill="#52606d">유일한 이름</text>
+      <path d="M204,58 L246,58" stroke="#0f766e" stroke-width="2.5" marker-end="url(#as)"/>
+
+      <rect x="252" y="34" width="608" height="420" rx="8" fill="#f7f7f4" stroke="#0f766e" stroke-width="2"/>
+
+      <!-- entries -->
+      <rect x="268" y="52" width="576" height="104" rx="6" fill="#111827"/>
+      <text x="284" y="74" font-size="11.5" font-weight="700" font-family="monospace" fill="#6ee7b7">entries — append-only 로그</text>
+      <text x="284" y="98" font-size="11" font-family="monospace" fill="#f9fafb">1765…-0   {jobId:42, type:ANALYZE}</text>
+      <text x="284" y="118" font-size="11" font-family="monospace" fill="#f9fafb">1765…-1   {jobId:43, type:ANALYZE}</text>
+      <text x="284" y="138" font-size="11" font-family="monospace" fill="#f9fafb">1765…-2   {jobId:44, type:ANALYZE}</text>
+
+      <text x="268" y="180" font-size="11.5" font-weight="700" fill="#b45309">groups — 이 스트림에 딸린 부속 장부 (별도 key가 아니다)</text>
+
+      <!-- group A -->
+      <rect x="268" y="192" width="576" height="134" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="284" y="214" font-size="12" font-weight="700" font-family="monospace" fill="#b45309">"ai-workers"</text>
+      <text x="284" y="236" font-size="10.5" font-family="monospace" fill="#1f2933">last-delivered-id : 1765…-1</text>
+      <text x="284" y="256" font-size="10.5" font-family="monospace" fill="#1f2933">PEL : { 1765…-0 → ai-worker-1, idle 3s, deliv 1 }</text>
+      <text x="284" y="278" font-size="10.5" font-family="monospace" fill="#1f2933">consumers :</text>
+      <text x="300" y="296" font-size="10.5" font-family="monospace" fill="#52606d">"ai-worker-1"  seen-time, 자기 PEL</text>
+      <text x="300" y="314" font-size="10.5" font-family="monospace" fill="#52606d">"ai-worker-2"  seen-time, 자기 PEL</text>
+
+      <!-- group B -->
+      <rect x="268" y="338" width="576" height="98" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="284" y="360" font-size="12" font-weight="700" font-family="monospace" fill="#b45309">"audit-loggers"</text>
+      <text x="284" y="382" font-size="10.5" font-family="monospace" fill="#1f2933">last-delivered-id : 1765…-0   ← 완전히 독립된 커서</text>
+      <text x="284" y="402" font-size="10.5" font-family="monospace" fill="#1f2933">PEL : { }</text>
+      <text x="284" y="424" font-size="10.5" font-family="monospace" fill="#52606d">consumers : "auditor-1"</text>
+    </svg>
+    <figcaption>
+      <code>GET ai-workers</code> 같은 건 존재하지 않는다. 그룹 이름은 key가 아니라
+      <code>jobs:ai</code> 안에서만 의미를 갖는 이름이다 — 다른 스트림에 같은 이름의 그룹이 있어도 완전히 별개다.
+    </figcaption>
+  </figure>
+
+  <h3>직접 확인하는 명령</h3>
+  <pre><code>TYPE jobs:ai                        → "stream"      (string이 아니다)
+KEYS *                              → 1) "jobs:ai"   ← 그룹은 여기 안 보인다
+
+XINFO STREAM jobs:ai                → 엔트리 수, 마지막 ID, groups 개수
+XINFO GROUPS jobs:ai                → 그룹 목록 + 각 커서 / pending 수
+XINFO CONSUMERS jobs:ai ai-workers  → 그룹 안 consumer 목록 + idle / pending</code></pre>
+
+  <h3>이 구조가 실무에서 갖는 의미</h3>
+  <div class="grid">
+    <section class="card">
+      <h3 style="color:#b91c1c">DEL 한 번이면 전부 증발</h3>
+      <p><code>DEL jobs:ai</code> 는 메시지만 지우는 게 아니라 <strong>그룹 · PEL · 커서까지 통째로</strong> 날린다.
+      미처리 작업이 PEL에 있었다면 회수할 근거 자체가 사라져 <strong>영구 유실</strong>이다.
+      worker는 다음 호출에서 <code>NOGROUP</code> 에러를 받는다.
+      같은 이유로 Stream 키에 <code>EXPIRE</code>를 거는 것도 위험하다.</p>
+    </section>
+    <section class="card">
+      <h3>MAXLEN 트리밍은 안전하다</h3>
+      <p>트리밍은 <strong>entries만</strong> 건드린다. 그룹과 PEL은 그대로 남는다.
+      그래서 큐로 쓸 때 정리 수단은 <code>DEL</code>이 아니라 <code>MAXLEN</code>이다.<br>
+      단, 아직 pending인 엔트리가 잘려나가면 <strong>PEL엔 ID가 있는데 본문이 없는</strong> 상태가 된다.
+      MAXLEN은 넉넉히 잡는다.</p>
+    </section>
+    <section class="card">
+      <h3>Cluster에서 분산되지 않는다</h3>
+      <p>스트림과 그 그룹들은 <strong>한 key 안에 있으므로 항상 같은 노드</strong>에 산다.
+      스트림 하나가 노드 하나의 처리량 상한을 넘으면 <strong>key를 손으로 나누는 것</strong> 외에
+      방법이 없다 (<code>jobs:ai:0</code>, <code>jobs:ai:1</code> …).
+      Kafka가 partition으로 자동 해결하는 지점이다.</p>
+    </section>
+    <section class="card">
+      <h3>PEL은 영속, 소켓은 휘발</h3>
+      <p>consumer 이름과 PEL은 이 value 안의 <strong>영속 데이터</strong>다.
+      반면 "지금 blocked인 소켓" 목록은 <strong>메모리상의 런타임 상태</strong>일 뿐 여기 저장되지 않는다.
+      프로세스가 죽어도 PEL이 남아 회수가 가능한 이유가 이 분리다.</p>
+    </section>
+  </div>
+
+  <h2 id="entry">7. Stream 한 줄(Entry)의 내부 — job 42는 실제로 무엇인가</h2>
+  <figure>
+    <svg viewBox="0 0 880 200" role="img" aria-label="Stream 엔트리의 ID와 field-value 구조">
+      <text x="180" y="26" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f766e">Entry ID — Redis가 생성, 항상 증가</text>
+      <text x="580" y="26" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">field-value 쌍 — XADD로 내가 넣는 값</text>
+
+      <rect x="40" y="40" width="280" height="66" rx="6" fill="#0f766e"/>
+      <text x="180" y="80" text-anchor="middle" font-size="17" font-family="monospace" fill="#fff">1765432100123-0</text>
+
+      <rect x="344" y="40" width="496" height="66" rx="6" fill="#111827"/>
+      <text x="360" y="63" font-size="12.5" font-family="monospace" fill="#f9fafb">jobId   = "42"</text>
+      <text x="360" y="82" font-size="12.5" font-family="monospace" fill="#f9fafb">type    = "ANALYZE_RESUME"</text>
+      <text x="360" y="101" font-size="12.5" font-family="monospace" fill="#f9fafb">payload = "{\"resumeId\":991,\"userId\":7}"</text>
+
+      <path d="M110,110 L110,124 L180,124" fill="none" stroke="#52606d" stroke-width="1.5"/>
+      <path d="M292,110 L292,146 L180,146" fill="none" stroke="#52606d" stroke-width="1.5"/>
+      <text x="188" y="128" font-size="11.5" fill="#52606d">밀리초 유닉스 타임스탬프</text>
+      <text x="188" y="150" font-size="11.5" fill="#52606d">같은 밀리초 안의 순번 (0, 1, 2 …)</text>
+
+      <text x="40" y="182" font-size="12" fill="#1f2933">
+        앞 그림의 <tspan font-weight="700">"job 42"</tspan> 상자 하나가 바로 이것 — 작업 요청 1건.
+        XADD에 <tspan font-family="monospace" fill="#0f766e">*</tspan> 를 주면 ID는 Redis가 만든다. 값은 전부 문자열이라 객체는 JSON으로 직렬화한다.
+      </text>
+    </svg>
+    <figcaption>Stream은 append-only 로그. 한 번 들어간 엔트리는 수정되지 않고, ID는 되돌아가지 않는다.</figcaption>
+  </figure>
+
+  <p class="warn">
+    Stream은 <strong>읽어도 줄어들지 않는다.</strong> XACK는 PEL에서만 지우지 Stream에서는 안 지운다.
+    그래서 <code>XADD jobs:ai MAXLEN ~ 10000 *</code> 처럼 길이를 잘라주지 않으면 메모리가 계속 늘어난다.
+    Redis Streams를 큐로 쓸 때 가장 자주 놓치는 운영 항목이다.
+  </p>
+
+  <h2 id="pel">8. Consumer Group이 들고 있는 상태는 딱 두 가지</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>① last-delivered-id (커서 1개)</h3>
+      <p>"이 그룹은 여기까지 배달했다"는 표시 하나. <code>XREADGROUP ... &gt;</code> 는
+      <strong>이 커서 다음 엔트리</strong>를 주고 커서를 밀어 올린다.
+      그룹당 1개이므로 consumer가 몇이든 같은 엔트리를 두 번 배달하지 않는다.</p>
+    </section>
+    <section class="card">
+      <h3>② PEL (배달 장부)</h3>
+      <p>배달했지만 아직 XACK 안 된 엔트리 목록. 엔트리마다 <strong>소유 consumer · 마지막 배달 시각 ·
+      delivery count</strong>를 들고 있다. XAUTOCLAIM은 오직 이 장부만 보고 회수를 결정한다.</p>
+    </section>
+  </div>
+
+  <h3>PEL을 표로 펼치면</h3>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Entry ID</th><th>소유 consumer</th><th>idle (ms)</th><th>delivery count</th><th>해석</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>…123-0</code></td><td>ai-worker-1</td><td>3,000</td><td>1</td><td>정상 처리 중. 건드리면 안 됨</td></tr>
+        <tr><td><code>…456-0</code></td><td>ai-worker-2</td><td>71,000</td><td>1</td><td>min-idle-time 60s 초과 → 회수 대상</td></tr>
+        <tr><td><code>…789-0</code></td><td>ai-worker-3</td><td>92,000</td><td>5</td><td>5번 재시도 실패 → <strong>DLQ 후보</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">
+    <code>XPENDING jobs:ai ai-workers - + 10</code> 이 실제로 보여주는 게 정확히 이 표다.
+    운영 중 "뭐가 안 끝나고 있나"를 볼 때 이 네 컬럼만 읽으면 된다.
+  </p>
+
+  <h2 id="lifecycle">9. 엔트리 하나의 일생 — PEL이 변하는 순간들</h2>
+  <figure>
+    <svg viewBox="0 0 880 300" role="img" aria-label="job 43의 생명주기 5단계와 PEL 상태 변화">
+      <!-- t1 -->
+      <rect x="8" y="30" width="164" height="200" rx="6" fill="#fff" stroke="#deded6"/>
+      <text x="90" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f766e">① XADD</text>
+      <text x="90" y="72" text-anchor="middle" font-size="11" fill="#52606d">Spring이 job 43 추가</text>
+      <rect x="20" y="88" width="140" height="128" rx="4" fill="#f7f7f4"/>
+      <text x="30" y="108" font-size="11" font-weight="700" fill="#1f2933">PEL</text>
+      <text x="30" y="130" font-size="11" fill="#9aa5b1">(비어 있음)</text>
+      <text x="30" y="164" font-size="10.5" fill="#52606d">Stream에만 존재.</text>
+      <text x="30" y="180" font-size="10.5" fill="#52606d">아무도 아직</text>
+      <text x="30" y="196" font-size="10.5" fill="#52606d">가져가지 않음</text>
+
+      <!-- t2 -->
+      <rect x="180" y="30" width="164" height="200" rx="6" fill="#fff" stroke="#deded6"/>
+      <text x="262" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0f766e">② XREADGROUP &gt;</text>
+      <text x="262" y="72" text-anchor="middle" font-size="11" fill="#52606d">worker-2가 당겨감</text>
+      <rect x="192" y="88" width="140" height="128" rx="4" fill="#fff7ed" stroke="#b45309"/>
+      <text x="202" y="108" font-size="11" font-weight="700" fill="#b45309">PEL</text>
+      <text x="202" y="130" font-size="10.5" font-family="monospace" fill="#1f2933">43 → worker-2</text>
+      <text x="202" y="148" font-size="10.5" font-family="monospace" fill="#1f2933">idle 0s</text>
+      <text x="202" y="166" font-size="10.5" font-family="monospace" fill="#1f2933">deliv 1</text>
+      <text x="202" y="196" font-size="10.5" fill="#52606d">배달 = 장부 기록</text>
+
+      <!-- t3 -->
+      <rect x="352" y="30" width="164" height="200" rx="6" fill="#fff" stroke="#deded6"/>
+      <text x="434" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#b91c1c">③ 처리 중 사망</text>
+      <text x="434" y="72" text-anchor="middle" font-size="11" fill="#52606d">OOM으로 프로세스 종료</text>
+      <rect x="364" y="88" width="140" height="128" rx="4" fill="#fef2f2" stroke="#b91c1c"/>
+      <text x="374" y="108" font-size="11" font-weight="700" fill="#b91c1c">PEL</text>
+      <text x="374" y="130" font-size="10.5" font-family="monospace" fill="#1f2933">43 → worker-2</text>
+      <text x="374" y="148" font-size="10.5" font-family="monospace" fill="#b91c1c">idle 71s ↑</text>
+      <text x="374" y="166" font-size="10.5" font-family="monospace" fill="#1f2933">deliv 1</text>
+      <text x="374" y="196" font-size="10.5" fill="#52606d">XACK 없음 → 남음</text>
+
+      <!-- t4 -->
+      <rect x="524" y="30" width="164" height="200" rx="6" fill="#fff" stroke="#deded6"/>
+      <text x="606" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#b45309">④ XAUTOCLAIM</text>
+      <text x="606" y="72" text-anchor="middle" font-size="11" fill="#52606d">idle ≥ 60s 회수</text>
+      <rect x="536" y="88" width="140" height="128" rx="4" fill="#fff7ed" stroke="#b45309"/>
+      <text x="546" y="108" font-size="11" font-weight="700" fill="#b45309">PEL</text>
+      <text x="546" y="130" font-size="10.5" font-family="monospace" fill="#047857">43 → worker-3</text>
+      <text x="546" y="148" font-size="10.5" font-family="monospace" fill="#1f2933">idle 0s</text>
+      <text x="546" y="166" font-size="10.5" font-family="monospace" fill="#b45309">deliv 2 ↑</text>
+      <text x="546" y="196" font-size="10.5" fill="#52606d">소유자만 바뀜</text>
+
+      <!-- t5 -->
+      <rect x="696" y="30" width="164" height="200" rx="6" fill="#fff" stroke="#deded6"/>
+      <text x="778" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#047857">⑤ XACK</text>
+      <text x="778" y="72" text-anchor="middle" font-size="11" fill="#52606d">worker-3 처리 성공</text>
+      <rect x="708" y="88" width="140" height="128" rx="4" fill="#f7f7f4"/>
+      <text x="718" y="108" font-size="11" font-weight="700" fill="#1f2933">PEL</text>
+      <text x="718" y="130" font-size="11" fill="#9aa5b1">(비어 있음)</text>
+      <text x="718" y="164" font-size="10.5" fill="#52606d">43은 Stream에</text>
+      <text x="718" y="180" font-size="10.5" fill="#52606d">그대로 남는다.</text>
+      <text x="718" y="196" font-size="10.5" fill="#52606d">PEL에서만 제거</text>
+
+      <path d="M172,130 L178,130" stroke="#52606d" stroke-width="2"/>
+      <path d="M344,130 L350,130" stroke="#52606d" stroke-width="2"/>
+      <path d="M516,130 L522,130" stroke="#52606d" stroke-width="2"/>
+      <path d="M688,130 L694,130" stroke="#52606d" stroke-width="2"/>
+
+      <text x="440" y="262" text-anchor="middle" font-size="12" fill="#1f2933">
+        deliv 2가 됐다는 건 job 43이 <tspan font-weight="700">두 번 실행됐을 수 있다</tspan>는 뜻 — 이래서 Consumer는 멱등해야 한다
+      </text>
+      <text x="440" y="284" text-anchor="middle" font-size="11.5" fill="#52606d">
+        delivery count가 임계치(예: 5)를 넘으면 회수 대신 DLQ로 보낸다
+      </text>
+    </svg>
+    <figcaption>PEL은 "지금 공중에 떠 있는 작업" 목록. 비어 있으면 미처리 작업이 없다는 뜻이다.</figcaption>
+  </figure>
+
+  <h2 id="workers">10. worker 개수 = 서버 개수인가? — 아니다</h2>
+  <p>
+    1절에서 봤듯 Redis가 인식하는 consumer는 <strong>이름</strong>뿐이다.
+    그 이름을 쓰는 게 별도 서버인지, 같은 서버의 다른 프로세스인지, 같은 프로세스의 다른 스레드인지
+    <strong>Redis는 구분하지 못하고 관심도 없다.</strong> 조건은 하나 — 이름이 서로 다를 것.
+  </p>
+  <figure>
+    <svg viewBox="0 0 880 250" role="img" aria-label="worker 배치의 세 가지 방식">
+      <text x="146" y="24" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">A. 서버 3대 · worker 3</text>
+      <rect x="20" y="38" width="252" height="176" rx="6" fill="#fff" stroke="#deded6"/>
+      <rect x="36" y="54" width="220" height="44" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="146" y="81" text-anchor="middle" font-size="11.5" fill="#1f2933">서버1 → ai-worker-1</text>
+      <rect x="36" y="106" width="220" height="44" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="146" y="133" text-anchor="middle" font-size="11.5" fill="#1f2933">서버2 → ai-worker-2</text>
+      <rect x="36" y="158" width="220" height="44" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+      <text x="146" y="185" text-anchor="middle" font-size="11.5" fill="#1f2933">서버3 → ai-worker-3</text>
+
+      <text x="440" y="24" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">B. 서버 1대 · worker 3</text>
+      <rect x="314" y="38" width="252" height="176" rx="6" fill="#fff" stroke="#deded6"/>
+      <rect x="330" y="54" width="220" height="148" rx="5" fill="#f0fdfa" stroke="#0f766e" stroke-dasharray="5 4"/>
+      <text x="440" y="76" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0f766e">서버 1대</text>
+      <rect x="344" y="86" width="192" height="32" rx="4" fill="#fff" stroke="#c9c9c1"/>
+      <text x="440" y="107" text-anchor="middle" font-size="11" fill="#1f2933">프로세스 → ai-worker-1</text>
+      <rect x="344" y="124" width="192" height="32" rx="4" fill="#fff" stroke="#c9c9c1"/>
+      <text x="440" y="145" text-anchor="middle" font-size="11" fill="#1f2933">프로세스 → ai-worker-2</text>
+      <rect x="344" y="162" width="192" height="32" rx="4" fill="#fff" stroke="#c9c9c1"/>
+      <text x="440" y="183" text-anchor="middle" font-size="11" fill="#1f2933">프로세스 → ai-worker-3</text>
+
+      <text x="734" y="24" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">C. 서버 2대 · worker 4</text>
+      <rect x="608" y="38" width="252" height="176" rx="6" fill="#fff" stroke="#deded6"/>
+      <rect x="624" y="54" width="220" height="70" rx="5" fill="#f0fdfa" stroke="#0f766e" stroke-dasharray="5 4"/>
+      <text x="734" y="72" text-anchor="middle" font-size="11" font-weight="700" fill="#0f766e">서버1</text>
+      <text x="734" y="92" text-anchor="middle" font-size="11" fill="#1f2933">ai-worker-1</text>
+      <text x="734" y="112" text-anchor="middle" font-size="11" fill="#1f2933">ai-worker-2</text>
+      <rect x="624" y="132" width="220" height="70" rx="5" fill="#f0fdfa" stroke="#0f766e" stroke-dasharray="5 4"/>
+      <text x="734" y="150" text-anchor="middle" font-size="11" font-weight="700" fill="#0f766e">서버2</text>
+      <text x="734" y="170" text-anchor="middle" font-size="11" fill="#1f2933">ai-worker-3</text>
+      <text x="734" y="190" text-anchor="middle" font-size="11" fill="#1f2933">ai-worker-4</text>
+
+      <text x="440" y="238" text-anchor="middle" font-size="12" fill="#52606d">
+        Redis 입장에서 A · B · C는 전부 똑같다 — "이름이 다른 consumer가 3, 3, 4개 붙어 있다"
+      </text>
+    </svg>
+    <figcaption>consumer는 논리 단위지 물리 서버가 아니다. 서버 수는 순전히 자원(CPU/GPU/메모리) 문제로 따로 정한다.</figcaption>
+  </figure>
+
+  <h3>그럼 worker 몇 개를 어디에 띄우나 — 병목이 어디냐로 갈린다</h3>
+  <div class="grid">
+    <section class="card">
+      <h3>I/O 바운드 (외부 LLM API 호출)</h3>
+      <p>대부분의 시간이 <strong>응답 대기</strong>다. CPU는 놀고 있다.
+      → 서버 1대에 worker 여러 개(또는 asyncio 태스크 여러 개)를 붙여도 된다.
+      이 경우 <strong>worker 수 &gt;&gt; 서버 수</strong>가 정상이다.
+      실제 상한은 서버가 아니라 <strong>API rate limit</strong>이 정한다.</p>
+    </section>
+    <section class="card">
+      <h3>CPU/GPU 바운드 (로컬 모델 추론)</h3>
+      <p>worker 하나가 코어/GPU를 다 쓴다. 같은 서버에 2개 띄우면 서로 느려지기만 한다.
+      → <strong>worker 수 ≒ GPU 수</strong>로 맞추고, 늘리려면 서버를 늘려야 한다.
+      여기서만 "worker 수 = 서버 수"에 가까워진다.</p>
+    </section>
+    <section class="card">
+      <h3>실무 기본값</h3>
+      <p>k8s Deployment의 <strong>replicas = worker 수</strong>, 파드 1개에 프로세스 1개.
+      consumer 이름은 파드명(<code>POD_NAME</code>)을 그대로 쓴다.
+      단순하고, 스케일이 <code>kubectl scale</code> 한 줄이 되고, 이름 충돌도 없다.</p>
+    </section>
+    <section class="card">
+      <h3>절대 하면 안 되는 것</h3>
+      <p>여러 프로세스가 <strong>같은 consumer 이름</strong>을 쓰는 것.
+      PEL 소유권이 뒤섞여 A가 처리 중인 메시지를 B가 <code>0</code>으로 읽어가
+      <strong>중복 실행</strong>이 난다. 이름은 반드시 인스턴스마다 고유해야 한다.</p>
+    </section>
+  </div>
+
+  <p class="warn">
+    <strong>worker를 늘려도 처리량이 안 늘 때:</strong> 병목이 Redis가 아니라 뒤쪽(LLM API rate limit, DB 커넥션 풀,
+    GPU)에 있는 경우가 대부분이다. worker를 늘리면 PEL만 두꺼워지고 idle time이 길어져
+    엉뚱하게 XAUTOCLAIM이 정상 작업을 회수하기 시작한다. <strong>늘리기 전에 XPENDING부터 본다.</strong>
+  </p>
+
+  <h2>11. 한 장 요약</h2>
+  <pre><code>저장 구조 — 전부 key 하나 안에 들어 있다
+
+  key "jobs:ai"  →  value (TYPE: stream)
+      ├ entries                      append-only 로그. 읽어도 안 줄어듦. MAXLEN으로 잘라야 함
+      │   └ 1765…-0 + 필드들         "job 42" 상자 하나 = 작업 요청 1건
+      └ groups                       별도 key가 아님! DEL jobs:ai 하면 같이 증발
+          └ "ai-workers"
+              ├ last-delivered-id    커서 1개 → 그룹 안에서 중복 배달 방지
+              ├ PEL                  배달 장부: 엔트리별 (소유자, idle, delivery count)
+              └ consumers            "ai-worker-1" 등 이름 목록 (연결 정보는 없음)
+
+  Worker 프로세스                     Redis 밖. Redis는 이 존재를 모름.
+                                      consumer 이름은 매 요청에 실려 오므로 기억할 필요가 없다
+
+두 개의 축 — 이걸 섞으면 "중복 아니냐?"는 오해가 생긴다
+  그룹 안의 worker끼리  →  1/N로 나눠 가짐      (같은 일을 나눠서 처리)
+  그룹과 그룹 사이      →  똑같이 다 가져감     (서로 다른 일을 각자 처리 = Fan-out)
+  ※ 메시지가 3번 배달됐다 ≠ 같은 작업이 3번 실행됐다
+  ※ 비용: 그룹마다 PEL을 따로 들고 있고, MAXLEN 트리밍은 느린 그룹을 기다려주지 않는다
+
+방향 — XADD 하나만 밀고 나머지는 전부 pull
+  Spring  --XADD-->        jobs:ai                            (유일하게 미는 동작)
+  Worker  --XREADGROUP-->  jobs:ai          --응답-->  Worker  (worker가 먼저 물어봄)
+  Worker  --XADD-->        events:ai-result
+  Spring  --XREADGROUP-->  events:ai-result --응답-->  Spring  (spring이 먼저 물어봄)
+
+  ※ Producer는 Consumer Group을 지정하지 않는다. 양쪽을 잇는 건 "jobs:ai" 문자열 약속뿐.
+
+"Redis가 깨운다"의 정체
+  worker가 미리 걸어둔 XREADGROUP의 응답을 미뤄뒀다가, 데이터가 생기면 그 소켓에 write.
+  Redis는 요청-응답만 가능 → 보류 중인 요청이 없는(=처리 중인) worker에겐 말을 걸 수 없다.
+  그래서 바쁜 worker는 후보에조차 안 오른다 = 부하 분산이 공짜로 되는 이유.
+  BLOCK 5000은 폴링 주기가 아니라 "최대 대기 시간". 메시지 오면 즉시 반환, 지연 ≈ 0.
+
+결과 돌려주기
+  XACK로는 불가능 (payload 인자가 없음). 별도 XADD로 결과 스트림에 발행.
+  순서: XADD(결과) 먼저 → XACK 나중.
+  결과가 크면 Claim Check — 본문은 DB/S3, Stream엔 jobId만. 엔트리는 수 KB 이하 유지.
+  (Redis는 인메모리 + 싱글스레드 → 큰 값 하나가 전체를 멈춘다)
+
+명령어가 건드리는 곳
+  XADD        → entries에 추가             (PEL 무관)
+  XREADGROUP &gt;→ 커서 전진 + PEL에 등록
+  XREADGROUP 0→ 내 PEL 조회 (커서 무관)
+  XACK        → PEL에서만 제거             (entries는 그대로)
+  XAUTOCLAIM  → PEL의 소유자 변경 + deliv +1
+  XPENDING    → PEL 읽기 전용 조회
+  XINFO       → 위 저장 구조를 눈으로 확인
+  DEL         → ⚠ entries + groups + PEL 전부 삭제</code></pre>
+
+  <p>
+    관련 자료:
+    <a href="../lessons/0014-redis-streams-consumer-group.html">레슨 0014 — Consumer Group: 작업 분배와 회수</a> ·
+    <a href="./0008-redis-streams-consumer-group-cheatsheet.html">Consumer Group 치트시트</a> ·
+    <a href="./0009-kafka-core-concepts-cheatsheet.html">Kafka 핵심 개념 치트시트</a>
+    (Kafka의 partition key 기반 결정론적 배정과 대조해서 보면 차이가 선명해진다).
+  </p>
+</main>
+</body>
+</html>

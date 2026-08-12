@@ -37,4 +37,30 @@
 
 ## Out of scope
 - 실제 코드 구현·배포는 지금 단계에서 제외한다. 이해·설명 우선.
-- Kafka 도입 기준 등은 Redis Streams가 한계에 도달한 뒤 검토 대상이라 여기서는 깊게 다루지 않는다.
+
+---
+
+# Mission: 카프카 개념과 동작 원리 이해
+
+## Why
+백엔드 개발자로서 실제로 Kafka를 도입할 계획이 있다. 도입 전에 Kafka의 개념과 동작 원리를 제대로
+이해해야, 실제 설계·운영 단계에서 잘못된 선택(파티션 설계, consumer group 구성, KRaft 클러스터
+구성 등)을 하지 않을 수 있다.
+
+## Success looks like
+- Topic/Partition/Broker/Producer/Consumer/Replication의 역할과 관계를 그림으로 설명할 수 있다.
+- Kafka가 실제로 어떤 문제(메시징, 로그 집계, 스트림 처리, 이벤트 소싱 등)에 쓰이는지 자신의
+  도입 시나리오에 대입해 설명할 수 있다.
+- 클러스터 metadata를 KRaft가 어떻게 관리하는지, ZooKeeper mode와 무엇이 다르고 왜 바뀌었는지
+  설명할 수 있다.
+- (향후) Consumer Group의 상세 동작(offset, rebalance)과 Producer의 전달 보장(acks, idempotence)을
+  설명할 수 있다.
+
+## Constraints
+- Kafka는 처음 배우는 주제로, 사전 지식이 없다고 가정하고 시작한다.
+- 이미 학습한 Redis Streams의 Consumer Group/PEL/XACK/XAUTOCLAIM 개념을 발판(analogy)으로
+  적극 활용해 이해 속도를 높인다.
+- 설명은 정확하고 명확하게, 한국어로 제공한다.
+
+## Out of scope
+- 지금 단계에서는 실제 Kafka 클러스터 설치·운영·코드 구현은 다루지 않는다. 개념·동작 원리 이해가 우선.
