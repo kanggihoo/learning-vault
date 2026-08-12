@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka 핵심 개념 & KRaft vs ZooKeeper 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main>
+  <h1>Kafka 핵심 개념 & KRaft vs ZooKeeper 치트시트</h1>
+  <p class="note">
+    핵심: <strong>Kafka Topic은 여러 Partition으로 쪼개져 여러 Broker에 분산 저장되는,
+    삭제되지 않는 append-only 로그다. 클러스터 metadata는 이제 ZooKeeper가 아니라
+    Kafka 내부 KRaft controller quorum이 관리한다.</strong>
+  </p>
+
+  <h2>한 줄 모델</h2>
+  <pre><code>Producer  → Topic(=Partition들) → Broker(들) → Consumer(Group)
+                  ↑ append-only, retention 기간 동안 안 지워짐
+                  ↑ 같은 key → 같은 Partition → 순서 보장(Partition 단위)
+                  ↑ Partition마다 replica N개(보통 3) 중 1개가 Leader</code></pre>
+
+  <h2>핵심 용어</h2>
+  <pre><code>Event (record)   "무언가 일어났다"는 사실. key + value + timestamp (+header).
+Producer         Topic에 event를 publish(write)하는 client. Consumer와 완전히 decoupled.
+Consumer         Topic을 subscribe(read)하는 client.
+Topic            event가 저장되는 논리적 단위. filesystem의 "폴더"에 대응. multi-producer/subscriber.
+Partition        Topic을 쪼갠 조각. 서로 다른 Broker에 분산. 순서 보장은 Partition 단위.
+Broker           Kafka server 중 storage layer를 담당하는 노드. 여러 Topic·Partition을 가질 수 있음.
+Replication      Partition 단위로 데이터 복사본을 N개(보통 3) 유지. 1개는 Leader, 나머지는 Follower.
+Offset           Consumer가 Partition에서 "어디까지 읽었는지"를 가리키는 위치값.
+Consumer Group   Partition을 그룹 내 Consumer들이 나눠 소비하게 만드는 단위.
+retention        event를 얼마나 오래 보관할지 정하는 per-topic 설정. "읽으면 삭제"가 아님.</code></pre>
+
+  <h2>Kafka 5대 API</h2>
+  <pre><code>Admin API      Topic/Broker 등 관리·조회
+Producer API   Topic에 publish(write)
+Consumer API   Topic을 subscribe(read)
+Streams API    topic → 변환/집계/join/windowing → topic (stateful stream processing)
+Connect API    외부 시스템(DB 등)과 event를 continuous하게 import/export</code></pre>
+
+  <h2>Redis Streams → Kafka 대응</h2>
+  <pre><code>Stream 1개              → Topic 1개 (단, Kafka Topic은 Partition으로 분산됨)
+단일 인스턴스(+replica)  → Broker 여러 대로 구성된 Cluster
+Consumer Group + PEL     → Consumer Group + Offset commit (개념은 동일)
+XACK 안 하면 안 지워짐   → 애초에 consume해도 안 지워짐 (retention 기간 내 항상 replay 가능)</code></pre>
+
+  <h2>7가지 대표 사용 사례 (요약)</h2>
+  <pre><code>메시징           ActiveMQ/RabbitMQ 대체. 처리량·파티셔닝·복제·내결함성 우위.
+웹사이트 활동 추적  Kafka의 원조 사용 사례. 대용량 사용자 이벤트.
+메트릭            분산 앱의 통계를 중앙 피드로 집계.
+로그 집계          Scribe/Flume 대체. 낮은 지연, 다중 소스 지원.
+스트림 처리        topic→가공→topic 파이프라인. Kafka Streams / Storm / Samza.
+이벤트 소싱        상태 변경을 시간순 사건으로 기록하는 설계의 백엔드.
+커밋 로그          분산 시스템의 외부 commit-log. log compaction. BookKeeper 유사.</code></pre>
+
+  <h2>ZooKeeper mode vs KRaft mode</h2>
+  <pre><code>                ZooKeeper mode                    KRaft mode
+운영 시스템 수    Kafka + ZooKeeper 앙상블 (2개)     Kafka만 (1개)
+metadata 관리    외부 ZooKeeper                    Kafka 내부 controller quorum (Raft)
+controller 역할  broker 1대가 겸임                  독립된 controller 프로세스(역할 분리)
+식별자           broker.id (ZK가 auto-generate 지원) node.id 로 broker/controller 통일 식별
+접속 설정        zookeeper.connect 등               controller.listener.names, listeners
+확장성           Partition 수 커지면 한계            대규모 Partition에 더 강함
+신규 도입 권장    아니오 (legacy)                    예 (기본값)</code></pre>
+
+  <h2>KRaft에서 사라진 것 → 왜</h2>
+  <pre><code>password.encoder.*        → Kafka가 record에 저장(암호화는 별도 계층)
+control.plane.listener.name → controller.listener.names 로 대체
+reserved.broker.max.id 등  → node.id 로 통일
+inter.broker.protocol.version → metadata.version (+kafka-features.sh)
+zookeeper.* 전체           → 불필요 (ZooKeeper 자체가 없음)
+leader.imbalance.per.broker.percentage → 제거 (ZK 전용 개념)</code></pre>
+
+  <h2>자주 헷갈리는 지점</h2>
+  <pre><code>Partition ≠ Broker        한 Broker는 여러 Topic의 여러 Partition을 가질 수 있음.
+순서 보장 = Partition 단위  Topic 전체 순서는 보장되지 않음.
+consume ≠ 삭제             retention 기간 동안 항상 다시 읽을 수 있음.
+KRaft controller ≠ broker  역할이 분리됨 (data 요청 vs metadata 요청).</code></pre>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://kafka.apache.org/intro">Apache Kafka: Introduction</a></li>
+    <li><a href="https://kafka.apache.org/uses">Apache Kafka: Use Cases</a></li>
+    <li><a href="https://kafka.apache.org/documentation/#kraft">Apache Kafka Documentation: KRaft</a></li>
+  </ul>
+
+  <p>
+    관련 레슨:
+    <a href="../lessons/0016-kafka-core-concepts-event-streaming.html">Kafka란 무엇인가</a> ·
+    <a href="../lessons/0017-kafka-use-cases.html">Kafka 활용 사례</a> ·
+    <a href="../lessons/0018-kraft-vs-zookeeper.html">KRaft vs ZooKeeper</a>
+  </p>
+</main>
+</body>
+</html>

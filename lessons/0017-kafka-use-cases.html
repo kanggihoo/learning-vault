@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka를 실제로 어디에 쓰는가: 대표 사용 사례 7가지</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kafka를 실제로 어디에 쓰는가: 대표 사용 사례 7가지</h1>
+  <p class="note">
+    목표: <a href="./0016-kafka-core-concepts-event-streaming.html">이전 레슨</a>에서 배운
+    Topic/Partition/Producer/Consumer가 <strong>실무에서 어떤 문제를 풀 때 쓰이는지</strong> 7가지
+    대표 사례로 감을 잡는다. 마지막에는 당신이 실제로 도입하려는 상황에 대입해본다.
+  </p>
+
+  <h2>1. 일곱 가지 대표 사용 사례</h2>
+  <p>
+    Apache Kafka 공식 문서(<a href="https://kafka.apache.org/uses">Use Cases</a>)가 정리한 사례들이다.
+    각 사례가 <strong>왜 Kafka로 풀리는지</strong>에 집중해서 보자.
+  </p>
+
+  <div class="grid">
+    <section class="card">
+      <h3>① 메시징</h3>
+      <p>전통적인 메시지 브로커(<strong>ActiveMQ, RabbitMQ</strong>)의 대체.
+      처리를 producer와 분리하거나, 처리되지 않은 메시지를 버퍼링하는 용도.<br>
+      Kafka는 더 나은 처리량, 내장 파티셔닝, 복제, 내결함성을 제공해
+      <strong>대규모</strong> 메시지 처리에 강하다.<br>
+      <em>특징: 처리량은 낮아도 낮은 지연 시간 + 강한 내구성 보장이 필요한 경우가 많다.</em></p>
+    </section>
+    <section class="card">
+      <h3>② 웹사이트 활동 추적</h3>
+      <p>Kafka의 <strong>원래 사용 사례</strong>. 페이지 조회, 검색 등 사용자 활동을
+      활동 유형별 Topic에 발행 → 실시간 처리/모니터링, 오프라인 리포팅(Hadoop 등)에서 구독.<br>
+      <em>특징: 페이지 조회마다 이벤트가 발생해 볼륨이 매우 크다.</em></p>
+    </section>
+    <section class="card">
+      <h3>③ 메트릭</h3>
+      <p>운영 모니터링 데이터에 자주 사용. 분산 애플리케이션들의 통계를
+      집계해 <strong>중앙 집중식 피드</strong>를 만든다.</p>
+    </section>
+    <section class="card">
+      <h3>④ 로그 집계</h3>
+      <p>여러 서버의 물리적 로그 파일을 모아 중앙(파일 서버, HDFS 등)에 저장하는
+      전통적 방식의 대체. <strong>Scribe, Flume</strong>과 비교됨.<br>
+      Kafka는 파일 세부사항을 추상화해 로그를 메시지 스트림으로 다루므로
+      <strong>더 낮은 지연 시간</strong>과 다중 데이터 소스 지원이 쉽다.</p>
+    </section>
+    <section class="card">
+      <h3>⑤ 스트림 처리</h3>
+      <p>여러 단계로 구성된 처리 파이프라인: 원시 데이터를 Topic에서 소비 →
+      집계·보강·변환 → 새 Topic에 발행 → 다음 단계가 다시 소비.<br>
+      <strong>Kafka Streams</strong> 라이브러리가 이를 지원. 대안으로
+      <strong>Apache Storm, Apache Samza</strong>.</p>
+    </section>
+    <section class="card">
+      <h3>⑥ 이벤트 소싱</h3>
+      <p><a href="https://martinfowler.com/eaaDev/EventSourcing.html">Event sourcing</a>은
+      상태 변경을 시간순 레코드 시퀀스로 기록하는 애플리케이션 설계 방식.<br>
+      Kafka의 큰 저장 로그를 지지하는 특성이 이런 애플리케이션의 백엔드로 적합하게 만든다.</p>
+    </section>
+    <section class="card">
+      <h3>⑦ 커밋 로그</h3>
+      <p>분산 시스템을 위한 <strong>외부 commit-log</strong> 역할.
+      노드 간 데이터 복제를 돕고, 장애 노드의 재동기화 메커니즘으로 동작.<br>
+      <strong>log compaction</strong> 기능이 이 용도를 지원. <strong>Apache BookKeeper</strong>와 유사한 위치.</p>
+    </section>
+  </div>
+
+  <h2>2. 왜 이렇게 다양한 사례에 쓰이는가</h2>
+  <p>
+    표면적으로 "메시징"과 "커밋 로그"는 완전히 다른 문제처럼 보인다. 하지만 둘 다
+    <a href="./0016-kafka-core-concepts-event-streaming.html">이전 레슨</a>에서 본 <strong>같은 하나의 성질</strong>에서 나온다.
+  </p>
+  <pre class="flow"><code>Kafka의 본질: "순서가 보장된, 삭제되지 않는, 분산 저장된 append-only 로그"
+
+  이 로그를 —
+    빨리, 짧게 소비하면            → 메시징
+    유형별로 나눠서 쌓으면          → 활동 추적 / 메트릭 / 로그 집계
+    단계별로 다시 발행하며 이어가면  → 스트림 처리
+    "상태"가 아니라 "변경 사건"으로 다루면 → 이벤트 소싱
+    노드 간 복제 순서의 기준으로 쓰면 → 커밋 로그
+
+→ 하나의 데이터 구조가 관점에 따라 일곱 가지 얼굴로 보이는 것이다.</code></pre>
+
+  <h2>3. 비교 대상으로 감 잡기</h2>
+  <table>
+    <thead><tr><th style="width:20%">Kafka 사용 사례</th><th style="width:32%">전통적으로 쓰던 것</th><th>Kafka가 더 나은 점</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>메시징</td>
+        <td>ActiveMQ, RabbitMQ</td>
+        <td>더 나은 처리량, 내장 파티셔닝·복제·내결함성.</td>
+      </tr>
+      <tr>
+        <td>로그 집계</td>
+        <td>Scribe, Flume, 파일 서버/HDFS 직접 적재</td>
+        <td>낮은 지연 시간, 여러 데이터 소스·분산 소비를 쉽게 지원.</td>
+      </tr>
+      <tr>
+        <td>스트림 처리</td>
+        <td>Apache Storm, Apache Samza</td>
+        <td>Kafka Streams는 Kafka에 내장되어 별도 클러스터 운영이 필요 없다.</td>
+      </tr>
+      <tr>
+        <td>커밋 로그</td>
+        <td>Apache BookKeeper</td>
+        <td>같은 시스템으로 메시징·스트림 처리까지 함께 커버.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>4. 당신의 상황에 대입해보기</h2>
+  <p class="warn">
+    당신은 백엔드 개발자로서 <strong>실제 Kafka 도입을 계획하고 있다.</strong> 지금 겪고 있거나
+    예상되는 문제가 위 7가지 중 <strong>어느 것에 가장 가까운지</strong> 스스로 짚어보자.
+    이후 레슨의 방향(Consumer Group 상세, Kafka Streams, 특정 도입 패턴 등)을
+    여기서 정할 수 있다.
+  </p>
+  <div class="grid">
+    <section class="card">
+      <h3>서비스 간 이벤트 전달이 목적이라면</h3>
+      <p>→ <strong>메시징</strong> 또는 <strong>이벤트 소싱</strong> 쪽에 가깝다.
+      Producer/Consumer, Consumer Group 소비 방식을 깊게 다루는 레슨이 유용하다.</p>
+    </section>
+    <section class="card">
+      <h3>여러 소스의 로그·지표를 모으는 게 목적이라면</h3>
+      <p>→ <strong>로그 집계 / 메트릭</strong>에 가깝다. Producer 다중화, retention 정책,
+      Kafka Connect(source connector) 쪽 레슨이 유용하다.</p>
+    </section>
+    <section class="card">
+      <h3>데이터를 단계별로 가공해 전달하는 게 목적이라면</h3>
+      <p>→ <strong>스트림 처리</strong>에 가깝다. Kafka Streams API, topic-to-topic 파이프라인
+      구조를 다루는 레슨이 유용하다.</p>
+    </section>
+  </div>
+
+  <h2>5. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자.</p>
+  <section class="quiz" aria-label="Kafka 사용 사례 퀴즈">
+    <p><strong>Q1.</strong> Kafka의 "원래" 사용 사례는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">로그 집계</button>
+    <button type="button" data-target="answer-1" data-answer="correct">웹사이트 활동 추적</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">이벤트 소싱</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> Kafka가 메시징 영역에서 비교되는 전통 시스템은?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">Apache Storm</button>
+    <button type="button" data-target="answer-2" data-answer="correct">RabbitMQ</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">HDFS</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> 상태 변경을 시간순 사건으로 기록하는 설계 방식은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">로그 집계</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">커밋 로그</button>
+    <button type="button" data-target="answer-3" data-answer="correct">이벤트 소싱</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> 여러 단계에서 Topic을 읽고 다시 발행하며 데이터를 가공하는 것은?</p>
+    <button type="button" data-target="answer-4" data-answer="correct">스트림 처리</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">메트릭</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">메시징</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kafka.apache.org/uses">Apache Kafka: Use Cases</a> — 이 레슨의 원본.</li>
+    <li><a href="https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying/">
+      LinkedIn Engineering: The Log — What every software engineer should know about real-time data's unifying abstraction</a>
+      — 위 사례들이 실제로 어떻게 동작하는지에 대한 개요(Kafka 원작자 Jay Kreps의 글).</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/apachekafka/">r/apachekafka</a> — 도입 사례·아키텍처 논의가 활발하다.</li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="../reference/0009-kafka-core-concepts-cheatsheet.html">Kafka 핵심 개념 치트시트</a>.<br>
+    <strong>다음 레슨:</strong> <a href="./0018-kraft-vs-zookeeper.html">클러스터 metadata를 누가 관리하는가(KRaft vs ZooKeeper)</a>.<br>
+    "내 상황은 위 7가지 중 어디에도 딱 안 맞는 것 같다"면 그 상황을 바로 설명해달라 —
+    그게 다음 레슨을 맞춤 설계하는 가장 좋은 정보다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. 각 사례가 어떤 전통 시스템을 대체하는지, 그리고 왜 Kafka가 그 자리에 들어가는지를 다시 떠올려보자.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>

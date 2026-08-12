@@ -126,8 +126,27 @@ This index points to saved learning material in this Learning Vault.
 
 - [0007 - Transactional Outbox 치트시트](./reference/0007-transactional-outbox-cheatsheet.html)
 - [0008 - Redis Streams Consumer Group 치트시트](./reference/0008-redis-streams-consumer-group-cheatsheet.html)
+- [0010 - Redis Streams 내부 구조 시각화](./reference/0010-redis-streams-internals-visual.html)
 
 **Learning Records**
 
 - [0019 - Transactional Outbox 학습 기준점](./learning-records/0019-transactional-outbox-baseline.md)
 - [0020 - Redis Streams Consumer Group 학습 기준점](./learning-records/0020-redis-streams-consumer-group-baseline.md)
+
+## Kafka
+
+### Core Concepts, Use Cases, KRaft vs ZooKeeper
+
+**Lessons**
+
+- [0016 - Kafka란 무엇인가: Event Streaming과 핵심 개념](./lessons/0016-kafka-core-concepts-event-streaming.html)
+- [0017 - Kafka를 실제로 어디에 쓰는가: 대표 사용 사례 7가지](./lessons/0017-kafka-use-cases.html)
+- [0018 - 카프카 클러스터의 두뇌: ZooKeeper에서 KRaft로](./lessons/0018-kraft-vs-zookeeper.html)
+
+**References**
+
+- [0009 - Kafka 핵심 개념 & KRaft vs ZooKeeper 치트시트](./reference/0009-kafka-core-concepts-cheatsheet.html)
+
+**Learning Records**
+
+- [0021 - Kafka 학습 시작 - 실무 도입 목표 기준점](./learning-records/0021-kafka-learning-baseline.md)

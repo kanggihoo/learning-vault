@@ -20,6 +20,13 @@
     그 작업을 <strong>누가 어떻게 회수하는지</strong>를 설명할 수 있게 된다.
     핵심은 Consumer Group, PEL(Pending Entries List), XACK, XAUTOCLAIM 네 개다.
   </p>
+  <p class="note">
+    📐 그림으로 먼저 보고 싶다면:
+    <a href="../reference/0010-redis-streams-internals-visual.html"><strong>Redis Streams 내부 구조 시각화</strong></a> —
+    Producer/Redis/Worker 배치도, Stream 엔트리 해부, PEL이 시간에 따라 변하는 5단계 타임라인,
+    그리고 "worker 개수 = 서버 개수인가?"에 대한 답이 SVG로 그려져 있다.
+    이 레슨의 3~5절을 읽다 막히면 그 그림으로 돌아오면 된다.
+  </p>
 
   <h2>0. 이전 레슨과의 연결 — 발행까지는 봤다, 그 다음?</h2>
   <pre class="flow"><code>Outbox 레슨(0013)의 끝:
@@ -79,7 +86,9 @@ XADD로 A,B,C,D가 순서대로 들어오면 Redis가 분배:
       <h3>② XREADGROUP</h3>
       <p><strong>Worker가 계속 호출</strong>. 메시지를 가져온다.<br>
       <code>XREADGROUP GROUP ai-workers worker-1 BLOCK 0 COUNT 10 STREAMS jobs:ai &gt;</code><br>
-      <code>&gt;</code> = "아무에게도 배달 안 된 새 메시지". 이게 핵심 특수 기호.</p>
+      <code>&gt;</code> = "아무에게도 배달 안 된 새 메시지". 이게 핵심 특수 기호.<br>
+      <code>BLOCK</code>은 폴링 주기가 아니라 <em>최대 대기 시간</em> —
+      <a href="../reference/0010-redis-streams-internals-visual.html#pull">시각화 3절</a>.</p>
     </section>
     <section class="card">
       <h3>③ XACK</h3>
@@ -118,6 +127,17 @@ XADD로 A,B,C,D가 순서대로 들어오면 Redis가 분배:
     <strong>왜 이렇게 번거롭게?</strong> Worker가 메시지를 받자마자 "끝"으로 표시하면,
     처리 도중 죽었을 때 그 작업은 영영 사라진다. PEL + XACK는 "확실히 끝났다는 확인이 있기 전까지는
     미완료로 간주하겠다"는 보수적 설계다. at-least-once를 만드는 장치 중 하나.
+  </p>
+  <p>
+    PEL 안에 정확히 무엇이 들어 있는지(소유 consumer · idle 시간 · delivery count)와
+    엔트리 하나가 XADD → 배달 → 사망 → 회수 → XACK를 거치며 PEL이 어떻게 변하는지는
+    <a href="../reference/0010-redis-streams-internals-visual.html#pel">시각화 자료의 3~4절</a>에
+    표와 타임라인으로 그려두었다.
+  </p>
+  <p class="warn">
+    <strong>여기서 자주 놓치는 것:</strong> XACK는 <strong>PEL에서만</strong> 지운다.
+    Stream에서는 엔트리가 그대로 남는다. 즉 Stream은 읽어도 줄어들지 않는다.
+    <code>XADD jobs:ai MAXLEN ~ 10000 *</code> 처럼 길이를 잘라주지 않으면 메모리가 무한히 늘어난다.
   </p>
 
   <h2>4. Worker가 죽었을 때 — PEL이 회수의 단서가 된다</h2>
@@ -246,7 +266,9 @@ XADD로 A,B,C,D가 순서대로 들어오면 Redis가 분배:
       <h3>ai-worker-N 은 왜 여러 개인가</h3>
       <p>LLM 호출은 길고(수 분) CPU/GPU 바운드. 한 Worker가 한 작업을 붙잡고 있으면 병목.
       Consumer Group으로 여러 Worker가 <strong>작업을 병렬 분산</strong> → 처리량 확장.
-      아키텍처의 "AI 작업량이 늘면 Python Worker만 수평 확장"이 이걸 가리킨다.</p>
+      아키텍처의 "AI 작업량이 늘면 Python Worker만 수평 확장"이 이걸 가리킨다.<br>
+      <em>Worker 개수만큼 서버가 필요한 건 아니다</em> —
+      <a href="../reference/0010-redis-streams-internals-visual.html#workers">시각화 5절</a> 참고.</p>
     </section>
     <section class="card">
       <h3>lease 만료 = min-idle-time</h3>
@@ -370,7 +392,8 @@ Consumer Group이 주는 것:
 
   <p>
     관련 자료:
-    <a href="../reference/0008-redis-streams-consumer-group-cheatsheet.html">Redis Streams Consumer Group 치트시트</a>.
+    <a href="../reference/0010-redis-streams-internals-visual.html">Redis Streams 내부 구조 시각화</a> (그림으로 복습) ·
+    <a href="../reference/0008-redis-streams-consumer-group-cheatsheet.html">Redis Streams Consumer Group 치트시트</a> (명령어 빠른 참조).
     이전 레슨:
     <a href="./0013-transactional-outbox-dual-write.html">Dual-write 문제와 Transactional Outbox</a>.
     다음 레슨은 <strong>at-least-once delivery와 멱등성(idempotency)</strong>로 이어진다 —
