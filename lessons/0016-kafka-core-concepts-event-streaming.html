@@ -195,6 +195,15 @@
     Producer/Consumer 관계와 개념적으로 같다 — 다만 Broker가 <strong>여러 대로 분산</strong>된다는 점이 다르다.
   </p>
 
+  <div class="diagram">
+    <img src="../assets/kafka-parttition.webp" alt="Producer가 Broker에 데이터를 push하고 Consumer가 Topic을 구독해 pull하는 구조, Topic 내부가 Partition들로 쪼개져 있는 모습"
+         style="max-width:100%;height:auto;display:block;margin:0 auto;">
+    <p class="note" style="margin-top:10px;">
+      Producer는 <strong>push</strong>(write), Consumer는 <strong>pull</strong>(read + topic 구독) — 그리고
+      Broker 안의 Topic 하나가 실제로는 여러 Partition으로 쪼개져 저장된다는 것을 그대로 보여주는 그림이다.
+    </p>
+  </div>
+
   <div class="card" style="border-color:#0f766e;">
     <h3>자주 나오는 질문 — "여러 대의 Broker, 그럼 이걸 관리하는 별도 서버가 있어야 하지 않나?"</h3>
     <p>
@@ -465,6 +474,44 @@ Partition 0 (Broker 1: <strong>Leader</strong>) ──copy──▶ Broker 2 (<s
 → Broker 1이 죽으면 Follower 중 하나가 새 Leader가 되어
   <strong>data loss 없이</strong> 서비스가 계속된다.</code></pre>
 
+  <div class="card" style="border-color:#0f766e;">
+    <h3>자주 나오는 질문 — "복사본은 어디에 어떻게 저장되나? 별도 관계형 DB나 시계열 DB에 넣는 건가?"</h3>
+    <p>
+      아니다. <strong>Kafka는 외부 DB를 전혀 쓰지 않는다.</strong> RDBMS도, 시계열 DB도 아니고,
+      Kafka 자신이 직접 구현한 <strong>파일 기반의 append-only 로그(Commit Log)</strong> 저장 엔진을 쓴다.
+    </p>
+    <p>
+      Partition 하나 = Broker 로컬 디스크의 <strong>폴더 하나</strong>이고, 그 안에 이벤트가
+      순서대로 쌓인 <strong>로그 파일들</strong>이 있을 뿐이다.
+    </p>
+    <pre class="flow"><code>/kafka-logs/orders-0/
+  00000000000000000000.log       ← 실제 이벤트 데이터 (append-only)
+  00000000000000000000.index     ← offset → 파일 내 위치를 찾는 색인
+  00000000000000000000.timeindex ← timestamp → offset을 찾는 색인
+  00000000000000012000.log       ← 일정 크기를 넘으면 새 segment 파일로 분리
+  ...</code></pre>
+    <p>
+      이벤트가 들어오면 이 로그 파일 맨 뒤에 <strong>순서대로 이어붙이기(append)</strong>만 한다. DB처럼
+      인덱스 트리를 재구성하거나 row를 update/delete하는 과정이 없다 — 오직 append이기 때문에 쓰기
+      성능이 매우 빠르고, <strong>저장된 데이터가 많아져도 쓰기 속도가 거의 떨어지지 않는다</strong>
+      (앞서 나온 "Kafka 성능은 저장 데이터 크기와 거의 무관하다"는 말이 이 구조에서 나온다).
+    </p>
+    <p class="note">
+      <strong>Replication도 결국 "Follower가 Leader를 pull하는 것"으로 이루어진다</strong> — Follower는
+      사실상 Leader에 대한 특수한 Consumer처럼 동작한다.
+    </p>
+    <pre class="flow"><code>① Leader의 log 파일에 새 이벤트가 append됨
+② Follower가 "나 지금 offset 1000까지 읽었는데, 그 뒤에 새 거 있어?"라고 Leader에 계속 요청(pull)
+③ Leader가 새로 쌓인 바이트를 그대로 넘겨줌
+④ Follower가 그 바이트를 자기 로컬 디스크의 같은 위치에 그대로 append</code></pre>
+    <p>
+      그 결과 Follower의 로그 파일은 Leader의 로그 파일과 <strong>바이트 단위로 완전히 동일한 복사본</strong>이
+      된다. 별도의 DB에 구조화해서 저장하는 게 아니라 <strong>파일 자체를 그대로 복제</strong>한다고
+      보면 된다. 이 레슨 맨 처음에 나온 "Topic은 폴더, Event는 파일"이라는 비유가 여기서는 비유가
+      아니라 <strong>실제 구현 방식 그 자체</strong>다.
+    </p>
+  </div>
+
   <div class="card" style="border-color:#b45309;">
     <h3>자주 나오는 질문 — "Broker를 1개만 두는 건 오버엔지니어링인가?"</h3>
     <p>
@@ -550,6 +597,136 @@ Partition 0 (Broker 1: <strong>Leader</strong>) ──copy──▶ Broker 2 (<s
       </tr>
     </tbody>
   </table>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>자주 나오는 질문 — "결국 Kafka도 Redis Streams처럼 Pull + Consumer Group인데, 뭐가 다른가?"</h3>
+    <p>
+      먼저 오해부터 바로잡자: <strong>Kafka에도 Consumer Group이 있다.</strong> 오히려 Redis Streams의
+      Consumer Group이 Kafka 쪽 개념을 본떠 만든 것이다. 두 시스템 다 <strong>Consumer Group = "이
+      Topic/Stream을 여러 worker(Consumer)가 나눠서, 각 event를 그룹 전체 기준으로 딱 한 번만 처리하자"</strong>는
+      같은 목적을 갖는다. 아래 그림의 Consumer A·B는 <strong>둘 다 같은 Consumer Group에 속한 worker들</strong>이다.
+    </p>
+    <p>
+      두 시스템 다 <strong>Consumer가 알아서 물어보고(pull), Consumer Group이 진행 위치를 추적</strong>한다는
+      점도 똑같다. 다른 것은 오직 <strong>"그룹 안에서 누구에게 무엇을 줄지 언제 정하느냐"</strong>다.
+      Kafka Consumer Group은 <strong>Partition 단위로 미리 배정</strong>하고, Redis Streams Consumer Group은
+      Partition이 없으므로 <strong>메시지 하나하나를 요청 시점에 배정</strong>한다.
+    </p>
+    <p class="warn">
+      그리고 이 그림에서 꼭 짚을 것 — 정확히는 <strong>두 겹으로 나눠 봐야 한다.</strong>
+      <strong>Consumer Group의 membership·partition 배정·committed offset 같은 "상태"는
+      Kafka 브로커 안에 있고 Kafka가 직접 관리한다</strong>(브로커 중 한 대가 맡는
+      <em>Group Coordinator</em>가 담당하고, offset은 <code>__consumer_offsets</code>라는
+      Kafka 내부 topic에 실제로 저장된다). Kafka가 "어느 그룹이 있는지 몰라도 된다"는 게 아니라
+      정확히 알고 계속 추적한다는 뜻이다. 반면 <strong>그 그룹 소속으로 실제 메시지를 pull해 처리하는
+      Consumer "프로세스" 자체</strong>는 Producer와 같은 위치 — <strong>Kafka Cluster(Broker들) 밖에서
+      네가 따로 배포·실행하는 client 애플리케이션</strong>이다. Kafka(서버 쪽)를 이루는 것은
+      <strong>Broker와 그 안의 Partition, 그리고 Group Coordinator가 관리하는 그룹 상태</strong>이고,
+      Consumer 프로세스는 그 Broker에 TCP로 접속해 "나 이 그룹 멤버인데, 이 Partition 읽을게"라고
+      요청하는 외부 프로그램이다.
+    </p>
+    <div class="diagram">
+      <svg viewBox="0 0 820 460" role="img" aria-label="Broker 내부의 Partition, 그리고 Broker 밖에서 접속하는 Consumer를 포함한 Kafka와 Redis Streams 비교">
+        <defs>
+          <marker id="arrowCmp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+          </marker>
+          <marker id="arrowCmpOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309"/>
+          </marker>
+        </defs>
+
+        <!-- Kafka half -->
+        <text x="20" y="20" font-size="13" font-weight="700" fill="#0f766e">Kafka — Broker(창고) 안의 Partition(상자)을 통째로 배정 (고정)</text>
+
+        <!-- Broker 1 box -->
+        <rect x="20" y="32" width="180" height="120" rx="8" fill="#f9fafb" stroke="#374151" stroke-width="2"/>
+        <text x="110" y="50" font-size="11.5" font-weight="700" text-anchor="middle" fill="#111827">Broker 1 (창고)</text>
+        <rect x="34" y="60" width="150" height="38" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+        <text x="109" y="83" font-size="11" font-weight="700" text-anchor="middle" fill="#0f766e">Partition 0</text>
+        <rect x="34" y="104" width="150" height="38" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+        <text x="109" y="127" font-size="11" font-weight="700" text-anchor="middle" fill="#0f766e">Partition 1</text>
+
+        <!-- Broker 2 box -->
+        <rect x="220" y="32" width="180" height="120" rx="8" fill="#f9fafb" stroke="#374151" stroke-width="2"/>
+        <text x="310" y="50" font-size="11.5" font-weight="700" text-anchor="middle" fill="#111827">Broker 2 (창고)</text>
+        <rect x="234" y="60" width="150" height="38" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+        <text x="309" y="83" font-size="11" font-weight="700" text-anchor="middle" fill="#0f766e">Partition 2</text>
+        <rect x="234" y="104" width="150" height="38" rx="5" fill="#eef7f5" stroke="#0f766e"/>
+        <text x="309" y="127" font-size="11" font-weight="700" text-anchor="middle" fill="#0f766e">Partition 3</text>
+
+        <text x="210" y="168" font-size="10" text-anchor="middle" fill="#4b5563">← Kafka Cluster 내부 (Broker + Partition만 여기 있음) →</text>
+        <rect x="16" y="26" width="388" height="150" rx="10" fill="none" stroke="#0f766e" stroke-width="1.5" stroke-dasharray="5 3"/>
+
+        <!-- Consumer Group box (still OUTSIDE the cluster box) -->
+        <rect x="488" y="30" width="184" height="215" rx="10" fill="none" stroke="#b45309" stroke-width="1.5" stroke-dasharray="5 3"/>
+        <text x="580" y="24" font-size="11" font-weight="700" text-anchor="middle" fill="#b45309">Consumer Group "orders-group"</text>
+        <rect x="500" y="45" width="160" height="50" rx="8" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+        <text x="580" y="76" font-size="12.5" font-weight="700" text-anchor="middle" fill="#7c2d12">Consumer A (외부 프로세스)</text>
+        <rect x="500" y="185" width="160" height="50" rx="8" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+        <text x="580" y="216" font-size="12.5" font-weight="700" text-anchor="middle" fill="#7c2d12">Consumer B (외부 프로세스)</text>
+
+        <line x1="184" y1="70" x2="500" y2="65" stroke="#0f766e" stroke-width="2" marker-end="url(#arrowCmp)"/>
+        <line x1="184" y1="114" x2="500" y2="78" stroke="#0f766e" stroke-width="2" marker-end="url(#arrowCmp)"/>
+        <line x1="384" y1="70" x2="500" y2="205" stroke="#0f766e" stroke-width="2" marker-end="url(#arrowCmp)"/>
+        <line x1="384" y1="114" x2="500" y2="218" stroke="#0f766e" stroke-width="2" marker-end="url(#arrowCmp)"/>
+
+        <text x="580" y="270" font-size="10.5" text-anchor="middle" fill="#4b5563">
+          <tspan x="580" dy="0">Consumer는 TCP로 해당 Partition의</tspan>
+          <tspan x="580" dy="15">Leader Broker에 직접 접속해 pull</tspan>
+        </text>
+        <text x="290" y="290" font-size="11" text-anchor="middle" fill="#4b5563">
+          배정은 리밸런싱 전까지 <tspan font-weight="700">고정</tspan> — A는 계속 0,1만, B는 계속 2,3만 담당
+        </text>
+
+        <line x1="0" y1="320" x2="820" y2="320" stroke="#deded6" stroke-width="1"/>
+
+        <!-- Redis half -->
+        <text x="20" y="346" font-size="13" font-weight="700" fill="#b45309">Redis Streams — Partition 없이, 메시지 단위로 그때그때 배정</text>
+        <rect x="20" y="360" width="180" height="70" rx="6" fill="#fafaf8" stroke="#374151" stroke-width="2"/>
+        <text x="110" y="382" font-size="11.5" font-weight="700" text-anchor="middle" fill="#111827">Redis 인스턴스 (Stream 1개)</text>
+        <rect x="34" y="392" width="150" height="14" fill="#fca5a5"/>
+        <rect x="34" y="410" width="150" height="14" fill="#93c5fd"/>
+
+        <rect x="488" y="338" width="184" height="122" rx="10" fill="none" stroke="#b45309" stroke-width="1.5" stroke-dasharray="5 3"/>
+        <text x="580" y="333" font-size="11" font-weight="700" text-anchor="middle" fill="#b45309">Consumer Group "orders-group"</text>
+        <rect x="500" y="352" width="160" height="42" rx="8" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+        <text x="580" y="378" font-size="12.5" font-weight="700" text-anchor="middle" fill="#7c2d12">Consumer A</text>
+        <rect x="500" y="406" width="160" height="42" rx="8" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+        <text x="580" y="432" font-size="12.5" font-weight="700" text-anchor="middle" fill="#7c2d12">Consumer B</text>
+
+        <line x1="200" y1="397" x2="500" y2="373" stroke="#b45309" stroke-width="2" marker-end="url(#arrowCmpOrange)"/>
+        <line x1="200" y1="415" x2="500" y2="427" stroke="#b45309" stroke-width="2" marker-end="url(#arrowCmpOrange)"/>
+
+        <text x="740" y="380" font-size="10" text-anchor="middle" fill="#4b5563">
+          <tspan x="740" dy="0">다음 메시지를 누가</tspan>
+          <tspan x="740" dy="14">가져갈지 정해져 있지</tspan>
+          <tspan x="740" dy="14">않음 — 먼저 부르는</tspan>
+          <tspan x="740" dy="14" font-weight="700">쪽이 가져감</tspan>
+        </text>
+      </svg>
+    </div>
+    <p class="note">
+      그래서 컨슈머를 늘려서 얻는 병렬성의 <strong>상한선</strong>도 다르다. Kafka는
+      <strong>Partition 개수</strong>가 상한선이다(Partition 4개인데 Consumer가 5명이면 1명은 놀게 된다).
+      Redis Streams는 Partition이 없으니 이런 상한선 자체가 없고, 컨슈머를 늘리는 만큼 그때그때
+      메시지가 나뉘어 간다 — 대신 "몇 대의 창구가 물리적으로 나뉘어 있는가"라는 확장 단위가 없다는 뜻이기도 하다.
+    </p>
+
+    <div class="diagram">
+      <img src="../assets/kafka-architecture.jpg" alt="Kafka Cluster 안 Broker 1/2/3에 Topic A, B의 Partition들이 Leader/Follower로 나뉘어 저장되고, Cluster 밖에 Consumer Group A/B/C가 각 Partition을 구독하는 실제 아키텍처 다이어그램"
+           style="max-width:100%;height:auto;display:block;margin:0 auto;">
+      <p class="note" style="margin-top:10px;">
+        지금까지 손으로 그린 그림을 실제 아키텍처로 확인해보자. <strong>Kafka Cluster(파란 점선) 안</strong>에
+        Broker 1·2·3이 있고, 그 안에 Topic A·B의 Partition들이 <strong>Leader(주황)/Follower(빨강)</strong>로
+        나뉘어 저장돼 있다. 그리고 <strong>Consumer Group A·B·C는 전부 Cluster 박스 밖</strong>에 그려져
+        있다 — 지금까지 얘기한 "Consumer(그룹의 실행 주체)는 Kafka Cluster 밖의 client"라는 게 그림에서도
+        그대로 확인된다. 화살표가 각 Partition에서 특정 Consumer로 뻗어 있는 것도 "Partition을 Consumer에게
+        통째로 배정한다"는 것과 같은 그림이다. 왼쪽의 <strong>Zookeeper Ensemble</strong>은 Controller 역할을
+        예전에 전담했던 별도 시스템이다 — <a href="./0018-kraft-vs-zookeeper.html">다음 다음 레슨</a>에서 다룬다.
+      </p>
+    </div>
+  </div>
+
   <p class="warn">
     가장 자주 넘어지는 지점: <strong>"Partition = Broker"가 아니다.</strong>
     한 Broker는 <strong>여러 Topic의 여러 Partition</strong>을 동시에 가질 수 있다.
@@ -557,7 +734,154 @@ Partition 0 (Broker 1: <strong>Leader</strong>) ──copy──▶ Broker 2 (<s
     <a href="./0018-kraft-vs-zookeeper.html">이 metadata를 누가, 어떻게 관리하는지</a>는 다음 다음 레슨에서 다룬다.
   </p>
 
-  <h2>9. 회상 퀴즈</h2>
+  <h2>9. Topic·Partition·Consumer Group 관계 총정리 (Teach Session Q&amp;A)</h2>
+  <p class="note">
+    지금까지 Teach Session에서 나온 질문들을 흐름대로 다시 묶었다. 하나하나가 개별 지식이 아니라
+    <strong>"왜 이렇게 설계됐는가"라는 하나의 이야기</strong>로 이어진다는 걸 확인하는 게 목적이다.
+  </p>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>① Topic 하나 안에 여러 종류의 Event, 그리고 Partition이 순서를 보장하는 단위</h3>
+    <p>
+      <strong>"주문" Topic 안에 "생성", "취소" 같은 서로 다른 이벤트 종류가 함께 담기는 것 — 맞다.</strong>
+      Topic은 그릇, Event는 그 안에 담기는 개별 레코드일 뿐이라 "생성"이든 "취소"든 같은
+      <code>orders</code> Topic에 다 들어갈 수 있다. 보통 event의 value 안에
+      <code>"type": "ORDER_CREATED"</code> 같은 필드로 종류를 구분한다.
+    </p>
+    <p>
+      이 Topic의 <strong>Partition이 1개뿐이라면</strong>, 그 안에 컨슈머가 몇 명 붙든 규칙상 딱 한 명만
+      읽을 수 있으니 100건이 들어와도 <strong>한 컨슈머가 순서대로 하나씩</strong> 처리하게 된다 — 느리지만
+      "생성 다음에 취소가 먼저 처리되는 일"이 절대 없다는 강한 순서 보장을 준다.
+    </p>
+    <p>
+      그리고 Partition과 Consumer의 관계는 <strong>"N:1"</strong>이다(여러 Partition → Consumer 한 명은
+      가능, 그 반대는 불가능). Partition 9개 중 1·2·3번을 Consumer 1이 한꺼번에 맡는 것도 가능하다.
+      반대로 <strong>Partition 하나를 여러 Consumer가 나눠 읽는 것은 금지</strong>되어 있는데, 그 이유가
+      바로 위의 순서 보장이다 — 같은 Partition을 A, B가 동시에 읽으면 "취소가 생성보다 먼저 처리되는"
+      순서 역전이 생길 수 있어서, Kafka는 아예 "Partition 하나 = 그 순간 담당 Consumer 한 명"으로
+      규칙을 못박아 이 문제를 원천 차단한다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>② Partition을 여러 개로 나누는 이유 — "동시 처리"를 가능하게 만드는 전제 조건</h3>
+    <p>
+      Partition을 여러 개로 쪼개는 것은 단순히 부하가 한쪽으로 몰리는 걸 막는 정도가 아니라,
+      <strong>애초에 여러 명이 동시에 읽는 것 자체를 가능하게 만드는 전제 조건</strong>이다. Topic에
+      Partition이 딱 1개뿐이면, 그 그룹에 Consumer를 아무리 여러 명 붙여도 규칙상 한 순간에 1명만
+      읽을 수 있으니 병렬성은 <strong>항상 1로 고정</strong>된다. Partition을 9개로 나누면 최대 9명이
+      동시에(각자 다른 Partition을) 처리할 수 있다 — <strong>Partition 개수 = 이 Topic을 동시에 몇 명이
+      나눠 읽을 수 있는지의 물리적 상한선</strong>이다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>③ Consumer Group 안에 Consumer를 여러 명 두는 이유 — 병렬 처리(처리량 확장)</h3>
+    <p>
+      Consumer 하나가 초당 100개를 처리한다면, 같은 그룹에 3명을 붙이면 이론상 초당 300개까지
+      처리 가능하다 — 각자 다른 Partition을 맡아 <strong>동시에</strong> 일하기 때문이다. 그래서 실무에서
+      "이 Topic 처리량을 늘리자"는 요구는 거의 항상 <strong>Partition 개수와 Consumer 개수를 함께</strong>
+      늘리는 얘기가 된다. Partition만 늘리면 그걸 읽을 Consumer가 없어서 소용없고, Consumer만 늘리면
+      받아줄 Partition이 없어서 남는 Consumer는 그냥 논다(idle).
+    </p>
+    <p class="warn">
+      실무에서는 <strong>Consumer 개수를 Partition 개수 이하로 맞춰서 idle을 만들지 않는 게 기본</strong>이다.
+      "혹시 몰라서" 예비 Consumer를 상시로 더 띄워두는 hot-standby 전략은 흔하지 않다 — 리밸런싱 자체가
+      보통 몇 초 안에 끝나기 때문에, 장애 대응은 예비 인력을 미리 놀리는 것보다 <strong>"죽으면 자동
+      재시작"(k8s 등 오케스트레이션)</strong>에 맡기는 것이 표준이다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>④ subscribe()는 언제 일어나나 — 컨슈머 프로세스가 뜨는 순간</h3>
+    <p>
+      Broker에 미리 등록해두는 정적 설정이 아니라, <strong>Consumer 애플리케이션이 실행되는 시점(런타임)에
+      코드가 <code>subscribe(["orders"])</code>를 호출</strong>하면서 그룹 참여(JoinGroup)가 일어난다.
+    </p>
+    <pre class="flow"><code>애플리케이션 시작
+ → Kafka Consumer 객체 생성
+ → consumer.subscribe(["orders"])   ← 여기서 그룹 참여 선언(JoinGroup)
+ → while(true) { consumer.poll(...) ... 처리 ... }</code></pre>
+    <p>
+      프로세스가 죽으면 그 구독/멤버십도 같이 사라지고(하트비트 끊김 → 리밸런싱), 다시 살아나면
+      다시 subscribe하면서 새로 join한다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>⑤ Pull 방식 — Redis의 BLOCK과 개념적으로 같은 long-polling</h3>
+    <p>
+      Kafka의 <code>poll()</code>도 짧은 간격으로 계속 찔러보는 busy-loop가 아니라 <strong>long-polling</strong>이다.
+    </p>
+    <ul>
+      <li><code>fetch.min.bytes</code> — 최소 이만큼 데이터가 쌓이기 전엔 응답 안 줘도 됨</li>
+      <li><code>fetch.max.wait.ms</code> — 근데 그 최소량이 안 채워져도 이 시간이 지나면 빈손이라도 응답</li>
+    </ul>
+    <p>
+      Consumer가 fetch 요청을 보내면 Broker는 그 요청을 쥔 채로 데이터가 쌓이거나 타임아웃될 때까지
+      기다린다 — 정확히 Redis <code>XREAD BLOCK &lt;ms&gt;</code>와 같은 아이디어다. 매번 헛수고로
+      왕복하지 않고, 커넥션 하나를 잠깐 잡아둔 채 데이터가 실제로 생길 때까지 효율적으로 기다리는 것.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>⑥ Producer는 생산만, 파티션 결정은 Broker가 아니라 Producer 클라이언트가 함</h3>
+    <p>
+      "카프카 내부적으로 분배한다"기보다, <strong>Producer 라이브러리(클라이언트) 쪽에서 미리 계산</strong>한다.
+    </p>
+    <pre class="flow"><code>① Producer가 이벤트를 보낼 때 key(선택)와 value를 넘김
+② Producer 클라이언트 내부의 Partitioner가 계산:
+   - key가 있으면: hash(key) % Partition개수 → 파티션 번호 결정
+   - key가 없으면: 라운드로빈/sticky 방식으로 배분
+③ 이미 계산된 그 파티션 번호를 담당하는 Broker에 직접 전송</code></pre>
+    <p>
+      Broker는 "어느 파티션에 넣을지 고민"하지 않는다 — 이미 정해진 번호로 온 데이터를 그냥 저장할 뿐이다.
+      분배 판단은 Producer 쪽에서 이미 끝나 있다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>⑦ "같은 Consumer Group" = 같은 일을 나눠서 하는 여러 개의 인스턴스</h3>
+    <p>
+      Consumer Group이란 <strong>동일한 로직(같은 코드)을 실행하는 여러 인스턴스가 일을 나눠서 하는
+      단위</strong>다. 결제 서비스를 3대 띄웠다면 그 3대가 다 같은 <code>group.id</code>를 쓰고, Kafka가
+      그들끼리 Partition을 나눠준다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>⑧ Topic과 Consumer Group의 관계 — Topic마다 완전히 독립적</h3>
+    <p>
+      Topic 하나에 어떤 그룹이 구독하는지는 <strong>Topic마다 완전히 독립적으로 다를 수 있다.</strong>
+    </p>
+    <pre class="flow"><code>Topic A ← Group 1, Group 2 (둘 다 구독)
+Topic B ← Group 1만 (Group 1은 A와 B 둘 다 구독 중)
+Topic C ← Group 3만</code></pre>
+    <p>
+      "구독"은 Consumer(그룹) 쪽에서 "나 이 Topic 읽을래"라고 선언하는 행위이지, Topic이 자기
+      구독자를 미리 정해두는 게 아니라서 이런 자유로운 조합이 가능하다. 그리고 Topic A를 Group 1, 2가
+      함께 구독하면, <strong>전달은 두 그룹 모두에게 각자 온전히(fan-out)</strong> 이루어지고, <strong>처리는
+      각 그룹 내부에서 파티션 담당자 한 명만</strong> 한다 — "그룹 간엔 중복 전달, 그룹 내에선 분업"이라는
+      이중 구조다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>⑨ Partition은 Topic 단위로 나뉘고, 여러 Broker에 분산 배치된다</h3>
+    <p>
+      Partition 개수는 <strong>Topic마다 독립적으로 설정</strong>한다 — <code>orders</code> Topic은 9개,
+      <code>payments</code> Topic은 6개처럼 토픽별로 완전히 다르게 정할 수 있다.
+    </p>
+    <p>
+      그리고 Broker가 여러 대라면, 한 Topic의 Partition들은 <strong>여러 Broker에 걸쳐 분산 배치</strong>된다
+      (예: Broker 1에 Partition 0·1, Broker 2에 Partition 2·3). 이 배치는 Topic을 처음 만들 때
+      <strong>Controller가 자동으로 계산</strong>해서 Leader/Follower가 Broker들에 고르게 퍼지도록
+      정해준다 — 이것이 <a href="./0018-kraft-vs-zookeeper.html">Controller</a>가 관리하는 metadata의
+      실체이자, Kafka가 여러 서버로 스케일하는 핵심 메커니즘이다.
+    </p>
+  </div>
+
+  <h2>10. 회상 퀴즈</h2>
   <p>보지 말고 답해보자. 틀리는 게 오히려 기억에 남는다.</p>
   <section class="quiz" aria-label="Kafka 핵심 개념 퀴즈">
     <p><strong>Q1.</strong> Kafka에서 Topic이 스케일하기 위해 쪼개지는 단위는?</p>

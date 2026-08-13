@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka Design 딥다이브: 저장, 효율, Producer/Consumer, 복제</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .diagram {
+      background: #fff;
+      border: 1px solid #deded6;
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    .diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kafka Design 딥다이브: 저장, 효율, Producer/Consumer, 복제</h1>
+  <p class="note">
+    목표: <a href="https://kafka.apache.org/documentation/#design">Apache Kafka Documentation: Design</a>
+    원문을 근거로, <strong>"Kafka가 왜 이렇게 설계됐는가"</strong>를 실무 도입 판단에 쓸 수 있는 수준으로
+    이해한다. <a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>에서 배운 Topic·Partition·
+    Consumer Group·Replication의 <strong>"무엇"</strong>에, 이 레슨은 <strong>"왜 그렇게 빠르고, 왜 그렇게
+    안전한가"</strong>라는 내부 근거를 이어붙인다.
+  </p>
+
+  <h2>0. 동기 — 어떤 요구사항이 이 설계를 만들었나</h2>
+  <p>
+    Kafka는 큰 회사 안에서 발생하는 <strong>모든 실시간 데이터 흐름(real-time data feed)을 하나로
+    처리하는 통합 플랫폼</strong>으로 설계됐다. 이 하나의 목표 안에 서로 다른 방향으로 잡아당기는
+    요구사항 다섯 가지가 동시에 들어있었다.
+  </p>
+  <pre class="flow"><code>실시간 로그를 대량으로 모으는 작업 → 초당 처리량(throughput)이 커야 함
+오프라인 시스템으로 주기적으로 데이터를 몰아서 보내는 작업 → 쌓여있는 대량 데이터도 문제없이 처리해야 함
+전통적인 메시징(메시지 큐) 방식의 사용 → 지연 시간(latency)이 짧은 전달도 다뤄야 함
+데이터를 나눠서 동시에 처리해 새로운 결과물을 만드는 것 → Partition과 Consumer 구조가 필요해진 이유
+데이터가 다른 시스템으로 흘러가는 도중 서버가 죽는 상황 → 장애에도 견디는 능력(fault-tolerance)이 필수</code></pre>
+  <p class="warn">
+    이 다섯 요구사항을 동시에 만족시키려다 보니, Kafka는 <strong>전통적인 메시지 큐보다 오히려
+    "DB의 변경 기록(database log)"에 더 가까운 설계</strong>에 이르렀다. 이 레슨의 각 section은
+    이 결정이 왜 필요했는지를 하나씩 풀어낸다.
+  </p>
+
+  <h2>1. 저장 방식(Persistence) — 왜 디스크를 두려워하지 않나</h2>
+  <p>
+    "디스크는 느리다"는 흔한 통념과 달리, 디스크 성능은 <strong>어떻게 쓰느냐에 따라 극단적으로
+    갈린다.</strong> 지난 수십 년간 하드디스크가 한 번에 옮길 수 있는 데이터양(처리량, throughput)은
+    크게 늘었지만, <strong>디스크 헤드(바늘)가 원하는 위치를 찾아가는 시간(seek 지연)</strong>은
+    거의 줄어들지 않았다. 그 결과 "차례대로 쓰기(순차 쓰기)"와 "아무 데나 흩어서 쓰기(임의 쓰기)"의
+    속도 차이가 크게 벌어졌다.
+  </p>
+  <table>
+    <thead><tr><th>쓰기 방식</th><th>속도 예시(디스크 6대로 구성한 경우)</th><th>이유</th></tr></thead>
+    <tbody>
+      <tr><td>순차 쓰기 (Linear)</td><td class="ok">약 600 MB/sec</td><td>헤드가 거의 안 움직이고 디스크만 돌면서 처리</td></tr>
+      <tr><td>임의 쓰기 (Random)</td><td class="no">약 100 kB/sec</td><td>매번 헤드가 물리적으로 이동해야 함(seek)</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    <strong>6000배 차이.</strong> 순차 접근은 "다음에 뭘 읽을지" 예측이 쉽기 때문에, OS가
+    <strong>미리 읽어두기(read-ahead)</strong>와 <strong>모아서 쓰기(write-behind)</strong>로 강하게
+    최적화해준다 — 실제로 <a href="https://queue.acm.org/detail.cfm?id=1563874">ACM Queue 기사</a>는
+    순차적으로 디스크를 읽는 게 무작위로 메모리를 읽는 것보다 빠를 수도 있음을 보여준다. Kafka는
+    메시지를 절대 무작위 위치를 찾아 덮어쓰지 않고, <strong>파일 맨 뒤에 계속 이어붙이기만
+    하는 구조(append-only)</strong>를 택해 이 순차 쓰기의 이점을 최대로 살린다.
+  </p>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>왜 자체 메모리 캐시 대신 OS의 캐시에 맡기나</h3>
+    <p>
+      요즘 OS는 남는 메모리(free memory)를 성능 손해 없이 <strong>전부 디스크 캐싱(자주 쓰는 디스크
+      데이터를 메모리에 잠깐 저장해두는 것)에 자동으로 활용</strong>한다. 그런데 Kafka는 자바(JVM) 위에서
+      동작하고, 자바 객체는 저장할 때 부가 정보가 많이 붙어서 실제 데이터보다 2배 이상 크게 저장되고,
+      또 자바가 쓰는 메모리(heap)가 커질수록 <strong>가비지 컬렉션(안 쓰는 메모리를 정리하는 작업, GC)</strong>이
+      느려진다. 그래서 Kafka는 자기만의 메모리 캐시를 직접 만드는 대신 <strong>OS가 이미 관리하고
+      있는 캐시(pagecache)에 맡기는 편이 여러모로 유리</strong>하다고 판단했다.
+    </p>
+    <ul>
+      <li><strong>쓸 수 있는 캐시가 2~4배 늘어남</strong> — 남는 메모리 전체를 자동으로 활용하고, 부가 정보 없는 순수 데이터(byte)로 저장</li>
+      <li><strong>GC로 인한 멈춤이 없음</strong> — 메모리 32GB짜리 서버에서 최대 28~30GB를 자바 메모리 바깥에서 캐시로 씀</li>
+      <li><strong>재시작해도 캐시가 그대로 살아있음</strong> — OS의 캐시는 프로그램을 껐다 켜도 유지됨(반면 프로그램 안에서 직접 만든 캐시는 10GB를 다시 채우는 데 10분씩 걸릴 수도 있음)</li>
+      <li><strong>코드가 단순해짐</strong> — "캐시와 실제 파일 내용을 맞추는" 어려운 로직을 OS에 통째로 맡김</li>
+    </ul>
+    <p class="warn">
+      그래서 설계 자체가 거꾸로 뒤집힌다: "가능한 한 메모리에 쌓아뒀다가, 공간이 부족해지면 그제서야
+      디스크로 내려보낸다"가 아니라, <strong>모든 데이터를 처음부터 즉시 디스크 파일에 기록</strong>한다
+      (실제로는 OS의 커널 캐시로 먼저 전달되는 것). 전원이 꺼져도 안전하면서, 캐시 속도의 이득도
+      그대로 챙기는 구조다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>"항상 똑같은 속도"면 충분하다 — 트리 구조 vs 이어붙이기 로그</h3>
+    <p>
+      전통적인 메시지 큐는 "어떤 메시지를 어디까지 읽었는지" 관리하려고 <strong>B-Tree</strong>라는,
+      아무 위치나 빠르게 찾아갈 수 있는 범용 자료구조를 쓴다. 이 구조는 데이터가 N개 있을 때 검색
+      시간이 <code>log(N)</code>에 비례해서 늘어난다 — 데이터가 늘어나도 아주 조금씩만 느려진다는
+      뜻이라 보통은 "사실상 일정한 속도"로 취급된다. 그런데 <strong>디스크에서는 그렇지 않다.</strong>
+      디스크가 위치를 한 번 찾아가는 데(seek) 약 10ms가 걸리고, <strong>디스크 하나는 한 번에 딱 하나의
+      위치만 찾아갈 수 있어서</strong>, 데이터가 늘어날수록 실제 체감 속도는 <strong>비례보다 훨씬
+      가파르게</strong> 나빠진다(데이터가 2배 늘면 속도는 2배보다 훨씬 더 나빠짐).
+    </p>
+    <p>
+      반면 <strong>"메시지를 그냥 파일 맨 뒤에 이어붙이고, 읽을 때도 순서대로 읽기만" 하는 구조</strong>는
+      데이터가 몇 개든 상관없이 <strong>항상 똑같이 빠른 속도</strong>를 낸다. 게다가 읽기 작업이 쓰기
+      작업을 방해하지도 않는다. 속도가 데이터 크기와 완전히 무관하기 때문에, 저렴하고 회전 속도가
+      낮은(그래서 느리지만 용량은 큰) 대용량 하드디스크를 마음껏 쓸 수 있다. 이게 바로 Kafka가
+      메시지를 다 읽었다고 해서 바로 지우지 않고 <strong>비교적 긴 기간(예: 일주일) 그대로
+      남겨둘 수 있는</strong> 이유이기도 하다 — 성능 손실 없이 사실상 무제한에 가까운 디스크
+      공간을 쓸 수 있기 때문이다.
+    </p>
+  </div>
+
+  <h2>2. 효율(Efficiency) — 자잘한 작업과 불필요한 복사를 없애는 법</h2>
+  <p>
+    디스크 사용 방식을 최적화하고 나면 남는 비효율의 원인은 두 가지다: <strong>너무 잘게 쪼개진
+    입출력(I/O) 작업</strong>과 <strong>불필요하게 반복되는 데이터 복사(byte copying)</strong>다.
+  </p>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Batching — 메시지를 여러 개씩 묶어서 처리하기</h3>
+    <p>
+      Kafka의 통신 규약(protocol)은 처음부터 <strong>메시지 여러 개를 하나의 묶음으로 다루는 것</strong>을
+      기본으로 삼고 설계됐다(Kafka는 이 묶음을 "message set"이라고 부른다 — 그냥 "메시지 묶음"이라고
+      생각하면 된다). 네트워크로 보낼 때도 메시지를 묶어서 한 번에 보내 왕복 통신 비용을 여러
+      메시지에 나눠 부담시키고, Broker도 여러 메시지를 한 번에 파일에 이어붙이고, Consumer도 큰
+      덩어리를 한 번에 가져간다. 이 단순한 최적화 하나만으로도 <strong>속도가 몇 배가 아니라 몇십,
+      몇백 배 단위로 빨라진다</strong> — 들쭉날쭉하게 여기저기 흩어져 쓰던 것을, 한 줄로 쭉 이어
+      쓰는 방식으로 바꿔주기 때문이다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Zero-Copy — 불필요한 데이터 복사를 없애기</h3>
+    <p>
+      Producer·Broker·Consumer가 <strong>메시지를 저장하는 형식(포맷) 자체를 서로 똑같이 맞춰뒀기</strong>
+      때문에, 데이터를 이들 사이에서 주고받을 때 <strong>가공 없이 있는 그대로 전달</strong>할 수 있다.
+      이 덕분에 "파일 내용을 네트워크로 바로 보내는" Linux의 <code>sendfile</code>이라는 저수준
+      명령(OS에 직접 요청하는 명령, system call)을 쓸 수 있게 된다.
+    </p>
+    <div class="diagram">
+      <svg viewBox="0 0 820 260" role="img" aria-label="일반적인 데이터 전송 경로와 sendfile을 사용한 zero-copy 경로의 비교">
+        <text x="20" y="24" font-size="13" font-weight="700" fill="#b45309">기존 방식 — 복사 4번, OS 요청 2번</text>
+        <rect x="20" y="36" width="150" height="46" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+        <text x="95" y="64" font-size="11" font-weight="700" text-anchor="middle" fill="#7c2d12">디스크</text>
+        <rect x="210" y="36" width="150" height="46" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+        <text x="285" y="58" font-size="10.5" font-weight="700" text-anchor="middle" fill="#7c2d12">OS 캐시(커널)</text>
+        <rect x="400" y="36" width="150" height="46" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+        <text x="475" y="58" font-size="10.5" font-weight="700" text-anchor="middle" fill="#7c2d12">자바 애플리케이션 메모리</text>
+        <rect x="590" y="36" width="210" height="46" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+        <text x="695" y="58" font-size="10.5" font-weight="700" text-anchor="middle" fill="#7c2d12">네트워크 카드로 전송</text>
+        <text x="410" y="106" font-size="11" text-anchor="middle" fill="#4b5563">디스크→커널, 커널→앱, 앱→소켓, 소켓→네트워크카드 : 복사 4번</text>
+
+        <line x1="0" y1="130" x2="820" y2="130" stroke="#deded6" stroke-width="1"/>
+
+        <text x="20" y="154" font-size="13" font-weight="700" fill="#0f766e">sendfile 방식 — 복사 1번(마지막 전송만)</text>
+        <rect x="20" y="166" width="150" height="46" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+        <text x="95" y="194" font-size="11" font-weight="700" text-anchor="middle" fill="#111827">디스크</text>
+        <rect x="290" y="166" width="240" height="46" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+        <text x="410" y="188" font-size="10.5" font-weight="700" text-anchor="middle" fill="#111827">OS 캐시(커널)</text>
+        <text x="410" y="204" font-size="9.5" text-anchor="middle" fill="#4b5563">(자바 애플리케이션 메모리를 거치지 않음)</text>
+        <rect x="600" y="166" width="200" height="46" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+        <text x="700" y="194" font-size="10.5" font-weight="700" text-anchor="middle" fill="#111827">네트워크 카드로 전송</text>
+        <text x="410" y="240" font-size="11" text-anchor="middle" fill="#4b5563">OS가 캐시에서 네트워크로 바로 전송 — 자바 애플리케이션 메모리를 거치지 않는다</text>
+      </svg>
+    </div>
+    <p>
+      여러 Consumer가 같은 Topic을 읽는 흔한 상황에서는, 데이터가 캐시에 <strong>딱 한 번만 복사</strong>되고
+      나머지는 그 복사본을 그대로 재사용한다. Consumer들이 실시간으로 잘 따라잡고 있는 클러스터는
+      <strong>디스크를 실제로 읽는 일이 거의 안 보인다</strong> — 데이터가 전부 캐시에서 바로
+      서빙되기 때문이다. 다만 <strong>TLS/SSL로 암호화를 켜면 이 최적화(sendfile)를 못 쓴다</strong>
+      (암호화 처리가 애플리케이션 쪽 메모리를 반드시 거쳐야 하므로) — 보안과 이 속도 최적화는
+      서로 맞바꿔야 하는 관계다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>묶어서 압축하기 (End-to-end Batch Compression)</h3>
+    <p>
+      메시지를 하나씩 따로 압축하면 압축률이 나쁘다(JSON 필드 이름처럼 메시지들 사이에 반복되는
+      부분이 많은데, 하나씩 압축하면 그 반복을 못 살리기 때문). 그래서 Kafka는 <strong>여러 메시지를
+      묶은 다음 그 묶음 전체를 한 번에 압축</strong>해서 보낸다. Broker는 내용 검증을 위해 잠깐
+      풀어봤다가, <strong>압축된 상태 그대로 디스크에 저장하고 그대로 Consumer에게 전달</strong>한다
+      — 최종적으로 압축을 푸는 건 Consumer 몫이다. 그래서 Broker는 압축/해제 작업 부담 없이 네트워크
+      전송량만 크게 줄인다. GZIP, Snappy, LZ4, ZStandard라는 압축 방식들을 지원한다.
+    </p>
+  </div>
+
+  <h2>3. Producer(생산자)</h2>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>부하 분산 — 중간 다리 없이 Leader에게 직접</h3>
+    <p>
+      Producer는 중간에 요청을 대신 전달해주는 계층(로드밸런서 같은 것) 없이 <strong>해당 Partition의
+      Leader Broker에게 바로</strong> 데이터를 보낸다. Kafka의 모든 서버가 "어느 서버가 살아있고,
+      어느 Partition의 Leader가 어디인지" 물어보면 답해줄 수 있기 때문에 가능한 일이다. Partition을
+      정하는 방식은 두 가지다.
+    </p>
+    <ul>
+      <li><strong>key 없이 무작위/순서대로 분배</strong> — 그냥 부하를 고르게 나눠서 보냄</li>
+      <li><strong>key로 분배(예: user id)</strong> — key를 해시(hash) 계산해서 Partition을 정함 → 같은 key는 항상 같은 Partition에 감 → 그래서 Consumer가 "특정 user의 데이터는 다 한 곳에 몰려있다"고 가정하고 순서대로 처리 가능</li>
+    </ul>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>비동기 전송 — 모아서 보내기</h3>
+    <p>
+      Producer는 메시지를 바로바로 보내지 않고 메모리에 잠깐 모아뒀다가, 더 큰 묶음으로 만들어서
+      보낸다. 언제 보낼지는 두 가지 기준으로 정한다.
+    </p>
+    <table>
+      <thead><tr><th>설정</th><th>기준</th><th>효과</th></tr></thead>
+      <tbody>
+        <tr><td><code>batch.size</code></td><td>쌓인 양이 일정 크기(예: 64kB)에 도달하면 전송</td><td>한 번에 크게 보내서 전체 처리량↑</td></tr>
+        <tr><td><code>linger.ms</code></td><td>양이 안 차도 이 시간(예: 10ms)이 지나면 무조건 전송</td><td>대기 시간을 늘릴수록 처리량↑·지연↑, 0이면 지연↓·처리량↓</td></tr>
+      </tbody>
+    </table>
+    <p class="warn">
+      이건 <strong>"응답이 빨리 오는 것"과 "한 번에 많이 처리하는 것" 사이의 트레이드오프</strong>다 —
+      정답은 없고, 상황(use case)이 어느 쪽을 더 중요하게 여기는지에 따라 정해진다.
+    </p>
+  </div>
+
+  <h2>4. Consumer(소비자)</h2>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Push(밀어주기) vs Pull(가져가기) — 왜 Pull을 선택했나</h3>
+    <p>
+      Kafka는 <strong>Producer가 밀어넣고(push), Consumer가 가져가는(pull)</strong> 전통적인 방식을
+      따른다. Broker가 일방적으로 밀어주는 방식(push)은 전송 속도를 Broker가 정하기 때문에, Consumer의
+      처리 속도가 느려지면 <strong>사실상 스스로에게 과부하 공격을 하는 꼴(서비스 거부 상태, DoS)</strong>이
+      된다. Pull 방식은 Consumer가 잠깐 뒤처졌다가 여유가 생기면 다시 따라잡을 수 있다는 좋은
+      특성을 가진다. 또한 Pull은 <strong>가장 효율적인 묶음 처리</strong>에도 유리하다 — Consumer가
+      항상 "지금까지 읽은 위치 이후로 쌓여있는 메시지를 전부" 가져가므로, 불필요하게 기다리지 않고도
+      최대한 크게 묶어서 받을 수 있다.
+    </p>
+    <p class="note">
+      Pull 방식의 단점(데이터가 없을 때 계속 헛되이 물어보는 것, busy-wait 폴링)은
+      <strong>long polling(오래 기다려주는 조회)</strong>으로 해결한다 — 요청을 보내면 데이터가
+      도착하거나 시간제한(timeout)이 될 때까지 응답을 미뤄준다(<a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>에서
+      Redis의 <code>XREAD BLOCK</code>과 같은 아이디어라고 짚었던 그 메커니즘).
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Consumer의 진행 위치 — 왜 숫자 하나(offset)면 충분한가</h3>
+    <p>
+      전통적인 메시지 큐는 메시지 하나하나마다 "보냈음"·"처리됨" 상태를 Broker가 개별로 관리한다 —
+      메시지마다 잠금(lock)을 걸고, 처리 확인(ack)을 기다리고, 두 번 전달되지 않게 신경 써야 해서
+      <strong>성능 부담이 크다.</strong>
+    </p>
+    <p>
+      Kafka는 각 Partition을 그룹 안에서 정확히 Consumer 한 명만 읽도록 강제하기 때문에(<a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>에서
+      본 N:1 관계), Consumer가 지금 어디까지 읽었는지는 <strong>"다음에 읽을 위치(offset)" 숫자
+      하나</strong>로 충분히 표현된다. Partition 안 메시지는 무조건 순서대로만 쌓이고 순서대로만
+      소비되므로, "104번까지 처리했다"는 건 곧 "0번부터 104번까지 빠짐없이 다 처리했다"는 뜻이 된다.
+      이 덕분에 <strong>일부러 offset을 과거로 되돌려(rewind) 다시 소비</strong>하는 것도 가능해진다
+      (예: 처리 로직에 있던 버그를 고친 뒤 지나간 데이터를 다시 처리).
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>오프라인 데이터 적재 — Hadoop과의 조합</h3>
+    <p>
+      데이터를 오래 남겨둘 수 있다는 건 <strong>실시간이 아니라 주기적으로만 몰아서 가져가는
+      배치(batch) 방식의 Consumer</strong>도 자연스럽게 지원한다는 뜻이다. Hadoop과 연동할 때는
+      "서버·토픽·파티션" 조합마다 하나씩 작업을 나눠 맡겨서(map task) 적재를 병렬로 처리한다. 작업이
+      중간에 실패해도 <strong>실패하기 전 위치(offset)에서 다시 시작</strong>하면 되므로, 데이터가
+      중복되지 않고 안전하게 복구된다.
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Static Membership — 재시작할 때마다 리밸런싱하지 않기</h3>
+    <p>
+      기본 방식(dynamic membership)에서는 Consumer가 재시작할 때마다 새로운 <strong>임시 ID(재시작하면
+      바뀌는 ID)</strong>를 받게 되어 <strong>리밸런싱이 매번 다시 일어난다.</strong> 처리 중인 데이터
+      양이 많은 애플리케이션은 재시작할 때마다 로컬에 저장해둔 상태를 다시 복구해야 해서, 잠깐이라도
+      전체 서비스가 멈출 수 있다. <strong>Static Membership</strong>은 Consumer에게 <strong>고정된
+      ID</strong>(<code>group.instance.id</code>)를 부여해서, 정해진 시간 안에만 다시 돌아오면
+      <strong>리밸런싱 없이 원래 담당하던 파티션을 그대로 이어받게</strong> 해준다. 실수로 서로 다른
+      Consumer 두 개에 같은 ID를 설정하면, 나중에 접속한 쪽이 <code>FencedInstanceIdException</code>라는
+      에러로 강제 종료된다(자세한 배경은 <a href="https://cwiki.apache.org/confluence/x/kRg0BQ">KIP-345</a> 참고).
+    </p>
+  </div>
+
+  <h2>5. 메시지 전달 보장(Message Delivery Semantics)</h2>
+  <p>Kafka가 줄 수 있는 전달 보장은 세 가지이고, <strong>보낼 때(publish)의 문제</strong>와
+  <strong>받을 때(consume)의 문제</strong>를 나눠서 봐야 한다.</p>
+  <table>
+    <thead><tr><th style="width:16%">방식</th><th style="width:42%">동작</th><th>결과</th></tr></thead>
+    <tbody>
+      <tr><td><strong>최대 한 번(At most once)</strong></td><td>Producer 재시도 안 함. Consumer가 처리 <em>전에</em> offset 저장</td><td>유실 가능, 중복 없음</td></tr>
+      <tr><td><strong>최소 한 번(At least once)</strong></td><td>Producer 실패 시 재시도. Consumer가 처리 <em>후에</em> offset 저장</td><td>유실 없음, 중복 가능(기본값)</td></tr>
+      <tr><td><strong>정확히 한 번(Exactly once)</strong></td><td>멱등성 Producer + Kafka 트랜잭션</td><td>유실·중복 없음, 부하 높음</td></tr>
+    </tbody>
+  </table>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Producer 쪽 — "커밋됐다"의 기준과 멱등성</h3>
+    <p>
+      메시지는 해당 Partition의 <strong>ISR(정상 복제되고 있는 복제본 전체)가 전부 자기 로그에
+      기록했을 때만 "커밋됨(committed)"</strong>으로 인정된다. 한 번 커밋되면, 그 Partition을 복제하는
+      Broker 중 하나라도 살아있는 한 절대 유실되지 않는다. 그런데 network 오류로 Producer가 "성공했다"는
+      응답(ack)을 못 받으면, 실제로 성공했는지 실패했는지 알 방법이 없어서 <strong>어쩔 수 없이
+      재전송</strong>하게 되고, 이게 기본적으로 중복을 만든다. <strong>멱등성 Producer(같은 요청을
+      여러 번 보내도 결과가 딱 한 번 보낸 것과 똑같아지는 방식)</strong>는 Broker가 Producer별
+      고유 번호 + 일련번호로 중복을 걸러내 이 문제를 없애준다(최신 Kafka는 기본적으로 켜져 있음).
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Consumer 쪽 — "읽기→처리→저장" 순서가 보장 방식을 결정한다</h3>
+    <ol>
+      <li><strong>읽기 → 위치 저장 → 처리</strong>: 위치를 저장한 다음, 처리하기 전에 죽으면 그 메시지는 아예 처리가 안 된 채 넘어감 → <strong>최대 한 번</strong></li>
+      <li><strong>읽기 → 처리 → 위치 저장</strong>: 처리한 다음, 위치를 저장하기 전에 죽으면 재시작 후 그 메시지를 또 한 번 처리하게 됨 → <strong>최소 한 번</strong>(대부분의 메시지에 고유 키가 있어서, 같은 처리를 두 번 해도 결과가 똑같이 유지되는 경우가 많아 실무에서 흔히 쓰임)</li>
+    </ol>
+  </div>
+  <p class="note">
+    <strong>Kafka Streams처럼 Kafka에서 읽어서 Kafka로 다시 쓰는 경우</strong>는 "정확히 한 번"을
+    실무적으로 얻을 수 있다 — Consumer의 읽은 위치(offset)도 결국 Kafka 내부 토픽의 메시지 하나일
+    뿐이라서, <strong>결과 데이터를 쓰는 것과 offset을 저장하는 것을 하나의 트랜잭션으로 묶을 수
+    있기 때문</strong>이다. 반면 <strong>Kafka 밖의 시스템(일반 DB 등)에 쓸 때</strong>는 그 시스템과의
+    협력이 필요하다 — 흔한 방법은 결과 데이터와 offset을 같은 곳에 함께 저장해서(예: Kafka Connect의
+    HDFS 커넥터), 복잡한 2단계 커밋 없이도 "둘 다 저장되거나 둘 다 안 되거나" 둘 중 하나만 일어나게
+    만드는 것이다.
+  </p>
+
+  <h2>6. 트랜잭션을 직접 쓰는 경우 (Producer/Consumer를 직접 다룰 때)</h2>
+  <p>
+    Kafka Streams를 안 쓰고 Producer/Consumer를 직접 써서 "정확히 한 번"을 구현하려면 세 가지가 핵심이다.
+  </p>
+  <ol>
+    <li>Consumer는 파티션 배정을 통해 <strong>그룹 내 유일한 담당자</strong>임을 보장받는다.</li>
+    <li>Producer는 트랜잭션을 사용해 <strong>자신이 만드는 데이터 + Consumer의 offset 갱신을 하나로 묶어(한꺼번에 성공하거나 한꺼번에 실패하게)</strong> 처리한다.</li>
+    <li>리밸런싱과 맞물려 정확하게 동작하려면 <strong>Consumer 인스턴스 하나당 Producer 인스턴스 하나</strong>를 쓰는 게 권장된다.</li>
+  </ol>
+  <p>
+    Consumer는 <code>isolation.level=read_committed</code>(중간에 취소된 트랜잭션의 데이터는 안 보이게 하는 설정)와
+    <code>enable.auto.commit=false</code>를, Producer는 재시작할 때 이전에 끝나지 않았던 트랜잭션을 자동으로
+    취소하도록 <code>transactional.id</code>를 설정해야 한다.
+  </p>
+
+  <h2>7. Share Consumer — Consumer Group의 대안</h2>
+  <p>
+    <strong>Share Group</strong>은 Consumer Group과 나란히 존재하는 또 다른 종류의 그룹으로, Partition과
+    메시지를 <strong>더 잘게 쪼개서</strong> 나누고 싶을 때 쓴다. Consumer Group과의 결정적인 차이는
+    다음과 같다.
+  </p>
+  <ul>
+    <li>하나의 Partition을 <strong>여러 Consumer가 함께 나눠서 소비</strong>할 수 있다(0016에서 배운 "Partition 하나 = Consumer 한 명" 규칙이 여기선 적용되지 않음)</li>
+    <li>Share Consumer 수가 <strong>Partition 수보다 많아도</strong> 된다(0016에서 얘기한 "남는 Consumer는 논다"는 규칙이 여기선 다르게 적용됨)</li>
+    <li>메시지는 <strong>하나하나 개별적으로 처리 확인(acknowledge)</strong>되고, 기본 30초짜리 <strong>점유 잠금(acquisition lock, "지금 내가 이 메시지 처리 중이니 다른 애는 손대지 마"라는 표시)</strong>으로 관리된다(처리 완료·반납·거부·연장 중 선택 가능)</li>
+  </ul>
+  <p class="warn">
+    즉 Share Group은 <strong>순서 보장을 포기하는 대신 훨씬 유연한 분배를 얻는</strong> 모델이다 —
+    0016에서 얘기했던 "Partition 하나 = 그룹 내 한 명"이라는 규칙이 원래 순서 보장을 위한 설계였는데,
+    Share Group은 그것과 정반대 방향으로 트레이드오프를 택한 것이다.
+  </p>
+
+  <h2>8. 복제(Replication) — Leader/Follower와 ISR</h2>
+  <p>
+    Partition마다 <strong>Leader(원본) 하나 + Follower(복사본) 여럿</strong>으로 구성된다. 쓰기는 전부
+    Leader로 가고, 읽기는 Leader 또는 Follower 어느 쪽으로도 갈 수 있다. Follower는 사실상
+    <strong>일반 Consumer처럼 Leader의 내용을 계속 가져와서(pull)</strong> 자기 로그에 똑같이 반영한다.
+  </p>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>ISR(정상 복제 중인 복제본들) — "살아있다"의 기준</h3>
+    <p>Broker가 "정상적으로 복제되고 있다(in sync)"고 인정받으려면 두 조건을 모두 만족해야 한다.</p>
+    <ol>
+      <li>Controller와 <strong>연결이 살아있음을 계속 알리는 신호(하트비트)</strong>를 주고받고 있을 것</li>
+      <li>Follower라면 Leader가 쓴 내용을 <strong>너무 뒤처지지 않게</strong> 복제하고 있을 것(<code>replica.lag.time.max.ms</code> 설정으로 "얼마나 뒤처지면 탈락"인지 정함)</li>
+    </ol>
+    <p>
+      둘 중 하나라도 못 채우면 ISR(정상 복제본 목록)에서 제외된다. 쓰기는 <strong>ISR 전체</strong>가
+      받아야 비로소 "커밋됨"으로 인정된다 — ISR 중 하나라도 살아있는 한 커밋된 메시지는 절대
+      유실되지 않는다는 게 Kafka의 약속이다.
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>왜 "다수결(quorum)" 방식이 아니라 ISR인가</h3>
+    <p>
+      ZooKeeper나 Raft 같은 알고리즘이 쓰는 <strong>다수결(quorum) 방식</strong>은, 복제본 2f+1개 중
+      과반수인 f+1개의 확인만 받으면 커밋으로 인정하고, 그 f+1개 중 가장 최신 내용을 가진 복제본을
+      새 Leader로 뽑는다. 이 방식은 "가장 느린 복제본까지 기다릴 필요가 없다"는 장점이 있지만,
+      <strong>장애 1개를 견디려면 복제본이 3개, 2개를 견디려면 5개</strong>나 필요해서 디스크·처리량
+      비용이 크다.
+    </p>
+    <p>
+      Kafka의 <strong>ISR 방식은 복제본 f+1개만으로 장애 f개를 견딘다</strong> — 같은 수준의
+      내결함성을 훨씬 적은 복제본으로 얻는 셈이다. 대신 커밋으로 인정받으려면 <strong>ISR에 속한
+      모두</strong>의 확인이 필요하다는 점에서, "가장 느린 걸 안 기다려도 된다"는 다수결 방식의
+      장점은 포기한 것이다(다만 Producer가 확인을 얼마나 기다릴지 직접 고를 수 있어서 이 부분은
+      어느 정도 완화된다).
+    </p>
+  </div>
+  <div class="card" style="border-color:#b45309;">
+    <h3>Unclean Leader Election — 복제본이 전부 죽으면?</h3>
+    <p>Partition을 복제하던 서버가 전부 죽으면 "ISR 중 하나는 항상 살아있다"는 전제 자체가 깨진다. 이때 선택은 두 가지다.</p>
+    <table>
+      <thead><tr><th>전략</th><th>우선시하는 가치</th><th>대가</th></tr></thead>
+      <tbody>
+        <tr><td>정상 복제본이 살아날 때까지 대기(<strong>기본값</strong>)</td><td class="ok">데이터 일관성(Consistency)</td><td>그동안 해당 Partition을 못 씀</td></tr>
+        <tr><td><code>unclean.leader.election.enable=true</code></td><td class="no">가용성(Availability)</td><td>이미 커밋됐던 메시지를 잃을 수 있음</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>데이터 안전성 관련 설정 — acks와 min.insync.replicas</h3>
+    <ul>
+      <li><code>acks=0</code> — 확인 응답을 아예 안 기다림(가장 빠름, 유실 위험 큼)</li>
+      <li><code>acks=1</code> — Leader가 받기만 하면 바로 성공 처리(Follower로 복제되기 전에 Leader가 죽으면 유실 가능)</li>
+      <li><code>acks=all(-1)</code> — <strong>현재 ISR 전체</strong>가 받아야 성공 처리됨. 다만 ISR이 어쩌다 1개로 줄어든 상태에서도 이 설정만으로는 성공 처리되므로, <code>min.insync.replicas</code>로 "최소 이 개수 이상은 ISR이 있어야 쓰기를 허용한다"를 함께 강제해야 진짜 안전해진다</li>
+    </ul>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>복제본 관리 — 부하 분산과 빠른 Leader 재선출</h3>
+    <p>
+      Broker마다 Partition을 <strong>돌아가며 고르게 배치</strong>하고, Leader 역할도 균등하게
+      분산한다(<a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>에서 본 배치와 같은
+      원리). Broker가 죽었을 때 Partition마다 하나씩 따로 선거를 하면 느리기 때문에, <strong>Controller가
+      필요한 Leader 교체를 한꺼번에 모아서(batch)</strong> 처리한다 — 그래서 Partition이 아무리 많아도
+      장애 복구(failover)가 빠르게 끝난다.
+    </p>
+  </div>
+
+  <h2>9. Log Compaction — 삭제 대신 "각 key의 최신 값만 남기기"</h2>
+  <p>
+    지금까지 본 보관 방식(retention)은 "일정 기간·크기가 지나면 통째로 버리는" 방식이었다. 하지만
+    <strong>DB의 변경 기록</strong>처럼 key별 최신 상태가 중요한 데이터(예: user id별 이메일 변경
+    이력)에는 다른 보관 방식이 필요하다.
+  </p>
+  <pre class="flow"><code>123 => bill@microsoft.com
+123 => bill@gatesfoundation.org
+123 => bill@gmail.com          ← Log Compaction은 이 key(123)의 "최신 값"만 남기고 나머지는 지운다</code></pre>
+  <p>
+    이렇게 하면 로그가 전체 변경 이력을 다 갖고 있지 않아도, <strong>모든 key의 최신 상태를 담은
+    전체 스냅샷</strong>을 유지할 수 있다. DB 변경 구독, Event Sourcing(변경 기록을 저장소의
+    원본으로 삼는 설계 방식), 장애 복구를 위해 로컬 상태를 기록해두는 것(예: Kafka Streams의 상태
+    저장소) 같은 곳에 쓰인다.
+  </p>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>동작 방식과 보장</h3>
+    <ul>
+      <li>로그는 <strong>head(전부 그대로 보존)</strong>와 <strong>tail(압축이 끝난 부분)</strong>로 나뉜다 — 압축이 되어도 offset(위치 번호)은 절대 바뀌지 않는다</li>
+      <li>key는 있고 값이 없는(null) 메시지는 <strong>tombstone(삭제 표시)</strong>으로 취급돼서, 그 key의 이전 메시지를 지우게 만든다. 이 삭제 표시 자신도 <code>delete.retention.ms</code>라는 설정 시간이 지나면 사라진다</li>
+      <li>순서는 항상 유지된다 — 압축은 메시지를 지울 뿐 순서를 바꾸지 않는다</li>
+      <li>백그라운드에서 조금씩 다시 복사하며 압축하기 때문에 읽기 작업을 방해하지 않는다</li>
+    </ul>
+  </div>
+
+  <h2>10. Quotas — 특정 client가 클러스터를 독점하지 못하게</h2>
+  <p>
+    Producer나 Consumer가 지나치게 많은 데이터나 요청을 보내서 Broker 자원을 독점하면, 다른
+    client들에게는 사실상 서비스 거부 공격(DoS)과 같은 피해를 준다. Kafka는 (user, client-id)
+    조합 단위로 두 가지 사용량 제한(quota)을 강제할 수 있다.
+  </p>
+  <table>
+    <thead><tr><th>제한 종류</th><th>단위</th><th>목적</th></tr></thead>
+    <tbody>
+      <tr><td>네트워크 대역폭 제한</td><td>Broker 한 대당 초당 byte 수</td><td>보내고 받는 트래픽 양 제한</td></tr>
+      <tr><td>요청 빈도 제한</td><td>처리 스레드 사용 시간의 비율(%)</td><td>CPU 사용량 제한</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    제한을 넘긴 client에게 Broker는 <strong>즉시 거절하는 대신, 얼마나 늦출지 계산해서 응답을 일부러
+    늦추고, 그 client의 연결 채널을 잠깐 무음 처리</strong>한다 — 연결을 끊는 게 아니라, client가
+    알아서 속도를 줄이게 유도하는 방식이다. 이 계산은 아주 짧은 시간 단위(예: 1초씩 30번)로 자주
+    측정해서, 트래픽이 한꺼번에 몰렸다가 뒤늦게 긴 지연이 발생하는 걸 막는다.
+  </p>
+
+  <h2>11. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자.</p>
+  <section class="quiz" aria-label="Kafka Design 퀴즈">
+    <p><strong>Q1.</strong> Linear write가 random write보다 훨씬 빠른 근본 이유는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">CPU 클럭 속도 차이 때문</button>
+    <button type="button" data-target="answer-1" data-answer="correct">disk head의 물리적 seek 시간 때문</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">network 대역폭 차이 때문</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> Kafka가 자체 in-memory cache보다 OS pagecache에 의존하는 이유가 아닌 것은?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">재시작해도 캐시가 warm하게 유지됨</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">JVM heap GC penalty를 피할 수 있음</button>
+    <button type="button" data-target="answer-2" data-answer="correct">디스크 용량을 아낄 수 있어서</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> sendfile을 쓴 zero-copy 경로에서 생략되는 단계는?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">disk에서 kernel pagecache로 읽기</button>
+    <button type="button" data-target="answer-3" data-answer="correct">kernel에서 user-space(애플리케이션)로 복사</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">socket buffer에서 NIC로 전송</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> Consumer position을 단일 offset 정수로 관리할 수 있는 근거는?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong">Consumer Group이 여러 개라서</button>
+    <button type="button" data-target="answer-4" data-answer="correct">Partition 안 메시지가 순서대로만 쌓이고 소비돼서</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">Producer가 압축해서 보내서</button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> at-least-once delivery가 만들어지는 조합은?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong">read → save position → process</button>
+    <button type="button" data-target="answer-5" data-answer="correct">read → process → save position</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">save position → read → process</button>
+    <p class="answer" id="answer-5"></p>
+
+    <p><strong>Q6.</strong> Kafka의 ISR 방식이 다수결(quorum) 방식과 다른 점은?</p>
+    <button type="button" data-target="answer-6" data-answer="correct">장애 f개를 버티는 데 복제본 f+1개면 충분함</button>
+    <button type="button" data-target="answer-6" data-answer="wrong">복제본 없이도 동작 가능함</button>
+    <button type="button" data-target="answer-6" data-answer="wrong">Consumer 수만큼 복제본이 필요함</button>
+    <p class="answer" id="answer-6"></p>
+
+    <p><strong>Q7.</strong> Share Group이 Consumer Group과 다른 점은?</p>
+    <button type="button" data-target="answer-7" data-answer="wrong">Partition마다 Consumer가 한 명뿐임</button>
+    <button type="button" data-target="answer-7" data-answer="correct">한 Partition을 여러 Consumer가 나눠 소비 가능함</button>
+    <button type="button" data-target="answer-7" data-answer="wrong">순서 보장이 더 강력해짐</button>
+    <p class="answer" id="answer-7"></p>
+
+    <p><strong>Q8.</strong> Log Compaction이 지우지 않는 것은?</p>
+    <button type="button" data-target="answer-8" data-answer="wrong">같은 key의 오래된 값</button>
+    <button type="button" data-target="answer-8" data-answer="correct">각 key의 최신 값과 message 순서</button>
+    <button type="button" data-target="answer-8" data-answer="wrong">retention 기간이 지난 tombstone</button>
+    <p class="answer" id="answer-8"></p>
+  </section>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kafka.apache.org/documentation/#design">Apache Kafka Documentation: Design</a>
+      — 이 레슨 전체의 원본. Motivation부터 Quotas까지 모든 section의 원문.</li>
+    <li><a href="https://queue.acm.org/detail.cfm?id=1563874">ACM Queue: Pathologies of Big Data</a>
+      — sequential disk access와 OS pagecache의 성능 근거.</li>
+    <li><a href="https://cwiki.apache.org/confluence/x/kRg0BQ">KIP-345: Static Membership</a>
+      — static membership의 원 제안서.</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/apachekafka/">r/apachekafka</a> — 실무 튜닝(acks, min.insync.replicas, compaction) 경험담.</li>
+    <li><a href="https://stackoverflow.com/questions/tagged/apache-kafka">Stack Overflow: apache-kafka 태그</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 — Topic·Partition·Consumer Group 핵심 개념</a>,
+    <a href="./0018-kraft-vs-zookeeper.html">0018 — KRaft vs ZooKeeper</a>.<br>
+    <strong>다음 레슨 후보:</strong> ① Producer acks·idempotence·transaction을 실제 코드로 실습,
+    ② Consumer Group rebalance protocol의 상세 동작(JoinGroup/SyncGroup 시퀀스),
+    ③ 로컬 KRaft Kafka에 replication factor·min.insync.replicas를 바꿔가며 장애 시나리오 재현.
+    <strong>원하는 방향을 말해주면 그걸로 다음 레슨을 만든다.</strong><br>
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자 —
+    "acks=all인데 왜 데이터가 유실될 수 있지?" 같은 질문이 좋은 질문이다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. 이 section의 핵심 문장을 다시 떠올려보자 — 위로 스크롤해서 다시 읽어도 좋다.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>
