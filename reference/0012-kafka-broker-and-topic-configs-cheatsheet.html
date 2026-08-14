@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka Broker &amp; Topic 설정 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; margin-bottom: 8px; }
+    th, td { border: 1px solid #deded6; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.88em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kafka Broker &amp; Topic 설정 치트시트</h1>
+  <p class="note">
+    실제 설정 시 참고용 — 전체 목록(수백 개)은
+    <a href="https://kafka.apache.org/documentation/#brokerconfigs">공식 문서 Broker Configs</a> /
+    <a href="https://kafka.apache.org/documentation/#topicconfigs">Topic Configs</a> 참고.
+    사고 방식은 <a href="../lessons/0026-kafka-broker-and-topic-configs.html">0026 레슨</a> 참고.
+    "Topic 레벨" 표시가 있는 설정은 Broker 기본값을 토픽별로 override할 수 있다.
+  </p>
+
+  <h2>1. 저장·보관(Retention)</h2>
+  <table>
+    <thead><tr><th>설정</th><th>레벨</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>log.retention.ms</code> / <code>retention.ms</code></td><td>Broker / Topic</td><td>7일</td><td>이 시간 지나면 segment 삭제(-1=무제한)</td></tr>
+      <tr><td><code>log.retention.bytes</code> / <code>retention.bytes</code></td><td>Broker / Topic</td><td>무제한(-1)</td><td>partition 크기 상한</td></tr>
+      <tr><td><code>log.segment.bytes</code> / <code>segment.bytes</code></td><td>Broker / Topic</td><td>1GiB</td><td>단일 로그 파일 최대 크기</td></tr>
+      <tr><td><code>log.roll.ms</code> / <code>segment.ms</code></td><td>Broker / Topic</td><td>7일</td><td>segment가 안 찼어도 이 시간 지나면 강제 롤링</td></tr>
+      <tr><td><code>cleanup.policy</code></td><td>Broker(<code>log.cleanup.policy</code>) / Topic</td><td>delete</td><td><code>compact</code>=key별 최신값만 유지(Log Compaction)</td></tr>
+      <tr><td><code>min.cleanable.dirty.ratio</code></td><td>Broker / Topic</td><td>0.5</td><td>compaction 실행 빈도 — 낮을수록 자주 compact, 디스크 덜 낭비</td></tr>
+      <tr><td><code>delete.retention.ms</code></td><td>Broker(<code>log.cleaner.delete.retention.ms</code>) / Topic</td><td>1일</td><td>compact topic의 tombstone(삭제 표시) 보존 시간</td></tr>
+      <tr><td><code>message.max.bytes</code> / <code>max.message.bytes</code></td><td>Broker / Topic</td><td>~1MB</td><td>허용되는 최대 메시지(배치) 크기</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. 복제·안전성</h2>
+  <table>
+    <thead><tr><th>설정</th><th>레벨</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>default.replication.factor</code></td><td>Broker</td><td class="no">1</td><td>운영에서는 3으로 반드시 상향</td></tr>
+      <tr><td><code>min.insync.replicas</code></td><td>Broker / Topic</td><td>1</td><td><code>acks=all</code>과 함께 2 이상 권장</td></tr>
+      <tr><td><code>unclean.leader.election.enable</code></td><td>Broker / Topic</td><td>false</td><td>true=가용성 우선(데이터 손실 가능), false=일관성 우선</td></tr>
+      <tr><td><code>replica.lag.time.max.ms</code></td><td>Broker</td><td>30초</td><td>이 시간 이상 못 따라오면 ISR에서 제외</td></tr>
+      <tr><td><code>auto.leader.rebalance.enable</code></td><td>Broker</td><td>true</td><td>Leader가 불균형해지면 주기적으로 preferred leader로 재조정</td></tr>
+      <tr><td><code>num.replica.fetchers</code></td><td>Broker</td><td>1</td><td>Follower가 Leader로부터 복제해오는 스레드 수 — 늘리면 복제 처리량↑, CPU/메모리 비용↑</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. 네트워크·스레드</h2>
+  <table>
+    <thead><tr><th>설정</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>listeners</code></td><td>PLAINTEXT://:9092</td><td>어디서 접속을 받을지</td></tr>
+      <tr><td><code>advertised.listeners</code></td><td>listeners 값과 동일</td><td>클라이언트에게 광고할 접속 주소 — 클라우드/컨테이너에서 반드시 별도 설정 확인</td></tr>
+      <tr><td><code>num.network.threads</code></td><td>3</td><td>네트워크 요청 송수신 스레드 — 리스너별 별도 풀</td></tr>
+      <tr><td><code>num.io.threads</code></td><td>8</td><td>디스크 I/O 포함 요청 처리 스레드</td></tr>
+      <tr><td><code>socket.receive/send.buffer.bytes</code></td><td>100KiB</td><td>소켓 버퍼 크기(-1=OS 기본값)</td></tr>
+      <tr><td><code>connections.max.idle.ms</code></td><td>10분</td><td>이 시간 유휴 상태인 연결을 닫음</td></tr>
+      <tr><td><code>auto.create.topics.enable</code></td><td>true</td><td>운영에서는 오타로 인한 topic 난립 방지 위해 false 고려</td></tr>
+      <tr><td><code>delete.topic.enable</code></td><td>true</td><td>false면 admin의 topic 삭제 요청을 브로커가 거부</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. KRaft 전용 (자세한 개념은 <a href="../lessons/0022-kraft-cluster-operations.html">0022 레슨</a>)</h2>
+  <table>
+    <thead><tr><th>설정</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>process.roles</code></td><td>broker / controller / 둘 다</td></tr>
+      <tr><td><code>node.id</code></td><td>KRaft 모드 필수 고유 노드 번호</td></tr>
+      <tr><td><code>controller.quorum.bootstrap.servers</code></td><td>Dynamic Quorum 진입점 목록</td></tr>
+      <tr><td><code>controller.quorum.voters</code></td><td>Static Quorum 방식(구식) — Dynamic 사용 시 설정하지 않음</td></tr>
+      <tr><td><code>controller.listener.names</code></td><td>Controller 쿼럼 통신용 리스너 이름</td></tr>
+      <tr><td><code>metadata.log.dir</code></td><td>metadata log 저장 위치(미지정 시 log.dirs 첫 번째 사용)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. 내부 토픽 (offsets / transaction / share-group)</h2>
+  <table>
+    <thead><tr><th>설정</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>offsets.topic.replication.factor</code></td><td>3</td><td><code>__consumer_offsets</code> 내부 topic 복제본 수</td></tr>
+      <tr><td><code>offsets.topic.num.partitions</code></td><td>50</td><td>배포 후 변경 비권장</td></tr>
+      <tr><td><code>offsets.retention.minutes</code></td><td>10080(7일)</td><td>그룹이 비거나 오래 커밋 안 하면 이 시간 후 offset 만료</td></tr>
+      <tr><td><code>transaction.state.log.replication.factor</code></td><td>3</td><td>트랜잭션 상태 내부 topic 복제본 수</td></tr>
+      <tr><td><code>transaction.max.timeout.ms</code></td><td>15분</td><td>트랜잭션이 허용하는 최대 timeout</td></tr>
+      <tr><td><code>transactional.id.expiration.ms</code></td><td>7일</td><td>이 시간 동안 활동 없으면 transactional.id 만료</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. Quota (자세한 개념은 <a href="../lessons/0019-kafka-design-deep-dive.html">0019 §10 레슨</a>)</h2>
+  <table>
+    <thead><tr><th>설정</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>quota.producer.default</code> / <code>quota.consumer.default</code></td><td>client 전체에 적용되는 기본 byte/sec 제한</td></tr>
+      <tr><td>(user, client-id) 단위 동적 quota</td><td><code>kafka-configs.sh --entity-type clients</code>로 개별 설정 — 코드 재배포 없이 적용</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">전체 목록은 원문(Broker/Topic Configs) 참고 — 여기는 실무 도입 판단에 자주 걸리는 항목만 추렸다.</p>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://kafka.apache.org/documentation/#brokerconfigs">Apache Kafka Documentation: Broker Configs</a></li>
+    <li><a href="https://kafka.apache.org/documentation/#topicconfigs">Apache Kafka Documentation: Topic Configs</a></li>
+  </ul>
+
+  <p>
+    관련 레슨: <a href="../lessons/0026-kafka-broker-and-topic-configs.html">0026 — Broker &amp; Topic 설정</a>,
+    <a href="../lessons/0019-kafka-design-deep-dive.html">0019 — Kafka Design 딥다이브</a>,
+    <a href="../lessons/0022-kraft-cluster-operations.html">0022 — KRaft 클러스터 운영</a>
+  </p>
+</main>
+</body>
+</html>

@@ -185,3 +185,25 @@ This index points to saved learning material in this Learning Vault.
 **Learning Records**
 
 - [0022 - Kafka 운영 학습 범위 확정](./learning-records/0022-kafka-operations-scope-baseline.md)
+
+### Configuration: Broker/Topic, Consumer Group, Producer, Connect, Admin 설정
+
+**Lessons**
+
+- [0026 - Broker & Topic 설정: 클러스터 기본값과 토픽별 예외](./lessons/0026-kafka-broker-and-topic-configs.html)
+- [0027 - Consumer Group 설정: 그룹 안에서 어떻게 행동할지 정하기](./lessons/0027-kafka-consumer-group-configs.html)
+- [0028 - Producer 설정: 안전성과 처리량 사이에서 고르기](./lessons/0028-kafka-producer-configs.html)
+- [0029 - Kafka Connect: 커넥터로 외부 시스템과 연결하기](./lessons/0029-kafka-connect-configs.html)
+- [0030 - Admin Client 설정: 운영 자동화를 위한 클라이언트](./lessons/0030-kafka-admin-client-configs.html)
+
+**References**
+
+- [0012 - Broker & Topic 설정 치트시트](./reference/0012-kafka-broker-and-topic-configs-cheatsheet.html)
+- [0013 - Consumer & Group 설정 치트시트](./reference/0013-kafka-consumer-group-configs-cheatsheet.html)
+- [0014 - Producer 설정 치트시트](./reference/0014-kafka-producer-configs-cheatsheet.html)
+- [0015 - Kafka Connect 설정 치트시트](./reference/0015-kafka-connect-configs-cheatsheet.html)
+- [0016 - Admin Client 설정 치트시트](./reference/0016-kafka-admin-client-configs-cheatsheet.html)
+
+**Learning Records**
+
+- [0023 - Kafka 설정 학습 범위 확정](./learning-records/0023-kafka-configuration-scope-baseline.md)

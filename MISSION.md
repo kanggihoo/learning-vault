@@ -59,6 +59,8 @@
 - 여러 클러스터를 쓰는 이유(geo-replication)와 한 클러스터를 여러 팀이 같이 쓸 때의 격리 방법
   (multi-tenancy: quota, ACL, 네임스페이스)을 설명할 수 있다.
 - 무엇을 모니터링해야 장애를 가장 빨리 알아챌 수 있는지(핵심 지표 몇 가지) 설명할 수 있다.
+- Broker/Topic/Consumer Group/Producer/Connect/Admin 설정 중 실제로 도입 판단에 영향을 주는
+  핵심 설정 몇 가지를 카테고리별로 골라 설명할 수 있고, 어떤 설정 문서를 나중에 찾아봐야 할지 안다.
 
 ## Constraints
 - Kafka는 처음 배우는 주제로, 사전 지식이 없다고 가정하고 시작한다.

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Consumer Group 설정: 그룹 안에서 어떻게 행동할지 정하기</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Consumer Group 설정: 그룹 안에서 어떻게 행동할지 정하기</h1>
+  <p class="note">
+    목표: <a href="https://kafka.apache.org/documentation/#groupconfigs">Apache Kafka Documentation: Group Configs</a>와
+    <a href="https://kafka.apache.org/documentation/#consumerconfigs">Consumer Configs</a> 원문에서, 초보자가 실제로
+    판단해야 하는 설정 몇 개만 뽑아 "왜 이 값을 이렇게 정하는가"를 이해한다. Consumer Group 자체의 동작은
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>과
+    <a href="./0019-kafka-design-deep-dive.html">0019 레슨</a>에서 이미 배웠다고 가정하고, 이 레슨은 그 동작을
+    "어떤 설정 값이 실제로 조종하는지"에 집중한다.
+  </p>
+
+  <h2>0. 큰 그림 — 브로커의 한계값 안에서 Client가 값을 고른다</h2>
+  <p>
+    이 레슨은 서로 다른 두 위치에 있는 설정을 함께 다룬다. 이 구분은 <a href="./0026-kafka-broker-and-topic-configs.html">0026 레슨</a>에서
+    본 "브로커 기본값 vs 토픽별 override" 패턴과 완전히 같은 모양이다 — 여기서는 대상이 "토픽"이 아니라
+    "Consumer Group"으로 바뀐 것뿐이다.
+  </p>
+  <table>
+    <thead><tr><th>구성 위치</th><th>파일</th><th>역할</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Group Configs</strong></td><td>브로커(서버) 설정</td><td>"Consumer Group이 요청할 수 있는 값의 허용 범위"를 브로커가 미리 정해둔다 — 일종의 가드레일</td></tr>
+      <tr><td><strong>Consumer Configs</strong></td><td>Client(컨슈머 앱) 설정</td><td>그 가드레일 <em>안에서</em> 각 컨슈머 애플리케이션이 실제로 고르는 값</td></tr>
+    </tbody>
+  </table>
+  <p class="warn">
+    Client가 가드레일을 벗어난 값을 요청하면 브로커가 거부한다. 예: 브로커가
+    <code>group.min.session.timeout.ms=6000</code>으로 정해뒀는데 컨슈머가
+    <code>session.timeout.ms=3000</code>을 요청하면 연결이 거부된다.
+  </p>
+
+  <h2>1. 브로커의 가드레일 — Group Configs</h2>
+  <p>
+    137줄짜리 짧은 문서라 다룰 값도 적다. 핵심은 <strong>세션 타임아웃(장애로 인식하기까지 걸리는 시간)의
+    허용 범위</strong>를 브로커가 강제한다는 것 하나다.
+  </p>
+  <table>
+    <thead><tr><th>설정</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>group.min.session.timeout.ms</code></td><td>6000 (6초)</td><td>Consumer가 요청할 수 있는 세션 타임아웃의 최소값 — 너무 짧게 잡으면 하트비트 폭주로 클러스터에 부담</td></tr>
+      <tr><td><code>group.max.session.timeout.ms</code></td><td>1800000 (30분)</td><td>최대값 — 너무 길게 잡으면 죽은 컨슈머를 알아채는 데 30분씩 걸릴 수 있음</td></tr>
+      <tr><td><code>consumer.session.timeout.ms</code> / <code>consumer.heartbeat.interval.ms</code></td><td>45초 / 5초</td><td>신규 <strong>Consumer Group Protocol</strong>(<code>group.protocol=consumer</code>)에서는 세션 타임아웃·하트비트 간격을 <em>브로커가</em> 이 값으로 강제한다 — 옛 방식(classic)처럼 클라이언트가 직접 정하지 못함</td></tr>
+      <tr><td><code>share.*</code>, <code>streams.*</code> 접두사 설정들</td><td>-</td><td>Share Group(0019 §7)과 Kafka Streams 그룹에도 같은 패턴(간격·타임아웃 브로커 강제)이 각각 존재 — 지금은 이름만 알아두면 충분</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    기억할 것은 하나: <strong>"이 그룹이 얼마나 빨리 장애를 알아챌지"는 컨슈머 코드가 아니라 브로커가 최종
+    결정권을 갖는다</strong>는 것. 새 Consumer Group Protocol로 갈수록 이 결정권이 브로커 쪽으로
+    더 넘어가는 추세다(뒤에서 다시 설명).
+  </p>
+
+  <h2>2. 그룹 멤버십과 장애 감지 — 이 컨슈머가 살아있다고 어떻게 알리나</h2>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>하트비트 3형제: session.timeout.ms / heartbeat.interval.ms / max.poll.interval.ms</h3>
+    <table>
+      <thead><tr><th>설정</th><th>기본값</th><th>역할</th></tr></thead>
+      <tbody>
+        <tr><td><code>session.timeout.ms</code></td><td>45초</td><td>이 시간 안에 하트비트가 안 오면 브로커가 "죽었다"고 판단 → rebalance 시작</td></tr>
+        <tr><td><code>heartbeat.interval.ms</code></td><td>3초</td><td>얼마나 자주 하트비트를 보낼지 — 보통 session.timeout의 1/3 이하로</td></tr>
+        <tr><td><code>max.poll.interval.ms</code></td><td>5분</td><td><code>poll()</code>을 이 시간 안에 다시 호출 안 하면 "메시지 처리 로직이 멈췄다"고 보고 그룹에서 내보냄 — 하트비트는 별개 스레드라 살아있어도 이건 별도로 체크됨</td></tr>
+      </tbody>
+    </table>
+    <p class="warn">
+      <strong>흔한 실수:</strong> 메시지 하나 처리에 오래 걸리는 로직(예: 무거운 API 호출)을 넣었다가
+      <code>max.poll.interval.ms</code>를 넘겨서 멀쩡한 컨슈머가 그룹에서 쫓겨나는 경우가 잦다. "왜 계속
+      rebalance가 일어나지?"의 원인 1순위.
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>group.instance.id — Static Membership을 켜는 스위치</h3>
+    <p>
+      <a href="./0019-kafka-design-deep-dive.html">0019 레슨 §4</a>에서 배운 Static Membership은 바로 이 설정
+      하나로 켜진다. 값을 주면 재시작해도 같은 멤버로 인식되어 <code>session.timeout.ms</code> 안에만
+      돌아오면 rebalance 없이 파티션을 이어받는다. 실수로 두 인스턴스에 같은 값을 주면
+      <code>FencedInstanceIdException</code>으로 나중에 붙은 쪽이 튕겨나간다(0019에서 이미 본 그대로).
+    </p>
+  </div>
+  <div class="card" style="border-color:#b45309;">
+    <h3>group.protocol — classic vs consumer, 그리고 위 타임아웃들이 무효화되는 경우</h3>
+    <p>
+      <code>group.protocol=consumer</code>(신규 프로토콜, <a href="./0025-kafka-advanced-protocols-overview.html">0025 레슨</a>에서
+      미리 본 그 개선된 rebalance 프로토콜)로 설정하면, 위 표의 <code>session.timeout.ms</code>·<code>heartbeat.interval.ms</code>
+      client 설정은 <strong>더 이상 적용되지 않는다</strong> — 대신 브로커 설정
+      <code>group.consumer.session.timeout.ms</code>가 그 역할을 대신한다. "분명 설정했는데 왜 안 먹지?"의
+      흔한 원인이니, 어느 프로토콜을 쓰는지부터 확인해야 한다.
+    </p>
+  </div>
+
+  <h2>3. 어디서부터 읽을지, 언제 커밋할지</h2>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>auto.offset.reset — 저장된 위치가 없거나 사라졌을 때</h3>
+    <table>
+      <thead><tr><th>값</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td><code>latest</code> (기본값)</td><td>지금 이 순간부터 새로 들어오는 메시지만 읽음 — 과거 데이터는 건너뜀</td></tr>
+        <tr><td><code>earliest</code></td><td>남아있는 가장 오래된 메시지부터 전부 읽음</td></tr>
+        <tr><td><code>none</code></td><td>이전 offset을 못 찾으면 그냥 예외를 던짐(자동으로 아무거나 선택하지 않음)</td></tr>
+      </tbody>
+    </table>
+    <p class="warn">
+      새 컨슈머 그룹을 처음 붙일 때 이 값이 <code>latest</code>이면, 지금까지 쌓인 데이터를 몽땅
+      건너뛰고 시작한다 — "데이터가 안 보이는데요?"라는 질문의 흔한 원인 1순위다.
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>enable.auto.commit + auto.commit.interval.ms — 자동 저장이 만드는 전달 보장</h3>
+    <p>
+      <a href="./0019-kafka-design-deep-dive.html">0019 레슨 §5</a>에서 배운 "읽기→처리→저장 순서가
+      전달 보장을 정한다"는 원칙이 여기 그대로 적용된다. 기본값 <code>enable.auto.commit=true</code> +
+      <code>auto.commit.interval.ms=5000</code>은 백그라운드에서 5초마다 자동으로 offset을 저장하는데,
+      이건 정확히 "처리 완료 여부와 상관없이 시간이 되면 저장"하는 방식이라 <strong>메시지 유실 가능성이
+      있는 조합</strong>이다. 정확한 at-least-once를 원한다면 <code>enable.auto.commit=false</code>로
+      끄고 처리가 끝난 뒤 직접 커밋해야 한다.
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>isolation.level — 트랜잭션 메시지를 볼지 말지</h3>
+    <p>
+      <code>read_committed</code>로 설정하면 <a href="./0019-kafka-design-deep-dive.html">0019 레슨 §6</a>에서
+      배운 트랜잭션 커밋 마커를 활용해 <strong>커밋되지 않은(취소된) 트랜잭션 메시지를 건너뛴다.</strong>
+      기본값은 <code>read_uncommitted</code>라서, 트랜잭션을 쓰는 Producer와 짝을 맞추려면 Consumer 쪽에서
+      이 값을 명시적으로 바꿔줘야 한다.
+    </p>
+  </div>
+
+  <h2>4. 가져오기(Fetch) 튜닝 — 지연 시간 vs 처리량</h2>
+  <p>
+    이 트레이드오프는 <a href="./0028-kafka-producer-configs.html">0028 레슨</a>에서 볼 Producer의
+    <code>batch.size</code>/<code>linger.ms</code>와 정확히 같은 모양이다 — "조금 기다렸다가 크게
+    가져올까, 아니면 바로바로 가져올까."
+  </p>
+  <table>
+    <thead><tr><th>설정</th><th>기본값</th><th>효과</th></tr></thead>
+    <tbody>
+      <tr><td><code>fetch.min.bytes</code></td><td>1</td><td>이만큼 쌓일 때까지 브로커가 응답을 미룸 — 크게 잡으면 처리량↑ 지연↑</td></tr>
+      <tr><td><code>fetch.max.wait.ms</code></td><td>500ms</td><td><code>fetch.min.bytes</code>가 안 채워져도 이 시간이 지나면 그냥 응답 — 무한 대기 방지</td></tr>
+      <tr><td><code>max.poll.records</code></td><td>500</td><td>한 번의 <code>poll()</code>이 애플리케이션에 넘겨주는 최대 레코드 수 — 처리 로직이 느리면 줄여서 <code>max.poll.interval.ms</code> 초과를 방지</td></tr>
+      <tr><td><code>max.partition.fetch.bytes</code></td><td>1MB</td><td>파티션 하나당 한 번에 가져올 최대 크기</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. Share Consumer 전용 설정</h2>
+  <p>
+    <a href="./0019-kafka-design-deep-dive.html">0019 레슨 §7</a>에서 본 Share Group(파티션을 여러
+    Consumer가 나눠 갖는 대안 모델)에는 전용 설정이 따로 있다. 딱 두 가지만 기억하면 된다.
+  </p>
+  <ul>
+    <li><strong><code>share.record.lock.duration.ms</code></strong> (기본 30초) — "이 메시지 지금 내가 처리 중이니 건드리지 마"라는 점유 잠금이 유지되는 시간. 0019에서 말한 "acquisition lock"이 바로 이 설정으로 조절된다.</li>
+    <li><strong><code>share.delivery.count.limit</code></strong> (기본 5) — 같은 메시지를 최대 몇 번까지 재전달 시도할지. 이 횟수를 넘기면 포기하고 다음으로 넘어간다.</li>
+  </ul>
+  <p class="note">
+    <code>ssl.*</code>/<code>sasl.*</code> 계열의 보안 설정은 Producer·Admin Client와 완전히 공통이다 —
+    <a href="./0028-kafka-producer-configs.html">0028 레슨</a>과 <a href="./0030-kafka-admin-client-configs.html">0030 레슨</a>에서
+    한 번만 짚고, 여기서는 반복하지 않는다.
+  </p>
+
+  <h2>6. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자.</p>
+  <section class="quiz" aria-label="Consumer Group 설정 퀴즈">
+    <p><strong>Q1.</strong> Consumer가 요청한 session timeout 값이 브로커에서 거부될 수 있는 이유는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">Consumer 버전이 낮아서</button>
+    <button type="button" data-target="answer-1" data-answer="correct">group.min/max.session.timeout.ms 범위를 벗어나서</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">토픽 파티션 수가 부족해서</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> 메시지 처리 로직이 너무 오래 걸려 컨슈머가 그룹에서 쫓겨날 때, 원인이 되는 설정은?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">fetch.min.bytes</button>
+    <button type="button" data-target="answer-2" data-answer="correct">max.poll.interval.ms</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">auto.offset.reset</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> 새 Consumer Group을 처음 붙였는데 기존 데이터가 하나도 안 보인다면 의심할 설정은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">isolation.level</button>
+    <button type="button" data-target="answer-3" data-answer="correct">auto.offset.reset이 latest인지</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">group.instance.id</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> enable.auto.commit=true(기본값)일 때 발생 가능한 문제는?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong">중복 처리만 가능하고 유실은 불가능</button>
+    <button type="button" data-target="answer-4" data-answer="correct">처리 전에 offset이 저장돼 유실 가능</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">rebalance가 아예 발생하지 않음</button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> group.protocol=consumer일 때 세션 타임아웃을 실제로 결정하는 것은?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong">client의 session.timeout.ms</button>
+    <button type="button" data-target="answer-5" data-answer="correct">브로커의 group.consumer.session.timeout.ms</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">client의 heartbeat.interval.ms</button>
+    <p class="answer" id="answer-5"></p>
+
+    <p><strong>Q6.</strong> Share Consumer의 acquisition lock 유지 시간을 조절하는 설정은?</p>
+    <button type="button" data-target="answer-6" data-answer="wrong">share.delivery.count.limit</button>
+    <button type="button" data-target="answer-6" data-answer="correct">share.record.lock.duration.ms</button>
+    <button type="button" data-target="answer-6" data-answer="wrong">share.acquire.mode</button>
+    <p class="answer" id="answer-6"></p>
+  </section>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kafka.apache.org/documentation/#groupconfigs">Apache Kafka Documentation: Group Configs</a> — 브로커 쪽 가드레일 원문.</li>
+    <li><a href="https://kafka.apache.org/documentation/#consumerconfigs">Apache Kafka Documentation: Consumer Configs</a> — client 쪽 설정 원문(Share Consumer 포함).</li>
+    <li>전체 설정 목록은 <a href="../reference/0013-kafka-consumer-group-configs-cheatsheet.html">0013 레퍼런스 치트시트</a>에서 찾아볼 것.</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/apachekafka/">r/apachekafka</a> — rebalance 폭풍, max.poll.interval.ms 튜닝 같은 실무 경험담.</li>
+    <li><a href="https://stackoverflow.com/questions/tagged/apache-kafka">Stack Overflow: apache-kafka 태그</a></li>
+  </ul>
+
+  <p>
+    관련 자료: <a href="./0026-kafka-broker-and-topic-configs.html">0026 — Broker &amp; Topic 설정</a>,
+    <a href="../reference/0013-kafka-consumer-group-configs-cheatsheet.html">0013 — Consumer &amp; Group 설정 치트시트</a>.<br>
+    <strong>다음 레슨:</strong> <a href="./0028-kafka-producer-configs.html">0028 — Producer 설정: 안전성과 처리량 사이에서 고르기</a>.<br>
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자 —
+    "왜 max.poll.interval.ms를 넘겨도 하트비트는 계속 가지?" 같은 질문이 좋은 질문이다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. 이 section의 핵심 문장을 다시 떠올려보자 — 위로 스크롤해서 다시 읽어도 좋다.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>

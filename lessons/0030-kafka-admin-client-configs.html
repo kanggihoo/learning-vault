@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Client 설정: 운영 자동화를 위한 클라이언트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Admin Client 설정: 운영 자동화를 위한 클라이언트</h1>
+  <p class="note">
+    목표: <a href="https://kafka.apache.org/documentation/#adminclientconfigs">Apache Kafka Documentation:
+    AdminClient Configs</a>를 근거로, AdminClient 설정 중 <strong>실제로 새로 알아야 할 것만</strong> 짚는다.
+    <a href="./0020-kafka-operations-basics.html">0020 레슨</a>에서 손으로 했던 운영 작업(토픽 생성/삭제,
+    설정 변경, 클러스터 상태 조회)을 <strong>코드로 자동화할 때</strong> 쓰는 게 AdminClient다. 공통 클라이언트
+    설정(보안, 재시도, timeout)은 이미 <a href="./0028-kafka-producer-configs.html">0028 레슨</a>에서
+    Producer 기준으로 배웠으니 여기서는 반복하지 않는다.
+  </p>
+
+  <h2>0. AdminClient는 왜 필요한가 — "손으로 하던 걸 코드로"</h2>
+  <p>
+    <a href="./0020-kafka-operations-basics.html">0020 레슨</a>에서 배운 운영 작업들 — 토픽 만들기,
+    설정 바꾸기, 브로커/파티션 상태 조회하기 — 은 원래 CLI 도구(<code>kafka-topics.sh</code> 같은)로
+    사람이 직접 실행하던 것이다. 그런데 이걸 <strong>애플리케이션 코드나 운영 자동화 스크립트</strong>
+    안에서 실행하고 싶을 때가 있다 — 예를 들어 "신규 테넌트가 가입하면 자동으로 전용 토픽을
+    만들어준다"거나, "배포 파이프라인에서 토픽 설정이 원하는 값과 다르면 자동으로 맞춘다" 같은 경우다.
+    <strong>AdminClient</strong>는 이런 관리 작업을 Producer/Consumer와 똑같은 방식(Kafka 프로토콜로
+    브로커와 통신)으로 코드에서 호출할 수 있게 해주는 클라이언트다.
+  </p>
+  <p class="note">
+    그래서 AdminClient 설정 대부분(<code>bootstrap.servers</code>, <code>security.protocol</code>,
+    <code>ssl.*</code>, <code>sasl.*</code>, <code>retries</code>, <code>request.timeout.ms</code> 등)은
+    Producer/Consumer와 <strong>똑같다</strong> — "클러스터에 어떻게 연결하고, 인증하고, 실패하면 어떻게
+    재시도할지"는 어떤 클라이언트든 같은 문제이기 때문이다. 자세한 설명은
+    <a href="./0028-kafka-producer-configs.html">0028 — Producer 설정</a>을 참고하고, 아래는 AdminClient에서만
+    특별히 알아둘 것 두세 가지만 다룬다.
+  </p>
+
+  <h2>1. bootstrap.controllers — KRaft 환경에서 컨트롤러에 바로 연결하기</h2>
+  <p>
+    보통 클라이언트는 <code>bootstrap.servers</code>로 <strong>브로커</strong>에 접속해서 클러스터
+    전체를 알아간다. 그런데 <a href="./0022-kraft-cluster-operations.html">0022 레슨</a>에서 배운
+    KRaft controller quorum 자체를 다뤄야 하는 관리 작업(예: quorum 상태 확인, controller 추가/제거)은
+    브로커가 아니라 <strong>controller에 직접</strong> 연결해야 한다. <code>bootstrap.controllers</code>가
+    이 용도의 설정이다 — 형식은 <code>bootstrap.servers</code>와 같은 <code>host:port</code> 목록이다.
+  </p>
+  <table>
+    <thead><tr><th>설정</th><th>연결 대상</th><th>쓰는 경우</th></tr></thead>
+    <tbody>
+      <tr><td><code>bootstrap.servers</code></td><td>Broker</td><td>토픽 관리, 설정 변경 등 일반적인 관리 작업</td></tr>
+      <tr><td><code>bootstrap.controllers</code></td><td>KRaft Controller</td><td>Controller quorum 자체를 다루는 작업(<a href="./0022-kraft-cluster-operations.html">0022</a>의 Metadata Quorum Tool 등)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. default.api.timeout.ms — "이 요청까지 다 합쳐서 언제까지"</h2>
+  <p>
+    Producer/Consumer의 <code>request.timeout.ms</code>가 <strong>네트워크로 보낸 요청 하나</strong>의
+    응답을 얼마나 기다릴지를 정한다면, AdminClient의 <code>default.api.timeout.ms</code>(기본 60초)는
+    <strong>API 호출 하나 전체</strong>의 최종 기한이다. 예를 들어 토픽 생성 하나가 내부적으로 재시도를
+    여러 번 거친다면, 그 재시도를 다 포함해서 60초 안에 끝나지 않으면 API 호출 자체가 실패로 끝난다.
+    호출할 때 <code>timeout</code> 파라미터를 따로 안 주면 이 값이 기본으로 적용된다.
+  </p>
+
+  <h2>3. 재시도와 "멱등적이지 않은" 관리 작업</h2>
+  <div class="card" style="border-color:#b45309;">
+    <h3>토픽 생성처럼 "두 번 하면 다른 결과"인 작업을 재시도할 때</h3>
+    <p>
+      Producer의 멱등성 전송(<a href="./0019-kafka-design-deep-dive.html">0019 레슨</a> 참고)은 "같은 메시지를
+      여러 번 보내도 결과가 한 번 보낸 것과 같다"는 보장이었다. 그런데 <strong>토픽 생성 같은 관리
+      작업</strong>은 다르다 — 첫 번째 요청이 실제로는 성공했는데 응답만 못 받아서 클라이언트가
+      재시도하면, 두 번째 요청은 "이미 존재하는 토픽"이라는 에러(<code>TopicExistsException</code>)를
+      받게 된다. 이건 진짜 실패가 아니라 <strong>재시도가 만든 착시</strong>일 수 있으므로, 자동화
+      스크립트를 짤 때는 이 에러를 "이미 원하는 상태에 도달한 것"으로 처리하는 로직을 넣어주는 게
+      안전하다 — AdminClient가 알아서 구분해주지 않는다.
+    </p>
+  </div>
+
+  <h2>4. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자.</p>
+  <section class="quiz" aria-label="Admin Client 설정 퀴즈">
+    <p><strong>Q1.</strong> AdminClient의 보안·재시도·timeout 관련 설정이 Producer/Consumer와 거의 같은 이유는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">AdminClient가 내부적으로 Producer를 감싸서 만들어졌기 때문</button>
+    <button type="button" data-target="answer-1" data-answer="correct">클러스터 연결·인증·재시도는 어떤 클라이언트든 겪는 공통 문제이기 때문</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">AdminClient는 사실 설정을 거의 지원하지 않기 때문</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> <code>bootstrap.controllers</code>를 써야 하는 경우는?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">토픽 하나를 새로 만들 때</button>
+    <button type="button" data-target="answer-2" data-answer="correct">KRaft controller quorum 자체 상태를 다뤄야 할 때</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">Consumer group의 offset을 조회할 때</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> <code>default.api.timeout.ms</code>가 <code>request.timeout.ms</code>와 다른 점은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">둘은 완전히 같은 것을 가리키는 다른 이름이다</button>
+    <button type="button" data-target="answer-3" data-answer="correct">전자는 재시도를 포함한 API 호출 전체의 기한, 후자는 요청 하나의 응답 대기 시간이다</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">전자는 Producer에만, 후자는 AdminClient에만 있는 설정이다</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> 토픽 생성 요청이 재시도돼서 <code>TopicExistsException</code>이 나는 상황을 안전하게 다루는 방법은?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong">무조건 클러스터 장애로 간주하고 알림을 보낸다</button>
+    <button type="button" data-target="answer-4" data-answer="correct">이미 원하는 상태(토픽이 존재함)에 도달했을 가능성을 고려해 처리한다</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">retries를 0으로 낮춰서 아예 재시도가 안 되게 막는다</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kafka.apache.org/documentation/#adminclientconfigs">Apache Kafka Documentation: AdminClient Configs</a>
+      — 이 레슨의 원본. 공통 클라이언트 설정 전체 목록도 여기 있다.</li>
+    <li><a href="./0028-kafka-producer-configs.html">0028 레슨</a> — 공통 클라이언트 설정(보안, 재시도, timeout)의 상세 설명.</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/apachekafka/">r/apachekafka</a> — 운영 자동화 스크립트/툴링 관련 경험담.</li>
+    <li><a href="https://stackoverflow.com/questions/tagged/apache-kafka">Stack Overflow: apache-kafka 태그</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="./0020-kafka-operations-basics.html">0020 — Kafka 운영 기초</a>,
+    <a href="./0028-kafka-producer-configs.html">0028 — Producer 설정</a>,
+    <a href="../reference/0016-kafka-admin-client-configs-cheatsheet.html">Admin Client 설정 치트시트</a>.<br>
+    <strong>이걸로 Kafka 설정(Configuration) 학습 아치(0026~0030)가 마무리된다:</strong>
+    ① <a href="./0026-kafka-broker-and-topic-configs.html">0026 — Broker &amp; Topic 설정</a>,
+    ② <a href="./0027-kafka-consumer-group-configs.html">0027 — Consumer Group 설정</a>,
+    ③ <a href="./0028-kafka-producer-configs.html">0028 — Producer 설정</a>,
+    ④ <a href="./0029-kafka-connect-configs.html">0029 — Kafka Connect 설정</a>,
+    ⑤ 0030(이 레슨) — Admin Client 설정.<br>
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자 —
+    "이 설정을 실제로 우리 도입 시나리오에 적용하면?" 같은 질문이 좋은 다음 단계다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. 이 section의 핵심 문장을 다시 떠올려보자 — 위로 스크롤해서 다시 읽어도 좋다.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>
