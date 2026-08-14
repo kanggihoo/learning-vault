@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KRaft 클러스터 운영: Controller를 늘리고 줄이고 진단하기</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .diagram {
+      background: #fff;
+      border: 1px solid #deded6;
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    .diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>KRaft 클러스터 운영: Controller를 늘리고 줄이고 진단하기</h1>
+  <p class="note">
+    <a href="./0018-kraft-vs-zookeeper.html">0018 레슨</a>에서 KRaft가 <strong>무엇</strong>인지(ZooKeeper를
+    없애고 Kafka 내부 Controller Quorum이 Raft로 metadata를 관리하는 방식)와 <strong>왜</strong> 그렇게
+    바뀌었는지를 배웠다. 이 레슨은 그 지식을 전제로, <strong>실제로 Controller를 몇 대 둘지, 어떻게
+    늘리고 줄이는지, 문제가 생기면 무엇으로 들여다보는지</strong> — 운영 단계의 감각을 잡는다.
+    0018을 안 읽었다면 먼저 읽고 오는 걸 추천한다.
+  </p>
+
+  <h2>0. 이 레슨에서 다루는 것 / 다루지 않는 것</h2>
+  <p>
+    Kafka 4.1 기준 KRaft 운영 문서는 CLI 옵션과 설정 키가 아주 많다. 여기서는
+    <strong>실무 도입을 준비하는 단계에서 감각으로 갖고 있어야 할 것</strong>만 추린다. 정확한 flag
+    이름과 명령어 전체 목록은 필요한 시점에 <a href="https://kafka.apache.org/documentation/#kraft">공식 문서</a>를
+    체크리스트로 펼쳐보면 된다 — 지금 다 외울 필요는 없다.
+  </p>
+
+  <h2>1. Process Role — 이 서버는 Broker인가, Controller인가, 둘 다인가</h2>
+  <p>
+    KRaft mode의 모든 Kafka 서버는 <code>process.roles</code> 설정으로 자기 역할을 선언한다.
+    <a href="./0018-kraft-vs-zookeeper.html">0018 레슨</a>에서 본 "Broker는 data만, Controller는
+    metadata만"이라는 역할 분리가 바로 이 설정 하나로 결정된다.
+  </p>
+  <table>
+    <thead><tr><th>설정값</th><th>역할</th><th>실무 적합도</th></tr></thead>
+    <tbody>
+      <tr><td><code>process.roles=broker</code></td><td>data 요청만 처리</td><td class="ok">운영 환경 표준</td></tr>
+      <tr><td><code>process.roles=controller</code></td><td>metadata 요청만 처리, quorum 참여</td><td class="ok">운영 환경 표준</td></tr>
+      <tr><td><code>process.roles=broker,controller</code></td><td>한 프로세스가 둘 다 ("combined")</td><td class="no">개발용으로만. Controller만 따로 rolling·scale 못 함</td></tr>
+    </tbody>
+  </table>
+  <p class="warn">
+    Combined mode는 노트북에서 Kafka를 하나 띄워 테스트할 때는 편하지만, <strong>운영 환경에서는
+    피해야 한다</strong> — Controller가 Broker와 같은 프로세스에 묶여서 격리되지 않기 때문이다
+    (예: Broker 쪽 부하가 튀면 metadata 처리까지 함께 영향받는다).
+  </p>
+
+  <h2>2. Controller Quorum — 왜 항상 홀수인가</h2>
+  <p>
+    Controller로 뽑힌 서버들은 <a href="./0018-kraft-vs-zookeeper.html">0018 레슨</a>에서 본
+    Raft 합의에 함께 참여하는 <strong>Quorum</strong>을 이룬다. 그중 하나만 Active(진짜 일하는 놈)이고,
+    나머지는 Standby로 로그만 따라 복제한다.
+  </p>
+  <div class="diagram">
+    <svg viewBox="0 0 780 220" role="img" aria-label="Controller Quorum 3대 구성과 Broker의 metadata 조회 흐름">
+      <defs>
+        <marker id="arrowQ" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+      <rect x="210" y="16" width="360" height="100" rx="10" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="390" y="38" font-size="12.5" font-weight="700" text-anchor="middle" fill="#0f766e">controller.quorum.bootstrap.servers 로 서로를 찾음</text>
+      <rect x="226" y="50" width="100" height="52" rx="6" fill="#fff" stroke="#0f766e"/>
+      <text x="276" y="72" font-size="11" font-weight="700" text-anchor="middle" fill="#111827">controller1</text>
+      <text x="276" y="88" font-size="9.5" text-anchor="middle" fill="#047857" font-weight="700">active</text>
+      <rect x="340" y="50" width="100" height="52" rx="6" fill="#fff" stroke="#0f766e"/>
+      <text x="390" y="72" font-size="11" font-weight="700" text-anchor="middle" fill="#111827">controller2</text>
+      <text x="390" y="88" font-size="9.5" text-anchor="middle" fill="#4b5563">standby</text>
+      <rect x="454" y="50" width="100" height="52" rx="6" fill="#fff" stroke="#0f766e"/>
+      <text x="504" y="72" font-size="11" font-weight="700" text-anchor="middle" fill="#111827">controller3</text>
+      <text x="504" y="88" font-size="9.5" text-anchor="middle" fill="#4b5563">standby</text>
+
+      <rect x="60" y="150" width="180" height="56" rx="10" fill="#f9fafb" stroke="#374151" stroke-width="2"/>
+      <text x="150" y="182" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">Broker A</text>
+      <rect x="300" y="150" width="180" height="56" rx="10" fill="#f9fafb" stroke="#374151" stroke-width="2"/>
+      <text x="390" y="182" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">Broker B</text>
+      <rect x="540" y="150" width="180" height="56" rx="10" fill="#f9fafb" stroke="#374151" stroke-width="2"/>
+      <text x="630" y="182" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">Broker C</text>
+
+      <line x1="150" y1="148" x2="280" y2="118" stroke="#0f766e" stroke-width="1.5" marker-end="url(#arrowQ)"/>
+      <line x1="390" y1="148" x2="390" y2="118" stroke="#0f766e" stroke-width="1.5" marker-end="url(#arrowQ)"/>
+      <line x1="630" y1="148" x2="500" y2="118" stroke="#0f766e" stroke-width="1.5" marker-end="url(#arrowQ)"/>
+    </svg>
+  </div>
+  <p>
+    Controller 1대가 죽어도 나머지 <strong>과반수(majority)</strong>가 살아있으면 클러스터는 멈추지
+    않는다. 그래서 "견뎌야 하는 동시 장애 수 N"과 "필요한 Controller 대수"의 관계는 <code>2N + 1</code>이다
+    — 딱 <code>N+1</code>이 아니라 <strong>과반수 투표가 항상 가능해야 하므로 여유분까지 포함해</strong>
+    이 공식이 나온다.
+  </p>
+  <table>
+    <thead><tr><th>Controller 대수</th><th>견딜 수 있는 동시 장애</th></tr></thead>
+    <tbody>
+      <tr><td>3대</td><td>1대 장애까지 정상 동작</td></tr>
+      <tr><td>5대</td><td>2대 장애까지 정상 동작</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    그래서 실무 기본값은 <strong>3대</strong>다. 5대는 더 큰 장애 내성을 주지만, 매 metadata
+    변경마다 더 많은 노드의 합의를 기다려야 해서 그만큼의 비용(디스크 5GB, 메모리 5GB 정도가
+    Controller 하나의 일반적인 목표치)을 추가로 감수하는 것이다.
+  </p>
+
+  <h2>3. Static Quorum vs Dynamic Quorum — Controller 구성을 바꿀 때 뭐가 달라지나</h2>
+  <p>
+    Kafka 4.1부터 Controller 구성 방식이 두 가지로 나뉜다. 핵심 차이는 <strong>"Controller를 하나
+    추가/제거하려면 무엇을 건드려야 하는가"</strong>다.
+  </p>
+  <table>
+    <thead><tr><th>방식</th><th>Controller 목록을 아는 법</th><th>Controller 추가/제거 시</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Static Quorum</strong> (예전 방식)</td>
+        <td><code>controller.quorum.voters</code>에 모든 Controller의 id·host·port를 <strong>고정 목록</strong>으로 명시</td>
+        <td class="no">클러스터의 모든 노드 설정 파일을 고쳐야 하고, 사실상 전체 재구성·재시작이 필요</td>
+      </tr>
+      <tr>
+        <td><strong>Dynamic Quorum</strong> (KIP-853, 4.1+ 권장)</td>
+        <td><code>controller.quorum.bootstrap.servers</code>로 "일단 여기 물어봐" 정도만 지정</td>
+        <td class="ok">전용 CLI 명령 한 번으로 살아있는 채로 추가/제거 가능</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="warn">
+    지금 신규로 클러스터를 만든다면 <strong>Dynamic Quorum이 사실상 기본 선택지</strong>다 — 나중에
+    Controller를 늘리거나 교체해야 할 때 클러스터 전체를 건드리지 않아도 되기 때문이다. 어떤 방식으로
+    떠 있는지는 아래처럼 확인한다.
+  </p>
+  <pre class="flow"><code>$ bin/kafka-features.sh --bootstrap-controller localhost:9093 describe
+Feature: kraft.version  ...  FinalizedVersionLevel: 1  ...
+                                                  └─ 0이면 Static, 1 이상이면 Dynamic</code></pre>
+
+  <h2>4. Controller 추가·제거 — 대략적인 흐름</h2>
+  <p>
+    정확한 명령어 옵션은 버전마다 조금씩 다르므로, 여기서는 <strong>"무슨 순서로 진행되는가"</strong>라는
+    흐름만 잡는다.
+  </p>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Controller 추가</h3>
+    <ol>
+      <li>새 노드를 storage 도구로 <strong>포맷</strong>해서 준비시킨다.</li>
+      <li>새 Controller 프로세스를 <strong>시작</strong>한다 — 아직 quorum의 정식 멤버는 아니다.</li>
+      <li>Active Controller의 metadata를 <strong>따라잡을 때까지(catch up)</strong> replication 진행 상황을 지켜본다.</li>
+      <li>충분히 따라잡으면 <code>add-controller</code> 명령으로 quorum에 정식 합류시킨다.</li>
+    </ol>
+  </div>
+  <div class="card" style="border-color:#b45309;">
+    <h3>Controller 제거</h3>
+    <ol>
+      <li><strong>프로세스를 끄기 전에</strong> <code>remove-controller</code> 명령으로 먼저 quorum에서 뺀다.</li>
+      <li>그 다음에 프로세스를 종료한다.</li>
+    </ol>
+    <p class="warn">순서가 중요하다 — 먼저 죽이고 나중에 빼려 하면, 그 사이 남은 Controller들이 "과반수가 몇 대인지" 잘못 계산하는 위험한 순간이 생길 수 있다.</p>
+  </div>
+
+  <h2>5. Debugging 도구 3종 — 뭘 볼 때 뭘 쓰나</h2>
+  <table>
+    <thead><tr><th>도구</th><th>용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>kafka-metadata-quorum.sh</code></td><td>지금 누가 Leader Controller인지, 각 Controller가 얼마나 뒤처졌는지(lag) 등 <strong>quorum의 현재 상태</strong>를 확인</td></tr>
+      <tr><td><code>kafka-dump-log.sh</code></td><td>metadata log 파일이나 snapshot을 열어서 <strong>실제로 어떤 변경 기록이 쌓였는지</strong> 직접 들여다봄</td></tr>
+      <tr><td><code>kafka-metadata-shell.sh</code></td><td>snapshot을 마치 <strong>파일시스템처럼 <code>ls</code>·<code>cat</code>으로 탐색</strong>하며 특정 topic·partition의 현재 상태를 확인</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    셋 다 "지금 뭐가 문제인지 알 수 없을 때 순서대로 좁혀가며 보는" 도구다: 먼저 quorum tool로
+    "누가 Leader고 얼마나 뒤처졌는지" 큰 그림을 보고 → 이상하면 dump-log나 shell로 실제 기록된
+    내용을 파고든다.
+  </p>
+
+  <h2>6. 배포 시 기억할 것 2가지</h2>
+  <ul>
+    <li><strong>Controller도 장애를 견뎌야 하는 대상이다</strong> — "메타데이터만 다루니까 덜 중요하겠지"라고 생각하면 안 된다. Controller 전체가 죽으면 클러스터 전체가 새 Leader 선출도, 신규 Topic 생성도 못 하는 상태가 된다.</li>
+    <li><strong>홀수 개(3 또는 5)로 구성한다</strong> — 위 2절에서 본 <code>2N+1</code> 공식을 그대로 따른다.</li>
+  </ul>
+
+  <h2>7. 심화 학습 — 여기서는 짧게만 짚는다</h2>
+  <p class="warn">
+    ZooKeeper → KRaft <strong>migration 절차</strong>(bridge release를 거쳐 단계적으로 전환하는 방법)는
+    이미 ZooKeeper 기반 클러스터를 운영 중일 때만 필요한 내용이다. 지금은 신규 도입을 준비하는
+    단계이므로 처음부터 KRaft로 시작하면 되고, 이 절차는 필요해지는 시점에
+    <a href="https://kafka.apache.org/39/operations/kraft/#zookeeper-to-kraft-migration">공식 migration 가이드</a>를
+    바로 펼쳐보면 된다. <code>kafka-features.sh</code>로 KRaft feature version을 올리는 세부 절차도
+    같은 이유로 여기서는 생략한다.
+  </p>
+
+  <h2>8. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자.</p>
+  <section class="quiz" aria-label="KRaft 클러스터 운영 퀴즈">
+    <p><strong>Q1.</strong> Combined mode(<code>process.roles=broker,controller</code>)를 운영 환경에서 피해야 하는 이유는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">설정 파일을 하나 더 써야 해서</button>
+    <button type="button" data-target="answer-1" data-answer="correct">Controller가 Broker와 격리되지 않아 따로 rolling·scale이 안 돼서</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">Raft protocol을 지원하지 않아서</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> Controller 2대의 동시 장애를 견디려면 최소 몇 대가 필요한가?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">3대</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">4대</button>
+    <button type="button" data-target="answer-2" data-answer="correct">5대</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> Dynamic Quorum이 Static Quorum보다 나은 점은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">Raft 없이도 합의가 가능함</button>
+    <button type="button" data-target="answer-3" data-answer="correct">Controller 추가/제거 시 클러스터 전체 재구성이 필요 없음</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">Controller 대수 제한이 없어짐</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> Controller를 제거할 때 올바른 순서는?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong">프로세스를 먼저 끄고 remove-controller 실행</button>
+    <button type="button" data-target="answer-4" data-answer="correct">remove-controller로 먼저 빼고 프로세스를 끔</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">순서는 상관없음</button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> 특정 topic-partition의 현재 leader·isr 상태를 snapshot에서 파일시스템처럼 탐색하고 싶을 때 쓰는 도구는?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong">kafka-metadata-quorum.sh</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">kafka-dump-log.sh</button>
+    <button type="button" data-target="answer-5" data-answer="correct">kafka-metadata-shell.sh</button>
+    <p class="answer" id="answer-5"></p>
+
+    <p><strong>Q6.</strong> Controller가 죽어도 되는 만큼 덜 중요하다는 생각이 위험한 이유는?</p>
+    <button type="button" data-target="answer-6" data-answer="wrong">Controller는 애초에 장애가 안 나서</button>
+    <button type="button" data-target="answer-6" data-answer="correct">Controller quorum 전체가 죽으면 새 Leader 선출·신규 Topic 생성이 모두 멈추기 때문</button>
+    <button type="button" data-target="answer-6" data-answer="wrong">Broker가 대신 metadata를 처리해주기 때문</button>
+    <p class="answer" id="answer-6"></p>
+  </section>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kafka.apache.org/documentation/#kraft">Apache Kafka Documentation: KRaft</a>
+      — 이 레슨 전체의 원본. Configuration, Node Provisioning, Controller membership changes, Debugging 전 섹션.</li>
+    <li><a href="./0018-kraft-vs-zookeeper.html">0018 레슨</a> — 이 레슨의 전제 지식(KRaft가 무엇이고 왜 바뀌었는가).</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/apachekafka/">r/apachekafka</a> — Controller 개수·장애 대응 실무 경험담.</li>
+    <li><a href="https://stackoverflow.com/questions/tagged/apache-kafka">Stack Overflow: apache-kafka 태그</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 — Topic·Partition·Consumer Group 핵심 개념</a>,
+    <a href="./0018-kraft-vs-zookeeper.html">0018 — KRaft vs ZooKeeper</a>,
+    <a href="./0020-kafka-operations-basics.html">0020 — Kafka 운영 기초</a>.<br>
+    <strong>다음 레슨:</strong> <a href="./0023-kafka-monitoring-essentials.html">0023 — 모니터링 핵심 지표</a>에서
+    Controller·Broker 상태를 실제로 어떤 metric으로 지켜보는지 이어서 다룬다.<br>
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자 —
+    "Active Controller가 죽는 순간 새 Leader는 어떻게 뽑히나?" 같은 질문이 좋은 질문이다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. 이 section의 핵심 문장을 다시 떠올려보자 — 위로 스크롤해서 다시 읽어도 좋다.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tiered Storage: 로컬 디스크와 무한한 창고를 나눠 쓰기</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .diagram {
+      background: #fff;
+      border: 1px solid #deded6;
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    .diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Tiered Storage: 로컬 디스크와 무한한 창고를 나눠 쓰기</h1>
+  <p class="note">
+    목표: <a href="https://kafka.apache.org/documentation/#tiered_storage_overview">Apache Kafka Documentation: Tiered Storage</a>
+    원문을 근거로, <strong>"오래된 데이터를 어디에 두면 싸고 안전한가"</strong>라는 운영 판단을 할 수 있는 수준으로
+    이해한다. <a href="./0019-kafka-design-deep-dive.html">0019 레슨</a>의 "저장 방식(Persistence)"에서 배운
+    <strong>append-only 로그 + OS 캐시</strong> 구조와, "Log Compaction" 섹션에서 본 <strong>보관 기간(retention)</strong>
+    개념을 그대로 이어받아, "그 로그를 물리적으로 어디에 나눠 저장할까"라는 질문에 답한다.
+  </p>
+
+  <h2>0. 문제 — 로컬 디스크 하나에 모든 걸 다 담으면 생기는 일</h2>
+  <p>
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>과 0019 레슨에서 봤듯, Kafka는 기본적으로
+    Partition의 로그 전체(최신 메시지부터 보관 기간이 끝나지 않은 오래된 메시지까지)를 <strong>Broker의 로컬 디스크</strong>
+    한 곳에 그대로 쌓아둔다. 이 구조에는 두 가지 압박이 있다.
+  </p>
+  <pre class="flow"><code>보관 기간(retention)을 늘리고 싶다 → 로컬 디스크 용량을 그만큼 계속 늘려야 함
+클러스터를 확장하거나 죽은 Broker를 교체한다 → 그 디스크에 쌓인 데이터 전체를 다른 Broker로 통째로 다시 복제해야 함
+                                                → 데이터가 많을수록 이 복제 작업이 오래 걸리고 무거워짐</code></pre>
+  <p class="warn">
+    그런데 실제로 읽히는 데이터 대부분은 <strong>최근 데이터</strong>다. 0019에서 봤듯 Consumer는 대부분
+    "지금 막 쌓인 메시지"를 뒤쫓아가며 읽고(tail read, OS 캐시로 처리됨), 오래된 데이터는 장애 복구나
+    재처리 같은 드문 상황에서만 디스크를 직접 읽는다. 즉 <strong>거의 안 읽히는 오래된 데이터까지 비싼
+    로컬 디스크에 붙잡아 둘 필요가 없다</strong>는 게 Tiered Storage의 출발점이다.
+  </p>
+
+  <h2>1. 해법 — 로그를 두 계층(tier)으로 나누기</h2>
+  <p>
+    Tiered Storage는 하나의 Partition 로그를 <strong>local tier</strong>와 <strong>remote tier</strong>
+    두 창고로 나눈다.
+  </p>
+  <table>
+    <thead><tr><th style="width:18%">계층</th><th>담당 데이터</th><th>저장소</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Local tier</strong></td><td>가장 최근에 쓰인, 아직 안 채워진 segment(파일 조각)</td><td>Broker의 로컬 디스크 (기존과 동일)</td></tr>
+      <tr><td><strong>Remote tier</strong></td><td>다 채워져서 완료된(closed) 오래된 segment</td><td>S3, HDFS 같은 저렴하고 사실상 무제한인 외부 저장소</td></tr>
+    </tbody>
+  </table>
+  <div class="diagram">
+    <svg viewBox="0 0 820 300" role="img" aria-label="Partition 로그가 로컬 디스크와 원격 저장소로 나뉘어 저장되는 구조">
+      <text x="20" y="24" font-size="13" font-weight="700" fill="#111827">하나의 Partition 로그 (segment 여러 개로 구성)</text>
+      <rect x="20" y="40" width="60" height="40" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1.5"/>
+      <rect x="82" y="40" width="60" height="40" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1.5"/>
+      <rect x="144" y="40" width="60" height="40" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1.5"/>
+      <rect x="206" y="40" width="60" height="40" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="50" y="64" font-size="10" text-anchor="middle" fill="#4b5563">완료</text>
+      <text x="112" y="64" font-size="10" text-anchor="middle" fill="#4b5563">완료</text>
+      <text x="174" y="64" font-size="10" text-anchor="middle" fill="#4b5563">완료</text>
+      <text x="236" y="64" font-size="10" font-weight="700" text-anchor="middle" fill="#0f766e">쓰는 중</text>
+      <text x="20" y="100" font-size="11" fill="#4b5563">← 오래된 segment (왼쪽)                              최신 segment (오른쪽) →</text>
+
+      <line x1="50" y1="82" x2="50" y2="140" stroke="#b45309" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="112" y1="82" x2="112" y2="140" stroke="#b45309" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="174" y1="82" x2="174" y2="140" stroke="#b45309" stroke-width="2" marker-end="url(#arrow)"/>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#b45309"/>
+        </marker>
+      </defs>
+      <text x="112" y="132" font-size="10" text-anchor="middle" fill="#b45309" font-weight="700">완료되면 업로드 후 로컬에서 삭제</text>
+
+      <rect x="20" y="150" width="220" height="60" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="130" y="174" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">Local tier (로컬 디스크)</text>
+      <text x="130" y="194" font-size="10.5" text-anchor="middle" fill="#4b5563">최신 segment만 유지 · 빠름</text>
+
+      <rect x="290" y="150" width="510" height="60" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="545" y="174" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">Remote tier (S3 / HDFS 등 외부 저장소)</text>
+      <text x="545" y="194" font-size="10.5" text-anchor="middle" fill="#4b5563">완료된 오래된 segment 전체 · 저렴하고 사실상 무제한 · 상대적으로 느림</text>
+
+      <rect x="20" y="230" width="780" height="50" rx="6" fill="#fff" stroke="#deded6" stroke-width="1.5"/>
+      <text x="410" y="252" font-size="11" text-anchor="middle" fill="#111827" font-weight="700">Consumer는 offset만 요청 — 그 offset이 로컬에 있는지 remote에 있는지는 Kafka가 알아서 처리</text>
+      <text x="410" y="268" font-size="10" text-anchor="middle" fill="#4b5563">(어디서 읽어오든 API와 사용법은 동일 — transparent)</text>
+    </svg>
+  </div>
+  <p>
+    핵심은 <strong>이 구분이 Consumer에게 보이지 않는다(transparent)</strong>는 점이다. Consumer는 그냥 "이
+    offset부터 읽어줘"라고 요청할 뿐, 그 데이터가 로컬 디스크에 있는지 S3에 있는지는 신경 쓸 필요가 없다.
+    Kafka가 내부적으로 위치를 찾아 가져다준다.
+  </p>
+
+  <h2>2. 동작 방식 — segment는 언제 옮겨지고, 언제 지워지나</h2>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>완료된 segment만 이동한다</h3>
+    <p>
+      아직 메시지가 계속 쓰이고 있는 <strong>활성(active) segment</strong>는 절대 옮기지 않는다. segment 하나가
+      다 채워져 "완료(closed)" 상태가 되어야 비로소 remote tier로 업로드 대상이 된다. 그리고 로컬에 있던
+      원본은 <strong>remote 업로드가 끝난 뒤에만</strong> 삭제 대상이 된다 — 옮기기도 전에 먼저 지워서
+      데이터를 잃는 일은 없다.
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3>보관 기간(retention)이 로컬용/전체용으로 나뉜다</h3>
+    <p>
+      Tiered Storage를 켠 Topic은 기존 <code>retention.ms</code>/<code>retention.bytes</code>(전체 보관 기간 —
+      결국 remote에서까지 삭제되는 기준) 외에, <code>local.retention.ms</code>/<code>local.retention.bytes</code>라는
+      <strong>로컬 전용 보관 기간</strong>을 추가로 갖는다. 이 값은 "remote로 이미 옮겨진 segment를 로컬에서는
+      얼마나 더 들고 있다가 지울지"를 정한다 — 즉 <strong>local 값은 항상 전체 값보다 작거나 같다.</strong>
+    </p>
+  </div>
+  <p class="warn">
+    <strong>트레이드오프:</strong> remote tier 읽기는 네트워크를 거쳐 외부 저장소에서 가져오는 것이라
+    로컬 디스크(+OS 캐시) 읽기보다 <strong>느리다.</strong> 그래서 Tiered Storage는 "최근 데이터는 여전히
+    빠르게, 오래된 데이터는 느려도 되니 싸게"라는 계층별 트레이드오프를 명시적으로 받아들이는 설계다 —
+    모든 데이터를 항상 빠르게 만들어주는 마법은 아니다.
+  </p>
+
+  <h2>3. 아직 알아둘 것 — 새 기능이라 생기는 제약</h2>
+  <ul>
+    <li><strong>Log Compaction Topic(0019에서 배운, key별 최신 값만 남기는 Topic)은 아직 지원 안 됨</strong> — Tiered Storage는 지금은 "그냥 오래되면 지우는" 보관 방식의 Topic에만 쓸 수 있다.</li>
+    <li>기본 제공 구현체가 없다 — S3/HDFS와 실제로 연결하는 부분(<code>RemoteStorageManager</code>)은 직접 구현하거나 벤더/커뮤니티 구현체를 붙여야 한다.</li>
+    <li>브로커 단위로 기능을 끄려면, 그 전에 <strong>이 기능을 쓰는 Topic을 먼저 전부 정리</strong>해야 한다(그냥 끄면 시작할 때 에러가 남).</li>
+  </ul>
+  <p class="note">
+    <strong>심화 학습 참고:</strong> 실제 broker/topic 설정 이름(<code>remote.log.storage.system.enable</code>,
+    <code>remote.storage.enable</code> 등)과 구성 절차, <code>RemoteStorageManager</code>/<code>RemoteLogMetadataManager</code>
+    구현 방법은 실제 도입 단계에서 <a href="https://kafka.apache.org/documentation/#tiered_storage_overview">공식 문서</a>와
+    <a href="https://cwiki.apache.org/confluence/x/KJDQBQ">KIP-405</a>를 직접 보며 다루면 된다.
+  </p>
+
+  <h2>4. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자.</p>
+  <section class="quiz" aria-label="Tiered Storage 퀴즈">
+    <p><strong>Q1.</strong> Tiered Storage가 필요해지는 근본 이유는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">Consumer가 메시지를 두 번 읽어서</button>
+    <button type="button" data-target="answer-1" data-answer="correct">거의 안 읽히는 오래된 데이터까지 비싼 로컬 디스크에 계속 붙잡아 둬야 해서</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">Producer가 압축을 지원하지 않아서</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> Local tier에 남는 segment는?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">모든 segment 전체</button>
+    <button type="button" data-target="answer-2" data-answer="correct">아직 다 안 채워진(활성) 최신 segment 중심</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">가장 오래된 segment만</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> segment가 remote tier로 옮겨지는 시점은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">메시지가 처음 쓰이는 즉시</button>
+    <button type="button" data-target="answer-3" data-answer="correct">segment가 다 채워져 완료(closed)된 뒤</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">Consumer가 다 읽고 난 직후</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> Consumer 입장에서 Tiered Storage가 "transparent"하다는 말의 뜻은?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong">Consumer가 직접 S3 경로를 지정해야 함</button>
+    <button type="button" data-target="answer-4" data-answer="correct">데이터가 로컬/remote 어디 있든 같은 방식으로 읽으면 됨</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">remote 데이터는 Consumer가 읽을 수 없음</button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> Tiered Storage 도입 시 감수해야 하는 트레이드오프는?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong">모든 읽기가 항상 더 빨라짐</button>
+    <button type="button" data-target="answer-5" data-answer="correct">오래된 remote 데이터를 읽을 때는 로컬보다 느림</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">Log Compaction Topic에서만 쓸 수 있음</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kafka.apache.org/documentation/#tiered_storage_overview">Apache Kafka Documentation: Tiered Storage</a>
+      — 이 레슨의 원본. 설정 절차와 제약 사항의 최신 원문.</li>
+    <li><a href="https://cwiki.apache.org/confluence/x/KJDQBQ">KIP-405: Kafka Tiered Storage</a> — 원 설계 제안서.</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/apachekafka/">r/apachekafka</a> — 실무에서 어떤 remote storage 구현체를 쓰는지, 비용 절감 경험담.</li>
+    <li><a href="https://stackoverflow.com/questions/tagged/apache-kafka">Stack Overflow: apache-kafka 태그</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 — Topic·Partition·Consumer Group 핵심 개념</a>,
+    <a href="./0019-kafka-design-deep-dive.html">0019 — 저장 방식과 Log Compaction</a>.<br>
+    <strong>다음 레슨:</strong> <a href="./0025-kafka-advanced-protocols-overview.html">0025 — 고급 프로토콜 3종: Rebalance·Transaction·ELR</a>.<br>
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자 —
+    "local.retention과 retention이 같은 값이면 어떻게 되지?" 같은 질문이 좋은 질문이다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. 이 section의 핵심 문장을 다시 떠올려보자 — 위로 스크롤해서 다시 읽어도 좋다.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>

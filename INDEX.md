@@ -157,6 +157,7 @@ This index points to saved learning material in this Learning Vault.
 - [0016 - Kafka란 무엇인가: Event Streaming과 핵심 개념](./lessons/0016-kafka-core-concepts-event-streaming.html)
 - [0017 - Kafka를 실제로 어디에 쓰는가: 대표 사용 사례 7가지](./lessons/0017-kafka-use-cases.html)
 - [0018 - 카프카 클러스터의 두뇌: ZooKeeper에서 KRaft로](./lessons/0018-kraft-vs-zookeeper.html)
+- [0019 - Kafka Design 딥다이브: 저장, 효율, Producer/Consumer, 복제](./lessons/0019-kafka-design-deep-dive.html)
 
 **References**
 
@@ -165,3 +166,22 @@ This index points to saved learning material in this Learning Vault.
 **Learning Records**
 
 - [0021 - Kafka 학습 시작 - 실무 도입 목표 기준점](./learning-records/0021-kafka-learning-baseline.md)
+
+### Operations: 운영, 지리 복제, 모니터링, KRaft 실전, Tiered Storage
+
+**Lessons**
+
+- [0020 - Kafka 운영 기초: 클러스터를 실제로 돌보는 법](./lessons/0020-kafka-operations-basics.html)
+- [0021 - 여러 클러스터, 여러 팀: Geo-Replication과 Multi-Tenancy](./lessons/0021-kafka-geo-replication-and-multi-tenancy.html)
+- [0022 - KRaft 클러스터 운영: Controller를 늘리고 줄이고 진단하기](./lessons/0022-kraft-cluster-operations.html)
+- [0023 - Kafka 모니터링: 뭘 보고 뭘 걱정해야 하나](./lessons/0023-kafka-monitoring-essentials.html)
+- [0024 - Tiered Storage: 로컬 디스크와 무한한 창고를 나눠 쓰기](./lessons/0024-kafka-tiered-storage.html)
+- [0025 - 다음 단계 미리 보기: Rebalance, Transaction, ELR 프로토콜 3종](./lessons/0025-kafka-advanced-protocols-overview.html)
+
+**References**
+
+- [0011 - Kafka 모니터링 핵심 지표 치트시트](./reference/0011-kafka-monitoring-cheatsheet.html)
+
+**Learning Records**
+
+- [0022 - Kafka 운영 학습 범위 확정](./learning-records/0022-kafka-operations-scope-baseline.md)
