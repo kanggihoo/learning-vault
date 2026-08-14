@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka Connect: 커넥터로 외부 시스템과 연결하기</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .diagram {
+      background: #fff;
+      border: 1px solid #deded6;
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    .diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kafka Connect: 커넥터로 외부 시스템과 연결하기</h1>
+  <p class="note">
+    목표: <a href="https://kafka.apache.org/documentation/#connectconfigs">Apache Kafka Documentation: Kafka Connect Configs</a>
+    원문 중 실제로 자주 마주치는 설정만 골라, <strong>"Kafka Connect가 뭘 하는 도구인지"</strong>부터 시작해서
+    이해한다. <a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>의 Consumer Group 개념과
+    <a href="./0019-kafka-design-deep-dive.html">0019 레슨</a>의 복제·offset 개념을 발판으로 쓴다.
+  </p>
+
+  <h2>0. Kafka Connect가 뭔가 — 왜 코드를 직접 안 짜도 되나</h2>
+  <p>
+    Kafka로 데이터를 넣거나(예: PostgreSQL의 변경 내용을 Kafka로) 꺼내는(예: Kafka에 쌓인 데이터를 S3로)
+    작업은 사실 아주 흔한 패턴이다. 이걸 매번 Producer/Consumer 코드를 직접 짜서 만들면, 재시도·재연결·
+    스키마 변환 같은 뻔한 처리를 팀마다 반복해서 구현하게 된다. <strong>Kafka Connect</strong>는 이런
+    "Kafka 안으로 넣기(source)"와 "Kafka 밖으로 꺼내기(sink)"를 <strong>이미 만들어진 커넥터(플러그인)를
+    설정 파일만 채워서 쓰는 방식</strong>으로 표준화한 프레임워크다.
+  </p>
+  <table>
+    <thead><tr><th>용어</th><th>뜻</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Source Connector</strong></td><td>외부 시스템 → Kafka로 데이터를 밀어넣는 커넥터 (예: DB 변경 감지 → Kafka)</td></tr>
+      <tr><td><strong>Sink Connector</strong></td><td>Kafka → 외부 시스템으로 데이터를 꺼내는 커넥터 (예: Kafka → S3, Kafka → Elasticsearch)</td></tr>
+      <tr><td><strong>Worker</strong></td><td>커넥터를 실제로 실행하는 프로세스 — Standalone(1대) 또는 Distributed(여러 대) 모드로 뜬다</td></tr>
+      <tr><td><strong>Task</strong></td><td>커넥터 하나가 내부적으로 나뉘는 병렬 작업 단위 — <code>tasks.max</code>로 개수 조절</td></tr>
+    </tbody>
+  </table>
+
+  <div class="diagram">
+    <svg viewBox="0 0 860 260" role="img" aria-label="Source Connector가 외부 시스템에서 Kafka로, Sink Connector가 Kafka에서 외부 시스템으로 데이터를 옮기는 흐름과 Connect의 내부 상태 토픽">
+      <rect x="10" y="30" width="140" height="50" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="80" y="60" font-size="12" font-weight="700" text-anchor="middle" fill="#7c2d12">PostgreSQL 등</text>
+
+      <rect x="200" y="30" width="150" height="50" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="275" y="55" font-size="11" font-weight="700" text-anchor="middle" fill="#111827">Source Connector</text>
+      <text x="275" y="70" font-size="9.5" text-anchor="middle" fill="#4b5563">(task 1..N)</text>
+
+      <rect x="400" y="10" width="160" height="90" rx="6" fill="#ffffff" stroke="#111827" stroke-width="2"/>
+      <text x="480" y="30" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">Kafka Cluster</text>
+      <text x="480" y="50" font-size="10" text-anchor="middle" fill="#4b5563">데이터 토픽</text>
+      <text x="480" y="66" font-size="10" text-anchor="middle" fill="#4b5563">(source가 씀,</text>
+      <text x="480" y="80" font-size="10" text-anchor="middle" fill="#4b5563">sink가 읽음)</text>
+
+      <rect x="610" y="30" width="150" height="50" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="685" y="55" font-size="11" font-weight="700" text-anchor="middle" fill="#111827">Sink Connector</text>
+      <text x="685" y="70" font-size="9.5" text-anchor="middle" fill="#4b5563">(task 1..N)</text>
+
+      <rect x="810" y="30" width="0" height="50"/>
+      <rect x="770" y="30" width="80" height="50" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="810" y="60" font-size="11" font-weight="700" text-anchor="middle" fill="#7c2d12">S3 등</text>
+
+      <line x1="150" y1="55" x2="200" y2="55" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="350" y1="55" x2="400" y2="55" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="560" y1="55" x2="610" y2="55" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="760" y1="55" x2="770" y2="55" stroke="#4b5563" stroke-width="2" marker-end="url(#arrow)"/>
+
+      <rect x="220" y="140" width="420" height="100" rx="6" fill="#f7f7f4" stroke="#111827" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="430" y="160" font-size="11" font-weight="700" text-anchor="middle" fill="#111827">Connect의 "기억" — 전부 Kafka 내부 토픽에 저장</text>
+      <text x="430" y="182" font-size="10" text-anchor="middle" fill="#4b5563"><tspan font-family="ui-monospace, monospace">offset.storage.topic</tspan> — 어디까지 읽었나</text>
+      <text x="430" y="200" font-size="10" text-anchor="middle" fill="#4b5563"><tspan font-family="ui-monospace, monospace">config.storage.topic</tspan> — 커넥터 설정</text>
+      <text x="430" y="218" font-size="10" text-anchor="middle" fill="#4b5563"><tspan font-family="ui-monospace, monospace">status.storage.topic</tspan> — 커넥터/task 상태</text>
+
+      <line x1="480" y1="100" x2="430" y2="140" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="3 2"/>
+
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#4b5563"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>Standalone vs Distributed — Worker도 사실 Consumer Group처럼 조율된다</h3>
+    <p>
+      <strong>Standalone mode</strong>는 워커 프로세스 하나가 혼자 커넥터를 실행한다 — 로컬 테스트나
+      간단한 용도에 적합하고, 상태는 로컬 파일에 저장된다. <strong>Distributed mode</strong>는 여러
+      워커가 <code>group.id</code>로 지정된 하나의 Connect 클러스터를 이루고, 커넥터·task를 서로 나눠
+      맡는다. 이 조율 방식은 <a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>에서
+      배운 <strong>Consumer Group의 파티션 재배정과 원리가 같다</strong> — 워커 하나가 죽으면 그 워커가
+      맡던 커넥터/task가 살아있는 다른 워커에게 재배정된다. 그래서 실무에서는 거의 항상 Distributed
+      mode를 쓴다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>왜 Connect 자신도 Kafka 토픽에 상태를 저장하나</h3>
+    <p>
+      Distributed mode의 워커들은 로컬 디스크에 상태를 저장하면 서로 그 상태를 공유할 방법이 마땅치
+      않다. 그래서 Connect는 자기 자신의 상태(어디까지 처리했는지, 커넥터 설정이 뭔지, 지금 커넥터가
+      정상인지)를 <strong>전부 Kafka 내부 토픽에 저장</strong>한다 — 이건
+      <a href="./0019-kafka-design-deep-dive.html">0019 레슨</a>에서 봤던 "Kafka Streams가 자기 offset도
+      Kafka 토픽에 저장해서 정확히 한 번 처리를 얻는다"는 아이디어와 같은 결이다. 워커가 죽었다 다른
+      곳에서 다시 뜨더라도, 이 토픽들만 읽으면 어디까지 했는지 그대로 복구된다.
+    </p>
+    <p class="warn">
+      이 세 토픽(<code>offset</code>/<code>config</code>/<code>status</code>)이 유실되면 Connect
+      클러스터 전체가 자기 상태를 잃는 것과 같다. 그래서 replication factor 기본값이 <strong>3</strong>이다
+      — <a href="./0019-kafka-design-deep-dive.html">0019 레슨</a> §8의 ISR/복제 안전성 원칙이 여기에도
+      그대로 적용된다.
+    </p>
+  </div>
+
+  <h2>1. Worker 설정 핵심</h2>
+  <table>
+    <thead><tr><th>설정</th><th>뜻</th></tr></thead>
+    <tbody>
+      <tr><td><code>bootstrap.servers</code></td><td>Kafka 클러스터 접속 주소 목록 (Producer/Consumer와 동일한 개념)</td></tr>
+      <tr><td><code>group.id</code></td><td>이 워커가 속한 Connect 클러스터 식별자 — Distributed mode 필수</td></tr>
+      <tr><td><code>key.converter</code> / <code>value.converter</code></td><td>Kafka에 넣고 뺄 때 어떤 포맷(JSON, Avro 등)으로 변환할지 — 커넥터와 무관하게 독립적으로 지정</td></tr>
+      <tr><td><code>offset.storage.topic</code> / <code>config.storage.topic</code> / <code>status.storage.topic</code></td><td>위에서 설명한 Connect의 "기억" 토픽 3종</td></tr>
+      <tr><td><code>{offset|config|status}.storage.replication.factor</code></td><td>기본값 3 — 함부로 낮추지 말 것</td></tr>
+      <tr><td><code>plugin.path</code></td><td>커넥터 플러그인 jar들이 있는 경로</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    보안 설정(<code>security.protocol</code>, <code>sasl.*</code>, <code>ssl.*</code>)은 Producer/Consumer와
+    완전히 동일한 구조를 그대로 쓴다 — 새로 배울 게 없다.
+  </p>
+
+  <h2>2. Connector 설정 핵심 — Source/Sink 공통</h2>
+  <table>
+    <thead><tr><th>설정</th><th>뜻</th></tr></thead>
+    <tbody>
+      <tr><td><code>name</code></td><td>커넥터의 고유 이름</td></tr>
+      <tr><td><code>connector.class</code></td><td>어떤 커넥터 구현체를 쓸지 (예: <code>FileStreamSinkConnector</code>)</td></tr>
+      <tr><td><code>tasks.max</code></td><td>이 커넥터를 몇 개 task로 병렬화할지 — 기본값 1, 처리량이 부족하면 늘림</td></tr>
+      <tr><td><code>topics</code> / <code>topics.regex</code> <em>(sink 전용)</em></td><td>이 sink connector가 읽어올 토픽 목록 또는 정규식 — 둘 중 하나만 지정</td></tr>
+    </tbody>
+  </table>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>에러 처리 — 하나가 실패하면 커넥터 전체가 멈춰야 하나?</h3>
+    <p>
+      기본값(<code>errors.tolerance=none</code>)은 레코드 하나만 잘못돼도 커넥터 task 전체가 멈춘다 —
+      안전하지만 운영 부담이 크다. <code>errors.tolerance=all</code>로 바꾸면 문제가 있는 레코드는
+      건너뛰고 계속 진행한다. 이때 <strong>건너뛴 레코드를 그냥 버리지 않고</strong>
+      <code>errors.deadletterqueue.topic.name</code>으로 지정한 별도 토픽(DLQ, Dead Letter Queue)에
+      따로 쌓아두면, 나중에 그 레코드들만 골라서 원인을 조사하거나 재처리할 수 있다 — sink connector에서만
+      쓸 수 있는 옵션이다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#0f766e;">
+    <h3>SMT(Single Message Transform) — 메시지를 살짝 가공해서 흘려보내기</h3>
+    <p>
+      <code>transforms</code> 설정에 alias를 나열하면, 커넥터를 거치는 각 메시지에 <strong>필드 이름
+      바꾸기, 값 마스킹, 라우팅 대상 토픽 바꾸기</strong> 같은 가벼운 가공을 커넥터 코드 수정 없이
+      적용할 수 있다. 무거운 변환(join, 집계 등)은 SMT 대상이 아니고, Kafka Streams 같은 별도 처리
+      계층에서 하는 게 맞다 — SMT는 "살짝 다듬기" 용도로만 쓴다.
+    </p>
+  </div>
+
+  <div class="card" style="border-color:#b45309;">
+    <h3>Source connector의 Exactly-once — <code>exactly.once.source.support</code></h3>
+    <p>
+      <a href="./0019-kafka-design-deep-dive.html">0019 레슨</a> §6에서 본 "Producer transaction으로
+      정확히 한 번을 만드는" 원리가 Source Connector에도 그대로 적용된다. 이 설정을 켜면 Connect가
+      레코드와 offset을 하나의 transaction으로 묶어 쓰고, 재시작 시 이전 task를 확실히 걷어낸(fencing)
+      뒤 새 task를 시작한다. 기존 클러스터에 켤 때는 <code>preparing</code> → <code>enabled</code> 순서로
+      단계적으로 올려야 한다는 점만 기억해두자.
+    </p>
+  </div>
+
+  <h2>3. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자.</p>
+  <section class="quiz" aria-label="Kafka Connect 퀴즈">
+    <p><strong>Q1.</strong> Kafka Connect가 해결하려는 문제는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">Consumer Group의 rebalance 속도를 높이는 것</button>
+    <button type="button" data-target="answer-1" data-answer="correct">외부 시스템과 Kafka 사이의 데이터 이동을 코드 없이 설정만으로 표준화하는 것</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">Broker 사이의 복제를 담당하는 것</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> Distributed mode의 worker들이 조율되는 방식은 무엇과 원리가 같은가?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">Producer의 partitioner</button>
+    <button type="button" data-target="answer-2" data-answer="correct">Consumer Group의 파티션 재배정</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">KRaft controller quorum</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> Connect의 offset/config/status storage topic의 replication factor 기본값이 3인 이유는?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">Kafka의 최소 요구사항이라서</button>
+    <button type="button" data-target="answer-3" data-answer="correct">이 토픽들이 유실되면 Connect 클러스터 전체가 상태를 잃기 때문</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">디스크 공간을 아끼기 위해서</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> <code>errors.tolerance=all</code>과 함께 쓰면 실패한 레코드를 버리지 않고 조사할 수 있게 해주는 설정은?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong"><code>transforms</code></button>
+    <button type="button" data-target="answer-4" data-answer="correct"><code>errors.deadletterqueue.topic.name</code></button>
+    <button type="button" data-target="answer-4" data-answer="wrong"><code>tasks.max</code></button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> SMT(Single Message Transform)의 용도는?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong">여러 토픽을 join·집계하는 무거운 처리</button>
+    <button type="button" data-target="answer-5" data-answer="correct">필드 이름 변경, 값 마스킹 같은 가벼운 메시지 가공</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">Consumer Group의 rebalance 정책 변경</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kafka.apache.org/documentation/#connectconfigs">Apache Kafka Documentation: Kafka Connect Configs</a>
+      — 이 레슨 전체의 원본, worker/source/sink connector 설정 전체 목록.</li>
+    <li><a href="https://kafka.apache.org/documentation/#connect">Apache Kafka Documentation: Kafka Connect</a> — Connect 아키텍처 전반.</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/apachekafka/">r/apachekafka</a> — 실무 커넥터 설정·트러블슈팅 경험담.</li>
+    <li><a href="https://stackoverflow.com/questions/tagged/apache-kafka-connect">Stack Overflow: apache-kafka-connect 태그</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 — Topic·Partition·Consumer Group 핵심 개념</a>,
+    <a href="./0019-kafka-design-deep-dive.html">0019 — Kafka Design 딥다이브</a>,
+    <a href="../reference/0015-kafka-connect-configs-cheatsheet.html">0015 레퍼런스 — Kafka Connect 설정 치트시트</a>.<br>
+    <strong>다음 레슨:</strong> <a href="./0030-kafka-admin-client-configs.html">0030 — Admin Client 설정</a>.<br>
+    <strong>향후 심화 후보:</strong> Kafka Connect의 rebalance protocol 상세(eager vs incremental cooperative),
+    실제 source/sink connector 하나를 로컬에서 직접 설정해 데이터가 흐르는 걸 확인하는 실습.
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. 이 section의 핵심 문장을 다시 떠올려보자 — 위로 스크롤해서 다시 읽어도 좋다.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>

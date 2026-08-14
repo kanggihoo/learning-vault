@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka 모니터링 핵심 지표 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; margin-bottom: 8px; }
+    th, td { border: 1px solid #deded6; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.88em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kafka 모니터링 핵심 지표 치트시트</h1>
+  <p class="note">
+    실제 알림 설정 시 참고용 — 전체 목록(수백 개)은
+    <a href="https://kafka.apache.org/documentation/#monitoring">공식 문서 Monitoring</a> 참고.
+    사고 방식은 <a href="../lessons/0023-kafka-monitoring-essentials.html">0023 레슨</a> 참고.
+  </p>
+
+  <h2>1. 클러스터/컨트롤러 상태 (무조건 알림)</h2>
+  <table>
+    <thead><tr><th>지표</th><th>Mbean</th><th>정상값</th></tr></thead>
+    <tbody>
+      <tr><td>Under-replicated partitions</td><td><code>kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions</code></td><td>0</td></tr>
+      <tr><td>Under min ISR partitions</td><td><code>kafka.server:type=ReplicaManager,name=UnderMinIsrPartitionCount</code></td><td>0</td></tr>
+      <tr><td>Offline replica 수</td><td><code>kafka.server:type=ReplicaManager,name=OfflineReplicaCount</code></td><td>0</td></tr>
+      <tr><td>Offline partition 수</td><td><code>kafka.controller:type=KafkaController,name=OfflinePartitionsCount</code></td><td>0</td></tr>
+      <tr><td>Active controller 수</td><td><code>kafka.controller:type=KafkaController,name=ActiveControllerCount</code></td><td>클러스터 합계 1</td></tr>
+      <tr><td>Unclean leader election rate</td><td><code>kafka.controller:type=ControllerStats,name=UncleanLeaderElectionsPerSec</code></td><td>0</td></tr>
+      <tr><td>Leader election rate</td><td><code>kafka.controller:type=ControllerStats,name=LeaderElectionRateAndTimeMs</code></td><td>브로커 장애 시에만 non-zero</td></tr>
+      <tr><td>Offline log directory 수</td><td><code>kafka.log:type=LogManager,name=OfflineLogDirectoryCount</code></td><td>0</td></tr>
+      <tr><td>ISR shrink / expand rate</td><td><code>kafka.server:type=ReplicaManager,name=Isr{Shrinks|Expands}PerSec</code></td><td>평상시 0 (브로커 재기동 전후엔 잠깐 변동 정상)</td></tr>
+      <tr><td>Failed ISR update rate</td><td><code>kafka.server:type=ReplicaManager,name=FailedIsrUpdatesPerSec</code></td><td>0</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. 브로커 처리량·지연</h2>
+  <table>
+    <thead><tr><th>지표</th><th>Mbean</th><th>메모</th></tr></thead>
+    <tbody>
+      <tr><td>요청 총 시간</td><td><code>kafka.network:type=RequestMetrics,name=TotalTimeMs,request={Produce|FetchConsumer|FetchFollower}</code></td><td>Queue/Local/Remote/Response 4단계로 세분 가능</td></tr>
+      <tr><td>Queue 대기 시간</td><td><code>...,name=RequestQueueTimeMs,...</code></td><td>커지면 스레드 포화</td></tr>
+      <tr><td>Local 처리 시간</td><td><code>...,name=LocalTimeMs,...</code></td><td>커지면 디스크 I/O 지연</td></tr>
+      <tr><td>Remote 대기 시간</td><td><code>...,name=RemoteTimeMs,...</code></td><td><code>acks=-1</code>일 때만 non-zero, 커지면 Follower 지연</td></tr>
+      <tr><td>Response 전송 시간</td><td><code>...,name=ResponseSendTimeMs,...</code></td><td>커지면 네트워크 포화</td></tr>
+      <tr><td>Request handler idle %</td><td><code>kafka.server:type=KafkaRequestHandlerPool,name=RequestHandlerAvgIdlePercent</code></td><td>0.3 이상 권장</td></tr>
+      <tr><td>Network processor idle %</td><td><code>kafka.network:type=SocketServer,name=NetworkProcessorAvgIdlePercent</code></td><td>0.3 이상 권장</td></tr>
+      <tr><td>Request queue 크기</td><td><code>kafka.network:type=RequestChannel,name=RequestQueueSize</code></td><td>계속 쌓이면 처리 지연</td></tr>
+      <tr><td>Produce/Fetch purgatory 크기</td><td><code>kafka.server:type=DelayedOperationPurgatory,name=PurgatorySize,delayedOperation={Produce|Fetch}</code></td><td>대기 중인 요청 수 — <code>acks=-1</code>/<code>fetch.wait.max.ms</code>에 영향받음</td></tr>
+      <tr><td>Message/Byte in-out rate</td><td><code>kafka.server:type=BrokerTopicMetrics,name={Messages|Bytes}{In|Out}PerSec</code></td><td>토픽별 트래픽 추세 파악용</td></tr>
+      <tr><td>Log flush 시간</td><td><code>kafka.log:type=LogFlushStats,name=LogFlushRateAndTimeMs</code></td><td>page cache → disk 반영 시간</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. 그룹 코디네이터 (Consumer Group)</h2>
+  <table>
+    <thead><tr><th>지표</th><th>Mbean</th><th>메모</th></tr></thead>
+    <tbody>
+      <tr><td>상태별 group 수</td><td><code>kafka.server:type=group-coordinator-metrics,name=consumer-group-count,state=[empty|assigning|reconciling|stable|dead]</code></td><td><code>stable</code> 아닌 상태가 오래 지속되면 rebalance 걸림 의심</td></tr>
+      <tr><td>Rebalance rate/count</td><td><code>...,name=consumer-group-rebalance-{rate|count}</code></td><td>너무 잦으면 Static Membership(0019) 고려</td></tr>
+      <tr><td>Offset commit rate</td><td><code>...,name=offset-commit-rate</code></td><td>급감하면 consumer가 멈춘 신호</td></tr>
+      <tr><td>Partition load time (max/avg)</td><td><code>...,name=partition-load-time-{max|avg}</code></td><td><code>__consumer_offsets</code> 파티션 로딩 지연</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. Producer/Consumer 클라이언트 공통</h2>
+  <table>
+    <thead><tr><th>지표</th><th>Mbean</th><th>메모</th></tr></thead>
+    <tbody>
+      <tr><td>Consumer lag</td><td><code>kafka.consumer:type=consumer-fetch-manager-metrics,client-id={id}</code> attr <code>records-lag-max</code></td><td>가장 중요 — 계속 증가 추세인지가 핵심</td></tr>
+      <tr><td>Request/Response rate</td><td><code>kafka.[producer|consumer]:type=[producer|consumer]-metrics,client-id=(...)</code> attr <code>request-rate</code>/<code>response-rate</code></td><td>급감 시 클라이언트 정지 의심</td></tr>
+      <tr><td>Error rate (per type/code)</td><td><code>kafka.network:type=RequestMetrics,name=ErrorsPerSec,request=(...),error=(...)</code></td><td><code>error=NONE</code>은 성공, 나머지 합이 0이 정상</td></tr>
+      <tr><td>Throttle time</td><td><code>kafka.server:type={Produce|Fetch},user=(...),client-id=(...)</code> attr <code>throttle-time</code></td><td>Quota(0019)에 걸려 지연된 시간, 0이 정상</td></tr>
+      <tr><td>Connection count</td><td>attr <code>connection-count</code></td><td>급증/급감 이상 여부 확인용</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. KRaft 쿼럼 (KRaft 모드 전용)</h2>
+  <table>
+    <thead><tr><th>지표</th><th>메모</th></tr></thead>
+    <tbody>
+      <tr><td>Current State (leader/candidate/follower/...)</td><td><code>kafka.server:type=raft-metrics</code></td></tr>
+      <tr><td>Fenced/Active broker 수</td><td><code>kafka.controller:type=KafkaController,name={Fenced|Active}BrokerCount</code></td></tr>
+      <tr><td>Last Applied Record Lag Ms</td><td>controller/broker가 최신 metadata를 얼마나 뒤처져 반영하는지, 0에 가까울수록 정상</td></tr>
+      <tr><td>Timed-out broker heartbeat 수</td><td><code>kafka.controller:type=KafkaController,name=TimedOutBrokerHeartbeatCount</code>, 늘어나면 broker가 응답 없음</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. Tiered Storage (사용 시)</h2>
+  <p>자세한 개념은 <a href="../lessons/0024-kafka-tiered-storage.html">0024 레슨</a> 참고.</p>
+  <table>
+    <thead><tr><th>지표</th><th>메모</th></tr></thead>
+    <tbody>
+      <tr><td>Remote Copy/Fetch Lag Bytes|Segments</td><td>원격 스토리지로 아직 못 옮긴 양 — 계속 늘면 로컬 디스크 압박</td></tr>
+      <tr><td>Remote Copy/Fetch Errors Per Sec</td><td>0이 정상</td></tr>
+      <tr><td>Local Retention Size In Percent</td><td>로컬 보관 한도 대비 사용률 — 100% 근접 시 주의</td></tr>
+    </tbody>
+  </table>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://kafka.apache.org/documentation/#monitoring">Apache Kafka Documentation: Monitoring</a> — 이 표 전체의 원본, 전체 목록.</li>
+  </ul>
+
+  <p>
+    관련 레슨: <a href="../lessons/0023-kafka-monitoring-essentials.html">0023 — Kafka 모니터링 사고 방식</a>,
+    <a href="../lessons/0019-kafka-design-deep-dive.html">0019 — Kafka Design 딥다이브</a>
+  </p>
+</main>
+</body>
+</html>

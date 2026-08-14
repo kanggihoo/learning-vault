@@ -55,6 +55,12 @@
   설명할 수 있다.
 - (향후) Consumer Group의 상세 동작(offset, rebalance)과 Producer의 전달 보장(acks, idempotence)을
   설명할 수 있다.
+- 운영 관점에서 브로커 추가/제거, 파티션 재배치, graceful shutdown이 왜 필요한지 설명할 수 있다.
+- 여러 클러스터를 쓰는 이유(geo-replication)와 한 클러스터를 여러 팀이 같이 쓸 때의 격리 방법
+  (multi-tenancy: quota, ACL, 네임스페이스)을 설명할 수 있다.
+- 무엇을 모니터링해야 장애를 가장 빨리 알아챌 수 있는지(핵심 지표 몇 가지) 설명할 수 있다.
+- Broker/Topic/Consumer Group/Producer/Connect/Admin 설정 중 실제로 도입 판단에 영향을 주는
+  핵심 설정 몇 가지를 카테고리별로 골라 설명할 수 있고, 어떤 설정 문서를 나중에 찾아봐야 할지 안다.
 
 ## Constraints
 - Kafka는 처음 배우는 주제로, 사전 지식이 없다고 가정하고 시작한다.
@@ -63,4 +69,8 @@
 - 설명은 정확하고 명확하게, 한국어로 제공한다.
 
 ## Out of scope
-- 지금 단계에서는 실제 Kafka 클러스터 설치·운영·코드 구현은 다루지 않는다. 개념·동작 원리 이해가 우선.
+- 실제 Kafka 클러스터를 직접 설치·구축하는 hands-on 실습과 코드 구현은 지금 단계에서 제외한다.
+  다만 운영 상황을 판단하는 데 필요한 개념(브로커 추가/제거, KRaft quorum 구성, 모니터링 지표 등)은
+  "왜 그렇게 하는가" 수준으로는 다룬다 — 2026-08-14, 사용자가 03-operations 자료 학습을 직접 요청.
+- Consumer Rebalance Protocol/Transaction Protocol/Eligible Leader Replicas 같은 프로토콜
+  내부(wire-level) 동작은 지금은 짧은 미리보기 수준까지만 다루고, 실제 필요해질 때 더 깊게 판다.

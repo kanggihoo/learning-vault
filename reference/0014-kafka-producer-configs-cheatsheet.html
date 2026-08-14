@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka Producer 설정 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; margin-bottom: 8px; }
+    th, td { border: 1px solid #deded6; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.88em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kafka Producer 설정 치트시트</h1>
+  <p class="note">
+    실제 설정 시 참고용 — 전체 목록(보안/SASL/SSL 포함 수백 개)은
+    <a href="https://kafka.apache.org/documentation/#producerconfigs">공식 문서 Producer Configs</a> 참고.
+    사고 방식은 <a href="../lessons/0028-kafka-producer-configs.html">0028 레슨</a>,
+    개념적 배경은 <a href="../lessons/0019-kafka-design-deep-dive.html">0019 레슨</a> 참고.
+  </p>
+
+  <h2>1. 안전성 (Durability)</h2>
+  <table>
+    <thead><tr><th>Config</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>acks</code></td><td>all</td><td>0=응답 안 기다림, 1=leader만, all=ISR 전체가 받아야 성공</td></tr>
+      <tr><td><code>enable.idempotence</code></td><td>true</td><td>재전송돼도 중복 없이 정확히 한 번 기록</td></tr>
+      <tr><td><code>transactional.id</code></td><td>null</td><td>설정하면 트랜잭션 프로듀서로 동작(exactly-once)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>2. 처리량 (Throughput)</h2>
+  <table>
+    <thead><tr><th>Config</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>batch.size</code></td><td>16384 bytes</td><td>partition별 batch 상한. 작으면 batching 감소, 크면 메모리 다소 낭비</td></tr>
+      <tr><td><code>linger.ms</code></td><td>5</td><td>batch가 안 차도 이 시간 지나면 전송(Kafka 4.0부터 기본 0→5로 변경)</td></tr>
+      <tr><td><code>compression.type</code></td><td>none</td><td>none/gzip/snappy/lz4/zstd — batch 전체를 묶어서 압축</td></tr>
+      <tr><td><code>buffer.memory</code></td><td>33554432 (32MB)</td><td>전송 대기 record용 총 buffer. 가득 차면 max.block.ms 동안 block</td></tr>
+      <tr><td><code>max.request.size</code></td><td>1048576 (1MB)</td><td>요청 하나의 최대 크기 상한</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. 재시도 / Timeout</h2>
+  <table>
+    <thead><tr><th>Config</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>delivery.timeout.ms</code></td><td>120000 (2분)</td><td>send() 이후 최종 성공/실패 확정까지의 전체 상한. ≥ request.timeout.ms + linger.ms 필요</td></tr>
+      <tr><td><code>request.timeout.ms</code></td><td>30000 (30초)</td><td>요청 한 번의 응답 대기 시간</td></tr>
+      <tr><td><code>retries</code></td><td>사실상 무한</td><td>보통 직접 안 만지고 delivery.timeout.ms로 제어 권장</td></tr>
+      <tr><td><code>retry.backoff.ms</code></td><td>100</td><td>재시도 전 대기 시간(지수 증가)</td></tr>
+      <tr><td><code>max.block.ms</code></td><td>60000 (1분)</td><td>send()/partitionsFor() 등이 최대 block하는 시간</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. 순서 / Partitioning</h2>
+  <table>
+    <thead><tr><th>Config</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>max.in.flight.requests.per.connection</code></td><td>5</td><td>idempotence=false면 &gt;1일 때 순서 뒤바뀜 위험. idempotence=true면 5까지 안전</td></tr>
+      <tr><td><code>partitioner.class</code></td><td>null(기본 전략)</td><td>key 있으면 hash, 없으면 sticky partitioning</td></tr>
+      <tr><td><code>partitioner.ignore.keys</code></td><td>false</td><td>true면 key 있어도 sticky partitioning 사용</td></tr>
+      <tr><td><code>partitioner.adaptive.partitioning.enable</code></td><td>true</td><td>느린 broker로는 덜 보내도록 적응</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. 연결 / 식별</h2>
+  <table>
+    <thead><tr><th>Config</th><th>기본값</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>bootstrap.servers</code></td><td>없음(필수)</td><td>클러스터 초기 접속용 host:port 목록. 전체 브로커 아니어도 됨(2개 이상 권장)</td></tr>
+      <tr><td><code>client.id</code></td><td>""</td><td>Quota·모니터링에서 이 클라이언트를 식별하는 이름표</td></tr>
+      <tr><td><code>key.serializer</code> / <code>value.serializer</code></td><td>없음(필수)</td><td>key/value를 byte로 변환하는 클래스</td></tr>
+      <tr><td><code>metadata.max.age.ms</code></td><td>300000 (5분)</td><td>변화가 없어도 이 주기로 메타데이터 강제 새로고침</td></tr>
+    </tbody>
+  </table>
+
+  <h2>공식 자료</h2>
+  <ul>
+    <li><a href="https://kafka.apache.org/documentation/#producerconfigs">Apache Kafka Documentation: Producer Configs</a> — 이 표 전체의 원본, SASL/SSL 등 보안 설정 포함 전체 목록.</li>
+  </ul>
+
+  <p>
+    관련 레슨: <a href="../lessons/0028-kafka-producer-configs.html">0028 — Producer 설정</a>,
+    <a href="../lessons/0019-kafka-design-deep-dive.html">0019 — Kafka Design 딥다이브</a>
+  </p>
+</main>
+</body>
+</html>

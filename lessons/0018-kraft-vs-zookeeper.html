@@ -159,6 +159,38 @@
     <strong>Raft protocol</strong>로 이루어진다. 그래서 별도의 외부 시스템이 필요 없다.
   </p>
 
+  <div class="card" style="border-color:#0f766e;">
+    <h3>자주 나오는 질문 — "브로커 여러 대가 모이면 클러스터가 되는데, 그 클러스터를 관리하는 얘랑 KRaft는 다른 건가?"</h3>
+    <p>
+      <strong>다른 게 아니다. KRaft가 바로 그 "클러스터를 관리하는 얘"(Controller)의 최신 구현 방식이다.</strong>
+      <a href="./0016-kafka-core-concepts-event-streaming.html">이전 레슨</a>에서 "브로커가 여러 대면 누군가는
+      메타데이터(어느 Partition이 어느 Broker에 있는지, 누가 Leader인지)를 관리해야 한다"고 했고, 그 역할을
+      <strong>Controller</strong>가 한다고 했다. KRaft는 정확히 그 Controller 역할을 <strong>ZooKeeper라는
+      별도 시스템 없이 Kafka 브로커 자신이 수행하게 만드는 내부 합의 프로토콜(consensus protocol)</strong>이다.
+    </p>
+    <pre class="flow"><code>예전: Broker들 ← (메타데이터 관리를 위임) → ZooKeeper (완전 별도 시스템)
+지금: Broker 중 일부가 KRaft 프로토콜로 스스로 Controller 역할을 맡음 (별도 시스템 불필요)</code></pre>
+    <p>
+      즉 "브로커 클러스터"와 "그걸 관리하는 존재"가 서로 다른 두 개의 시스템이 아니라, <strong>KRaft는
+      그 관리자(Controller) 역할을 Kafka 브로커들 스스로 수행하게 만드는 프로토콜</strong>이다.
+    </p>
+    <p class="note">
+      <strong>Raft가 뭔지 아주 간단히:</strong> 여러 대의 서버가 "우리 중 누가 대표(Leader)이고, 상태
+      변경을 어떤 순서로 기록할지"에 합의하는 분산 합의 알고리즘이다. KRaft는 이 Raft를 카프카
+      메타데이터 관리에 적용한 것이고:
+    </p>
+    <ul>
+      <li>Controller 역할을 할 브로커 몇 대(보통 3~5대)가 <strong>Controller Quorum</strong>을 이룬다</li>
+      <li>그중 Raft로 선출된 <strong>Active Controller</strong> 하나가 실제 메타데이터 변경을 처리한다</li>
+      <li>나머지(Standby)는 그 변경 로그를 복제해 들고 있다가, Active Controller가 죽으면 즉시 새 Controller로 승격한다</li>
+    </ul>
+    <p class="warn">
+      이건 <a href="./0016-kafka-core-concepts-event-streaming.html">이전 레슨</a>에서 본 Partition의
+      Leader/Follower + Replication과 <strong>똑같은 패턴</strong>이다 — 다만 복제되는 대상이 "이벤트
+      데이터"가 아니라 "클러스터 메타데이터"라는 것만 다르다.
+    </p>
+  </div>
+
   <h2>3. ZooKeeper mode → KRaft mode, 무엇이 사라지고 왜 사라졌는가</h2>
   <p>
     ZooKeeper mode에만 있던 설정과 기능들이 KRaft mode에서는 제거되거나 대체되었다.

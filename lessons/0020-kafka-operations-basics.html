@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kafka 운영 기초: 클러스터를 실제로 돌보는 법</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    .flow { white-space: pre-wrap; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .diagram {
+      background: #fff;
+      border: 1px solid #deded6;
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+    }
+    .diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Kafka 운영 기초: 클러스터를 실제로 돌보는 법</h1>
+  <p class="note">
+    목표: <a href="https://kafka.apache.org/documentation/#basic_ops">Apache Kafka Documentation: Basic Kafka Operations</a>와
+    <a href="https://kafka.apache.org/documentation/#hwandos">Hardware and OS</a> 원문을 근거로,
+    <strong>"실제 클러스터를 운영할 때 매일 마주치는 판단"</strong>의 뼈대만 추린다.
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 레슨</a>의 Topic·Partition·Broker 개념,
+    <a href="./0019-kafka-design-deep-dive.html">0019 레슨</a>의 ISR·복제 설계,
+    <a href="./0018-kraft-vs-zookeeper.html">0018 레슨</a>의 KRaft 클러스터 구조를 이미 안다고 가정하고,
+    "그래서 이걸 실제로 어떻게 돌보는가"를 이어붙인다. CLI 옵션을 전부 외울 필요는 없다 — 이 레슨은
+    <strong>"왜 그 명령이 필요한가"</strong>라는 멘탈 모델에 집중한다.
+  </p>
+
+  <h2>0. 이 레슨이 다루는 지도 — Day-2 운영이란</h2>
+  <p>
+    클러스터를 "만들고 나서" 매일 반복되는 작업은 크게 5가지로 나뉜다. 이 레슨은 이 5가지 순서로 간다.
+  </p>
+  <pre class="flow"><code>1. 토픽을 다루기        → 새 토픽 만들기, 설정 바꾸기, 하면 안 되는 실수
+2. 브로커를 안전하게 껐다 켜기 → graceful shutdown, leadership 균형
+3. 클러스터 크기를 바꾸기   → 브로커 추가/제거 시 partition을 수동으로 옮겨야 하는 이유
+4. 상태를 들여다보기     → consumer group이 얼마나 뒤처졌는지, quota로 특정 client를 제한하기
+5. 하드웨어/OS를 고르기   → 디스크·파일시스템·OS 설정</code></pre>
+
+  <h2>1. 토픽 다루기 — 만들 때 정한 것은 되돌리기 어렵다</h2>
+  <p>
+    토픽은 <code>kafka-topics.sh --create</code>로 만들고 <code>--alter</code>로 수정한다. 여기서 중요한 건
+    명령어 문법이 아니라 <strong>"만들 때 신중해야 하는 값이 뭔지"</strong>다.
+  </p>
+  <table>
+    <thead><tr><th>값</th><th>의미</th><th>나중에 바꿀 수 있나</th></tr></thead>
+    <tbody>
+      <tr><td>replication factor</td><td>메시지를 몇 대에 복제할지 (2~3 권장)</td><td class="ok">가능(단, partition마다 replica 목록을 직접 재할당해야 함)</td></tr>
+      <tr><td>partition 수</td><td>topic을 몇 개 log로 나눌지, consumer 병렬성의 상한</td><td><span class="ok">늘리기만 가능</span>, <span class="no">줄이는 건 불가능</span></td></tr>
+    </tbody>
+  </table>
+  <div class="card" style="border-color:#b45309;">
+    <h3 style="margin-top:0;">Partition을 늘릴 때 흔히 놓치는 부작용 3가지</h3>
+    <ul>
+      <li><strong>같은 key인데 다른 partition으로 감</strong> — key를 <code>hash(key) % partition 수</code>로 분배하므로, partition 수가 바뀌면 이 나눗셈의 결과 자체가 바뀐다. 기존 데이터는 자동으로 재배치되지 않으므로, "같은 유저 데이터는 항상 같은 partition"이라는 순서 보장이 그 시점부터 깨질 수 있다.</li>
+      <li><strong>새 partition을 뒤늦게 알아채는 시차</strong> — client는 <code>metadata.max.age.ms</code> 주기로만 metadata를 새로고침하므로, partition이 막 늘어난 직후에는 producer/consumer가 잠깐 그 partition의 존재를 모른다. 이 사이 <code>auto.offset.reset=latest</code>인 consumer는 그 짧은 틈에 쌓인 메시지를 영영 놓칠 수 있다.</li>
+      <li><strong>내부 토픽은 절대 손대지 않기</strong> — <code>__consumer_offsets</code>, <code>__transaction_state</code> 같은 Kafka 내부 관리용 토픽의 partition 수를 수동으로 늘리면 내부 매핑 로직이 깨져 장애로 이어진다.</li>
+    </ul>
+  </div>
+  <p class="note">
+    <strong>partition 수는 늘리는 방향으로만 여유 있게 잡자</strong> — 나중에 줄일 방법이 없으므로, 처음부터
+    너무 적게 잡아서 나중에 급하게 늘리는 상황(그리고 위 부작용)을 피하는 게 낫다.
+  </p>
+
+  <h2>2. Graceful Shutdown — 그냥 죽이면(kill) 안 되는 이유</h2>
+  <p>
+    브로커가 죽으면(의도했든 장애든) Kafka는 자동으로 그 브로커가 Leader였던 partition에 새 Leader를
+    뽑는다. 문제는 <strong>"얼마나 매끄럽게" 넘어가느냐</strong>다. <code>controlled.shutdown.enable=true</code>로
+    브로커를 "정상 종료"시키면, 죽기 직전에 두 가지를 미리 해둔다.
+  </p>
+  <div class="diagram">
+    <svg viewBox="0 0 820 220" role="img" aria-label="hard kill과 graceful shutdown 비교">
+      <text x="20" y="24" font-size="13" font-weight="700" fill="#b45309">Hard Kill — 죽고 나서야 복구 시작</text>
+      <rect x="20" y="36" width="160" height="46" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="100" y="64" font-size="11" font-weight="700" text-anchor="middle" fill="#7c2d12">Broker 즉시 종료</text>
+      <rect x="220" y="36" width="200" height="46" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="320" y="58" font-size="10.5" font-weight="700" text-anchor="middle" fill="#7c2d12">장애 감지 후 새 Leader 선출</text>
+      <rect x="460" y="36" width="200" height="46" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+      <text x="560" y="58" font-size="10.5" font-weight="700" text-anchor="middle" fill="#7c2d12">재시작 시 log 정합성 검증(recovery)</text>
+      <text x="410" y="106" font-size="11" text-anchor="middle" fill="#4b5563">그 사이 partition 여러 개가 한꺼번에 "쓸 수 없는" 시간이 김 + 재시작도 느림</text>
+
+      <line x1="0" y1="120" x2="820" y2="120" stroke="#deded6" stroke-width="1"/>
+
+      <text x="20" y="144" font-size="13" font-weight="700" fill="#0f766e">Graceful Shutdown — 죽기 전에 미리 정리</text>
+      <rect x="20" y="156" width="220" height="46" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="130" y="178" font-size="10.5" font-weight="700" text-anchor="middle" fill="#111827">① 모든 log를 디스크에 sync</text>
+      <text x="130" y="192" font-size="9.5" text-anchor="middle" fill="#4b5563">재시작 시 recovery 생략</text>
+      <rect x="280" y="156" width="260" height="46" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="410" y="178" font-size="10.5" font-weight="700" text-anchor="middle" fill="#111827">② 내가 Leader인 partition을 미리 다른 replica로 이관</text>
+      <text x="410" y="192" font-size="9.5" text-anchor="middle" fill="#4b5563">불능 시간을 밀리초 단위로 축소</text>
+      <rect x="580" y="156" width="220" height="46" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="2"/>
+      <text x="690" y="184" font-size="10.5" font-weight="700" text-anchor="middle" fill="#111827">그 다음에 종료</text>
+    </svg>
+  </div>
+  <p class="warn">
+    <strong>조건이 있다.</strong> controlled shutdown은 종료하려는 브로커가 호스팅하는 모든 partition에
+    <strong>살아있는 replica가 하나 이상</strong> 있어야만 성공한다. replication factor가 1이라서 replica가
+    자기 자신뿐인 partition이 있다면, 그 partition은 이 브로커를 끄는 순간 그냥 못 쓰게 된다.
+  </p>
+
+  <h2>3. Leadership 균형 — 재시작한 브로커가 계속 "놀고" 있지 않게</h2>
+  <div class="card" style="border-color:#0f766e;">
+    <h3 style="margin-top:0;">Preferred Replica란</h3>
+    <p>
+      partition의 replica 목록(예: <code>[1, 5, 9]</code>)에서 <strong>가장 앞에 있는 broker(1)</strong>가
+      "원래 이 partition의 Leader를 맡기로 되어 있던 자리"다. 브로커 1이 죽었다가 다시 살아나면, 그동안
+      Leader 역할은 5나 9로 넘어가 있고 브로커 1은 그냥 Follower로만 돌아온다 — 아무 client 요청도 못 받는
+      상태로 유휴화된다.
+    </p>
+    <p>
+      <code>auto.leader.rebalance.enable=true</code>(기본값)이면 Kafka가 주기적으로 이 편중을 감지해
+      Leadership을 preferred replica로 <strong>알아서 되돌린다</strong>. 꺼뒀다면
+      <code>kafka-leader-election.sh --election-type preferred</code>로 수동으로 되돌려야 한다.
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3 style="margin-top:0;">Rack Awareness — 랙 하나가 통째로 죽는 것까지 버티기</h3>
+    <p>
+      브로커에 <code>broker.rack=my-rack-id</code>를 지정해두면, Kafka는 같은 partition의 replica들을
+      <strong>서로 다른 rack(또는 클라우드의 availability zone)</strong>에 나눠 배치한다. 그래서 "브로커
+      한 대 장애"뿐 아니라 "랙 하나 전체 장애"까지 버티는 보장으로 확장된다. 단, rack마다 브로커 수가
+      다르면 브로커가 적은 rack이 더 많은 replica를 떠안게 되므로, <strong>rack마다 브로커 수를 맞추는
+      것</strong>이 실무적으로 좋다.
+    </p>
+  </div>
+
+  <h2>4. 클러스터 확장 — 브로커를 추가해도 자동으로 아무 일도 안 생긴다</h2>
+  <p>
+    새 브로커를 켜는 건 쉽다. 문제는 <strong>기존 데이터가 새 브로커로 저절로 옮겨가지 않는다</strong>는
+    점이다 — 새 topic이 생길 때나 새 partition을 그 브로커에 배정할 뿐, 이미 있던 partition은 그대로
+    예전 브로커에 남는다.
+  </p>
+  <div class="diagram">
+    <svg viewBox="0 0 820 260" role="img" aria-label="브로커 추가 전후 partition 분포 비교">
+      <text x="20" y="24" font-size="13" font-weight="700" fill="#374151">확장 전 — Broker 1, 2 두 대에 partition 4개</text>
+      <rect x="20" y="36" width="150" height="70" rx="6" fill="#eef2ff" stroke="#4338ca" stroke-width="2"/>
+      <text x="95" y="56" font-size="11" font-weight="700" text-anchor="middle" fill="#1e1b4b">Broker 1</text>
+      <text x="95" y="74" font-size="10" text-anchor="middle" fill="#312e81">P0, P2</text>
+      <rect x="190" y="36" width="150" height="70" rx="6" fill="#eef2ff" stroke="#4338ca" stroke-width="2"/>
+      <text x="265" y="56" font-size="11" font-weight="700" text-anchor="middle" fill="#1e1b4b">Broker 2</text>
+      <text x="265" y="74" font-size="10" text-anchor="middle" fill="#312e81">P1, P3</text>
+
+      <line x1="0" y1="130" x2="820" y2="130" stroke="#deded6" stroke-width="1"/>
+
+      <text x="20" y="154" font-size="13" font-weight="700" fill="#b45309">Broker 3을 그냥 추가만 한 직후 — 여전히 비어있음</text>
+      <rect x="20" y="166" width="150" height="70" rx="6" fill="#eef2ff" stroke="#4338ca" stroke-width="2"/>
+      <text x="95" y="186" font-size="11" font-weight="700" text-anchor="middle" fill="#1e1b4b">Broker 1</text>
+      <text x="95" y="204" font-size="10" text-anchor="middle" fill="#312e81">P0, P2</text>
+      <rect x="190" y="166" width="150" height="70" rx="6" fill="#eef2ff" stroke="#4338ca" stroke-width="2"/>
+      <text x="265" y="186" font-size="11" font-weight="700" text-anchor="middle" fill="#1e1b4b">Broker 2</text>
+      <text x="265" y="204" font-size="10" text-anchor="middle" fill="#312e81">P1, P3</text>
+      <rect x="360" y="166" width="150" height="70" rx="6" fill="#fff7ed" stroke="#b45309" stroke-width="2" stroke-dasharray="5,4"/>
+      <text x="435" y="186" font-size="11" font-weight="700" text-anchor="middle" fill="#7c2d12">Broker 3</text>
+      <text x="435" y="204" font-size="10" text-anchor="middle" fill="#7c2d12">(비어있음)</text>
+      <text x="620" y="206" font-size="11" fill="#b45309" font-weight="700">← partition reassignment를 직접 실행해야 여기로 옮겨감</text>
+    </svg>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3 style="margin-top:0;">Partition Reassignment 도구 — 3단계로 나뉜 안전장치</h3>
+    <p><code>kafka-reassign-partitions.sh</code>는 항상 이 순서로 쓴다.</p>
+    <table>
+      <thead><tr><th>모드</th><th>하는 일</th></tr></thead>
+      <tbody>
+        <tr><td><code>--generate</code></td><td>"이 topic들을 이 broker들로 옮긴다면?"의 <strong>제안(plan)만</strong> 보여준다. 아직 아무 일도 안 일어남 — rollback을 위해 "현재 상태"도 같이 출력되니 저장해둘 것.</td></tr>
+        <tr><td><code>--execute</code></td><td>그 plan(json)을 실제로 <strong>실행</strong>한다. 새 브로커를 해당 partition의 follower로 추가하고, 복제가 끝나면 예전 replica를 지운다 — 그동안 서비스는 멈추지 않는다.</td></tr>
+        <tr><td><code>--verify</code></td><td>같은 plan 파일로 <strong>진행 상태</strong>(완료/실패/진행중)를 확인한다.</td></tr>
+      </tbody>
+    </table>
+    <p class="note">
+      이 도구는 "가장 균등한 분포"를 알아서 계산해주지 않는다 — <strong>어떤 topic을 어떤 broker로
+      옮길지는 사람이 정해야 한다.</strong> replication factor를 늘리는 것도 같은 도구로, replica 목록에
+      broker를 하나 더 추가한 plan을 <code>--execute</code>하면 된다.
+    </p>
+  </div>
+  <div class="card" style="border-color:#b45309;">
+    <h3 style="margin-top:0;">이동 중 대역폭 조절(Throttle)을 꼭 걸어야 하는 이유</h3>
+    <p>
+      partition을 대량으로 옮기면 복제 트래픽이 순간적으로 폭증해 일반 producer/consumer 트래픽까지
+      느려질 수 있다. <code>--throttle</code> 옵션으로 이동 속도의 상한(예: 초당 50MB)을 걸어두면 이걸
+      막을 수 있다. <strong>단, 이동이 끝난 뒤 <code>--verify</code>를 실행해야 이 throttle이 자동으로
+      해제된다</strong> — 안 하면 나중에 일반 replication까지 계속 느려진 채로 남는다.
+    </p>
+  </div>
+
+  <h2>5. 브로커/디스크 폐기 — 순서가 중요하다</h2>
+  <p>
+    브로커 한 대를 클러스터에서 완전히 빼려면(하드웨어 교체, 축소 등) 다음 순서를 지킨다 — 순서를
+    바꾸면 그 브로커가 담당하던 partition을 잃어버릴 수 있다.
+  </p>
+  <pre class="flow"><code>1. cordon(격리 표시) → "이 broker/디스크로는 새 데이터를 더 배정하지 마라"고 표시만 해둠
+2. reassignment → 이 broker/디스크에 있던 모든 partition을 다른 곳으로 미리 옮겨둠(위 4번 도구 재사용)
+3. 이동이 다 끝난 뒤에만 → broker를 종료하고 cluster에서 unregister</code></pre>
+  <p class="warn">
+    2번을 건너뛰고 바로 브로커를 끄면, 그 브로커에만 있던 partition은 그대로 유실된다. "폐기 = 먼저
+    비우고, 그 다음에 끈다"는 순서를 항상 지킨다.
+  </p>
+
+  <h2>6. 상태 들여다보기 — Consumer Group Lag와 Quota</h2>
+  <div class="card" style="border-color:#0f766e;">
+    <h3 style="margin-top:0;">Consumer Group이 얼마나 뒤처졌는가(Lag)</h3>
+    <p>
+      <code>kafka-consumer-groups.sh --describe --group my-group</code> 한 줄로 각 partition마다
+      <strong>지금까지 읽은 위치(CURRENT-OFFSET)</strong>와 <strong>맨 끝 위치(LOG-END-OFFSET)</strong>의
+      차이(LAG)를 볼 수 있다. 이 lag가 계속 커지기만 한다면 "이 consumer group이 producer 속도를
+      못 따라가고 있다"는 신호다 — <a href="./0023-kafka-monitoring-essentials.html">0023 레슨</a>에서
+      이 지표를 알람으로 연결하는 법을 다룬다.
+    </p>
+  </div>
+  <div class="card" style="border-color:#0f766e;">
+    <h3 style="margin-top:0;">Quota — 특정 client가 클러스터를 독점하지 못하게</h3>
+    <p>
+      (user, client-id) 조합 단위로 <code>producer_byte_rate</code>·<code>consumer_byte_rate</code>(대역폭
+      상한)·<code>request_percentage</code>(요청 처리 스레드 점유율 상한)를 걸 수 있다. 기본은 무제한이므로,
+      여러 팀이 같은 클러스터를 함께 쓰는 환경(<a href="./0021-kafka-geo-replication-and-multi-tenancy.html">0021 레슨</a>에서
+      다루는 멀티테넌시)에서는 이 quota가 사실상 필수다.
+    </p>
+  </div>
+
+  <h2>7. 하드웨어 & OS — 결정할 가치가 있는 것만</h2>
+  <p>
+    Kafka는 대부분의 OS 세부 튜닝이 불필요하지만, 아래 몇 가지는 실제로 성능·안정성에 영향을 준다.
+  </p>
+  <table>
+    <thead><tr><th>영역</th><th>권장</th><th>이유</th></tr></thead>
+    <tbody>
+      <tr><td>디스크 구성</td><td>여러 개별 드라이브(JBOD) + Kafka replication에 맡기기</td><td>RAID는 write throughput을 깎아먹고, 복구(rebuild) 중 I/O가 폭증해 사실상 서버를 못 쓰게 만든다 — Kafka는 이미 replication으로 내결함성을 자체 제공한다</td></tr>
+      <tr><td>디스크 용도 분리</td><td>Kafka 전용 드라이브를 OS/애플리케이션 로그와 분리</td><td>디스크 처리량이 흔한 병목이라, 남과 나눠 쓰면 latency가 들쭉날쭉해진다</td></tr>
+      <tr><td>파일시스템</td><td>XFS (mount 옵션 <code>noatime</code>)</td><td>같은 워크로드에서 EXT4보다 append 지연이 더 낮고 변동폭도 작다는 벤치마크 결과</td></tr>
+      <tr><td>File descriptor 한도</td><td>브로커 프로세스당 최소 100,000개</td><td>partition마다 log segment + connection이 file descriptor를 잡아먹는다</td></tr>
+      <tr><td><code>vm.max_map_count</code></td><td>partition 수에 맞춰 기본값(약 65535)보다 늘리기</td><td>partition마다 log segment당 2개의 memory map을 쓴다 — partition 5만 개면 기본값으로 <code>OutOfMemoryError</code>로 broker가 죽을 수 있다</td></tr>
+      <tr><td>Flush 정책</td><td>application 레벨 fsync는 끄고 OS/Kafka 기본 flush에 맡기기</td><td>Kafka의 내구성(durability)은 disk sync가 아니라 <strong>replication</strong>에서 나온다(<a href="./0019-kafka-design-deep-dive.html">0019 레슨</a> 참고) — 굳이 매번 fsync해서 latency를 늘릴 필요가 없다</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    한 줄 요약: <strong>"디스크는 여러 개, RAID 대신 Kafka 자체 복제, XFS, fsync는 끄고 replication을
+    믿는다."</strong> 나머지 세부 옵션(EXT4 저널링 끄기 등)은 지금 단계에서 외울 필요는 없다 —
+    실제로 성능 문제를 마주쳤을 때 공식 문서에서 찾아 적용하면 되는 <strong>심화 학습 참고</strong> 항목이다.
+  </p>
+
+  <h2>8. 회상 퀴즈</h2>
+  <p>보지 말고 답해보자.</p>
+  <section class="quiz" aria-label="Kafka 운영 기초 퀴즈">
+    <p><strong>Q1.</strong> topic의 partition 수를 실무에서 신중하게 잡아야 하는 이유는?</p>
+    <button type="button" data-target="answer-1" data-answer="wrong">늘리는 것도 지원 안 되기 때문</button>
+    <button type="button" data-target="answer-1" data-answer="correct">늘릴 수는 있어도 줄일 수는 없고, key 분배가 바뀌는 부작용이 있기 때문</button>
+    <button type="button" data-target="answer-1" data-answer="wrong">replication factor와 자동으로 같이 바뀌기 때문</button>
+    <p class="answer" id="answer-1"></p>
+
+    <p><strong>Q2.</strong> Graceful shutdown이 hard kill보다 나은 핵심 이유는?</p>
+    <button type="button" data-target="answer-2" data-answer="wrong">디스크 공간을 아낄 수 있어서</button>
+    <button type="button" data-target="answer-2" data-answer="correct">log sync를 미리 해서 재시작이 빠르고, leader를 미리 넘겨서 불능 시간이 짧아서</button>
+    <button type="button" data-target="answer-2" data-answer="wrong">replication factor가 자동으로 늘어나서</button>
+    <p class="answer" id="answer-2"></p>
+
+    <p><strong>Q3.</strong> 새 브로커를 클러스터에 추가한 직후 벌어지는 일은?</p>
+    <button type="button" data-target="answer-3" data-answer="wrong">기존 partition이 자동으로 균등 재분배된다</button>
+    <button type="button" data-target="answer-3" data-answer="correct">기존 partition은 그대로 예전 브로커에 남고, 새 브로커는 비어있다</button>
+    <button type="button" data-target="answer-3" data-answer="wrong">모든 topic이 자동으로 재생성된다</button>
+    <p class="answer" id="answer-3"></p>
+
+    <p><strong>Q4.</strong> Partition reassignment 도구의 <code>--generate</code> 모드가 하는 일은?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong">실제로 partition을 즉시 이동시킨다</button>
+    <button type="button" data-target="answer-4" data-answer="correct">이동 후보 plan만 보여주고 아무것도 실행하지 않는다</button>
+    <button type="button" data-target="answer-4" data-answer="wrong">진행 상태를 검증한다</button>
+    <p class="answer" id="answer-4"></p>
+
+    <p><strong>Q5.</strong> 브로커를 폐기(decommission)할 때 순서로 옳은 것은?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong">브로커 종료 → partition 재분배 → cordon</button>
+    <button type="button" data-target="answer-5" data-answer="correct">cordon → partition 재분배 → 브로커 종료/unregister</button>
+    <button type="button" data-target="answer-5" data-answer="wrong">unregister → cordon → 종료</button>
+    <p class="answer" id="answer-5"></p>
+
+    <p><strong>Q6.</strong> Kafka가 RAID 대신 여러 개별 드라이브(JBOD)를 권장하는 이유는?</p>
+    <button type="button" data-target="answer-6" data-answer="wrong">RAID는 Kafka에서 아예 지원되지 않아서</button>
+    <button type="button" data-target="answer-6" data-answer="correct">RAID의 write 성능 저하와 rebuild 시 I/O 폭증 대신, Kafka 자체 replication으로 내결함성을 이미 확보하기 때문</button>
+    <button type="button" data-target="answer-6" data-answer="wrong">JBOD가 디스크 용량을 더 많이 줘서</button>
+    <p class="answer" id="answer-6"></p>
+
+    <p><strong>Q7.</strong> application 레벨 fsync를 꺼도 Kafka가 안전한 이유는?</p>
+    <button type="button" data-target="answer-7" data-answer="wrong">OS가 데이터를 절대 잃어버리지 않기 때문</button>
+    <button type="button" data-target="answer-7" data-answer="correct">내구성이 disk sync가 아니라 replication(ISR)에서 나오기 때문</button>
+    <button type="button" data-target="answer-7" data-answer="wrong">Kafka는 애초에 디스크에 쓰지 않기 때문</button>
+    <p class="answer" id="answer-7"></p>
+  </section>
+
+  <h2>공식 자료 (가장 먼저 읽을 것)</h2>
+  <ul>
+    <li><strong>1순위:</strong> <a href="https://kafka.apache.org/documentation/#basic_ops">Apache Kafka Documentation: Basic Kafka Operations</a>
+      — 이 레슨 1~6장의 원본. 모든 CLI 옵션의 전체 목록은 여기서 확인.</li>
+    <li><a href="https://kafka.apache.org/documentation/#hwandos">Apache Kafka Documentation: Hardware and OS</a>
+      — 이 레슨 7장의 원본. filesystem별 상세 mount 옵션까지 다룸.</li>
+  </ul>
+
+  <h2>커뮤니티 (막힐 때)</h2>
+  <ul>
+    <li><a href="https://www.reddit.com/r/apachekafka/">r/apachekafka</a> — partition reassignment, throttle 값 튜닝 등 실무 운영 경험담.</li>
+    <li><a href="https://stackoverflow.com/questions/tagged/apache-kafka">Stack Overflow: apache-kafka 태그</a></li>
+  </ul>
+
+  <p>
+    관련 자료:
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 — Topic·Partition·Consumer Group 핵심 개념</a>,
+    <a href="./0018-kraft-vs-zookeeper.html">0018 — KRaft vs ZooKeeper</a>,
+    <a href="./0019-kafka-design-deep-dive.html">0019 — Kafka Design 딥다이브</a>.<br>
+    <strong>다음 레슨:</strong> <a href="./0021-kafka-geo-replication-and-multi-tenancy.html">0021 — 지리적 복제와 멀티테넌시</a>,
+    <a href="./0022-kraft-cluster-operations.html">0022 — KRaft 클러스터 운영</a>.<br>
+    이해가 막히는 지점은 이 Teach Session에서 바로 후속 질문으로 이어가자 —
+    "partition을 왜 줄일 수 없지?" 같은 질문이 좋은 질문이다.
+  </p>
+</main>
+<script>
+  document.querySelectorAll(".quiz button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.target);
+      const isCorrect = button.dataset.answer === "correct";
+      target.textContent = isCorrect
+        ? "정답."
+        : "오답. 이 section의 핵심 문장을 다시 떠올려보자 — 위로 스크롤해서 다시 읽어도 좋다.";
+      target.className = isCorrect ? "answer ok" : "answer no";
+    });
+  });
+</script>
+</body>
+</html>
