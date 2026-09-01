@@ -161,9 +161,10 @@ This index points to saved learning material in this Learning Vault.
 
 **References**
 
-- [0009 - Kafka 핵심 개념 & KRaft vs ZooKeeper 치트시트](./reference/0009-kafka-core-concepts-cheatsheet.html)
+- [0011 - Kafka 핵심 개념 & KRaft vs ZooKeeper 치트시트](./reference/0011-kafka-core-concepts-cheatsheet.html)
 
 **Learning Records**
+
 
 - [0021 - Kafka 학습 시작 - 실무 도입 목표 기준점](./learning-records/0021-kafka-learning-baseline.md)
 
