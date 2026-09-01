@@ -207,3 +207,27 @@ This index points to saved learning material in this Learning Vault.
 **Learning Records**
 
 - [0023 - Kafka 설정 학습 범위 확정](./learning-records/0023-kafka-configuration-scope-baseline.md)
+
+## WebSocket / STOMP
+
+### 모의투자 실시간 시세: 연결, 구독, 틱 전달, 구독 취소
+
+**Lessons**
+
+- [0031 - 모의투자 틱 스트리밍: STOMP + SimpleBroker는 내부에서 무슨 일을 하는가](./lessons/0031-stomp-simplebroker-tick-streaming.html)
+- [0032 - STOMP와 Spring 메시징의 어휘: 프레임, Message, Channel, Handler](./lessons/0032-stomp-and-spring-messaging-vocabulary.html)
+- [0033 - 코드로 보는 전체 흐름: 설정, 컨트롤러, SimpleBroker](./lessons/0033-stomp-config-controller-and-broker-in-code.html)
+- [0034 - 브로커만 갈아끼우기: SimpleBroker → RabbitMQ Relay](./lessons/0034-swapping-simplebroker-for-rabbitmq-relay.html)
+- [0035 - 틱 재생 스케줄러: destination은 누가 정하는가](./lessons/0035-tick-scheduler-and-destination-convention.html)
+
+**References**
+
+- [0017 - STOMP + SimpleBroker 치트시트](./reference/0017-stomp-simplebroker-cheatsheet.html)
+
+**Learning Records**
+
+- [0024 - 모의투자 WebSocket/STOMP 학습 시작 (공용 시계 전제 확정)](./learning-records/0024-websocket-stomp-mock-trading-baseline.md)
+- [0025 - Spring 메시징 어휘 질문과 세션 쿠키 인증으로 전제 수정](./learning-records/0025-spring-messaging-vocabulary-and-cookie-auth.md)
+- [0026 - 코드 레벨로 범위 확장 (코드 금지 제약 해제)](./learning-records/0026-code-level-scope-expansion.md)
+- [0027 - 브로커 교체를 미션 범위로 편입](./learning-records/0027-broker-relay-scope-change.md)
+- [0028 - destination 규약과 조용한 실패](./learning-records/0028-destination-convention-and-silent-failure.md)

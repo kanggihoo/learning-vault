@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>STOMP와 Spring 메시징의 어휘: 프레임, Message, Channel, Handler</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .frame {
+      background: #111827; color: #f9fafb; padding: 14px 16px; border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.88rem; line-height: 1.55; overflow-x: auto; white-space: pre;
+    }
+    .frame b { color: #5eead4; font-weight: 700; }
+    .frame i { color: #94a3b8; font-style: normal; }
+    .frame u { color: #fbbf24; text-decoration: none; }
+    .java {
+      background: #fdfdfb; border: 1px solid #deded6; border-left: 4px solid #0f766e;
+      padding: 14px 16px; border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.86rem; line-height: 1.6; overflow-x: auto; white-space: pre;
+    }
+    .java i { color: #6b7280; font-style: normal; }
+    .analogy th { background: #fff7ed; }
+    .analogy td:first-child { font-weight: 700; white-space: nowrap; }
+  </style>
+</head>
+<body>
+<main>
+
+  <h1>STOMP와 Spring 메시징의 어휘: 프레임, Message, Channel, Handler</h1>
+
+  <p class="note">
+    <a href="./0031-stomp-simplebroker-tick-streaming.html">0031 레슨</a>에서 "<code>StompSubProtocolHandler</code>가
+    STOMP 프레임을 <strong>Spring Message</strong>로 번역해서 <strong>clientInboundChannel</strong>에 싣고,
+    <strong>SimpleBrokerMessageHandler</strong>가 그걸 집어간다"고 했다. 그런데 <em>Message가 뭔지, Channel이 뭔지,
+    Handler가 뭔지</em>를 모르면 그 문장은 그냥 외운 주문일 뿐이다.
+    <br><br>
+    <strong>이 레슨의 목표.</strong> STOMP가 무엇인지 먼저 잡고, 그다음 Spring 메시징의 세 단어
+    (<code>Message</code> · <code>MessageChannel</code> · <code>MessageHandler</code>)를
+    "이건 사실 이렇게 생긴 자바 코드다" 수준까지 내려가서 이해한다. 이 셋만 알면 0031의 배관도가 전부 읽힌다.
+  </p>
+
+  <h2>1. STOMP란 무엇인가 — WebSocket이 정해주지 않는 것</h2>
+
+  <p>
+    WebSocket은 <strong>"이 연결로 양쪽이 아무 때나 바이트를 보낼 수 있다"</strong>까지만 정한다.
+    그 바이트가 무슨 뜻인지는 <strong>하나도 정해주지 않는다.</strong> 파이프만 뚫어주고 끝이다.
+  </p>
+
+  <p>그래서 순수 WebSocket만 쓰면, 다음을 전부 직접 발명해야 한다.</p>
+
+  <table>
+    <thead><tr><th>직접 정해야 하는 것</th><th>순수 WebSocket에서는</th><th>STOMP에서는</th></tr></thead>
+    <tbody>
+      <tr><td>"이 메시지가 무슨 요청인가"</td>
+          <td><code>{"type":"subscribe", ...}</code> 같은 걸 직접 정하고 서버에서 <code>switch</code></td>
+          <td>프레임 첫 줄의 <strong>명령어</strong>가 이미 규격</td></tr>
+      <tr><td>"어느 주제를 원하는가"</td>
+          <td><code>{"code":"005930"}</code> 직접 파싱</td>
+          <td><code>destination</code> 헤더가 이미 규격</td></tr>
+      <tr><td>"누가 무엇을 구독 중인가"</td>
+          <td><code>Map&lt;String, Set&lt;Session&gt;&gt;</code>을 손으로 관리</td>
+          <td><strong>브로커가 대신 관리</strong> (Spring이 구현해 줌)</td></tr>
+      <tr><td>"연결이 살아 있는가"</td>
+          <td>ping/pong 규칙을 직접 정의</td>
+          <td><code>heart-beat</code> 헤더로 협상</td></tr>
+      <tr><td>클라이언트 라이브러리</td>
+          <td>직접 작성</td>
+          <td>이미 존재 (여러 언어)</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    STOMP는 <strong>S</strong>imple <strong>T</strong>ext <strong>O</strong>riented
+    <strong>M</strong>essaging <strong>P</strong>rotocol의 약자다. 이름 그대로 <strong>텍스트 기반</strong>이고,
+    생김새가 HTTP와 거의 똑같다 — <em>명령어 한 줄 + 헤더들 + 빈 줄 + 본문</em>.
+  </p>
+
+  <div class="frame"><b>SUBSCRIBE</b>                       <i>← ① 명령어 (HTTP의 GET/POST 자리)</i>
+id:sub-0                          <i>← ② 헤더</i>
+destination:/topic/ticks/005930   <i>← ② 헤더</i>
+                                  <i>← ③ 빈 줄: 여기부터 본문</i>
+                                  <i>   (SUBSCRIBE는 본문이 없다)</i>
+^@                                <i>← ④ NULL 바이트 하나로 프레임 종료</i></div>
+
+  <p>명령어는 전부 합쳐 10개 남짓이다. 이게 프로토콜의 전부다.</p>
+
+  <table>
+    <thead><tr><th>방향</th><th>명령어</th><th>뜻</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="4">클라이언트 →</td><td><code>CONNECT</code></td><td>세션 시작하자</td></tr>
+      <tr><td><code>SUBSCRIBE</code> / <code>UNSUBSCRIBE</code></td><td>이 주소 구독할게 / 그만할게</td></tr>
+      <tr><td><code>SEND</code></td><td>이 주소로 뭐 좀 보낼게</td></tr>
+      <tr><td><code>DISCONNECT</code></td><td>끊을게</td></tr>
+      <tr><td rowspan="3">← 서버</td><td><code>CONNECTED</code></td><td>세션 시작됐다</td></tr>
+      <tr><td><code>MESSAGE</code></td><td>네가 구독한 주소에 뭔가 왔다</td></tr>
+      <tr><td><code>ERROR</code> / <code>RECEIPT</code></td><td>문제 생겼다 / 잘 받았다</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>STOMP는 WebSocket 전용이 아니다.</strong> 그냥 TCP 소켓 위에서도 돈다. WebSocket은 STOMP를 실어 나르는
+    <em>운반 수단(transport)</em> 중 하나일 뿐이다. 이 구분이 중요한 이유 — <strong>서버가 2대가 되어 RabbitMQ 같은
+    진짜 브로커로 갈아탈 때, 클라이언트 코드는 한 줄도 안 바뀐다.</strong> 같은 STOMP 프레임을 그대로 쓴다.
+  </p>
+
+  <p>
+    비유하자면 <strong>WebSocket은 두 건물 사이에 뚫어둔 파이프</strong>고,
+    <strong>STOMP는 그 파이프로 주고받을 편지의 양식</strong>이다 —
+    겉봉에 뭘 적을지(헤더), 내용은 어디서부터인지(빈 줄 다음), 편지 끝을 어떻게 표시할지(NULL 바이트).
+    파이프는 종이든 벽돌이든 다 통과시키지만, 양식이 있어야 받는 쪽이 읽을 수 있다.
+  </p>
+
+  <h2>2. Spring <code>Message</code> — 프레임을 자바 객체로 뜯어놓은 것</h2>
+
+  <p>
+    소켓에서 읽힌 것은 그냥 <strong>글자</strong>다. 자바 코드가 그 글자를 계속 문자열로 다루면 지옥이 된다.
+    그래서 <code>StompSubProtocolHandler</code>가 (내부적으로 <code>StompDecoder</code>를 써서) 딱 한 번 파싱해
+    <strong>객체</strong>로 바꾼다. 그 객체 타입이 <code>org.springframework.messaging.Message</code>다.
+    이 둘이 서로 다른 모듈에 산다는 사실은 §6에서 다시 본다.
+  </p>
+
+  <p>인터페이스 전체가 이게 다다. 메서드 두 개.</p>
+
+  <div class="java">public interface Message&lt;T&gt; {
+    T              getPayload();   <i>// 내용물</i>
+    MessageHeaders getHeaders();   <i>// 겉봉에 적힌 것들 (Map&lt;String, Object&gt;)</i>
+}</div>
+
+  <p>
+    <strong>편지 봉투다.</strong> 겉봉(headers)에 배달 정보가 적혀 있고, 안에 내용물(payload)이 들어 있다.
+    그 이상도 이하도 아니다.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 430" role="img" aria-label="STOMP 프레임이 Spring Message 객체로 변환되는 대응 관계">
+      <defs>
+        <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+        <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309"/>
+        </marker>
+      </defs>
+
+      <text class="d-title" x="24" y="30">소켓에서 읽힌 글자 (STOMP 프레임)</text>
+      <rect x="24" y="46" width="340" height="180" rx="8" fill="#111827"/>
+      <text x="42" y="76"  font-family="ui-monospace, Consolas, monospace" font-size="13" fill="#5eead4" font-weight="700">SUBSCRIBE</text>
+      <text x="42" y="102" font-family="ui-monospace, Consolas, monospace" font-size="13" fill="#f9fafb">id:sub-0</text>
+      <text x="42" y="128" font-family="ui-monospace, Consolas, monospace" font-size="12" fill="#f9fafb">destination:/topic/ticks/005930</text>
+      <text x="42" y="154" font-family="ui-monospace, Consolas, monospace" font-size="13" fill="#94a3b8">(빈 줄)</text>
+      <text x="42" y="180" font-family="ui-monospace, Consolas, monospace" font-size="13" fill="#f9fafb">^@</text>
+      <text x="42" y="206" font-family="ui-sans-serif, sans-serif" font-size="11" fill="#94a3b8">본문 없음 · 전체가 그냥 문자열</text>
+
+      <text class="d-label-sm" x="150" y="256">StompSubProtocolHandler</text>
+      <text class="d-label-sm" x="176" y="272">가 파싱</text>
+
+      <!-- Message object -->
+      <text class="d-title" x="470" y="30">JVM 힙 위의 자바 객체</text>
+      <rect class="d-box-a" x="460" y="46" width="400" height="330"/>
+      <text class="d-label-mono" x="476" y="70">Message&lt;byte[]&gt;</text>
+
+      <rect x="476" y="82" width="368" height="196" rx="5" fill="#ffffff" stroke="#9aa5b1" stroke-width="1.2"/>
+      <text class="d-label-sm" x="488" y="100">headers  (MessageHeaders)</text>
+      <text class="d-label-mono" x="488" y="126" font-size="11">simpMessageType    = SUBSCRIBE</text>
+      <text class="d-label-mono" x="488" y="150" font-size="11">simpSubscriptionId = "sub-0"</text>
+      <text class="d-label-mono" x="488" y="174" font-size="11">simpDestination    = "/topic/ticks/005930"</text>
+      <text class="d-label-mono" x="488" y="206" font-size="11" fill="#b45309">simpSessionId      = "s1"</text>
+      <text class="d-label-mono" x="488" y="230" font-size="11" fill="#b45309">simpUser           = Principal(userA)</text>
+      <text class="d-label-sm" x="488" y="252" fill="#b45309">↑ 이 둘은 프레임에 없었다. 서버가 덧붙인 것.</text>
+
+      <rect x="476" y="292" width="368" height="62" rx="5" fill="#ffffff" stroke="#9aa5b1" stroke-width="1.2"/>
+      <text class="d-label-sm" x="488" y="312">payload</text>
+      <text class="d-label-mono" x="488" y="336" font-size="11">byte[0]   ← 본문이 없으므로 빈 배열</text>
+
+      <!-- mapping arrows -->
+      <path class="d-line-a" d="M 366 72 C 410 72, 420 118, 456 122" marker-end="url(#m1)"/>
+      <path class="d-line-a" d="M 366 98 C 410 98, 420 142, 456 146" marker-end="url(#m1)"/>
+      <path class="d-line-a" d="M 366 124 C 410 124, 420 166, 456 170" marker-end="url(#m1)"/>
+      <path class="d-line" d="M 366 178 C 410 178, 420 320, 456 326" marker-end="url(#m1)" stroke="#0f766e"/>
+
+      <path class="d-line" d="M 200 300 C 260 300, 380 240, 456 214" marker-end="url(#m2)" stroke="#b45309"/>
+      <rect class="d-box-b" x="24" y="286" width="180" height="60"/>
+      <text class="d-label-sm" x="38" y="308">서버가 아는 사실:</text>
+      <text class="d-label-sm" x="38" y="326">"이 프레임은 s1 소켓에서</text>
+      <text class="d-label-sm" x="38" y="340">들어왔고, 그 주인은 userA다"</text>
+    </svg>
+    <figcaption>
+      프레임의 명령어·헤더·본문이 그대로 <code>Message</code>의 헤더와 payload로 옮겨진다.
+      <strong>여기에 프레임에 없던 두 헤더가 추가된다</strong> — 이게 이 그림의 핵심이다.
+    </figcaption>
+  </figure>
+
+  <p class="note">
+    <strong><code>simpSessionId</code>는 어디서 왔나?</strong> 클라이언트는 이 값을 보낸 적이 없다.
+    서버가 붙인 것이다 — 서버는 <em>이 프레임이 어느 소켓으로 들어왔는지</em>를 알기 때문이다.
+    <strong>브로커가 나중에 "누구에게 보낼지"를 아는 근거가 정확히 이 헤더 하나다.</strong>
+    <code>simpUser</code>도 마찬가지로, 핸드셰이크 때 확정된 로그인 사용자가 여기 실린다.
+  </p>
+
+  <h3>payload는 왜 <code>byte[]</code>인가 — <code>convertAndSend</code>의 "convert"</h3>
+
+  <p>
+    프로토콜 경계에서 payload는 항상 <strong>바이트</strong>다. 소켓으로 나가는 것이 바이트이니 당연하다.
+    그런데 우리가 쓰는 코드는 <code>Tick</code> 같은 자바 객체를 다룬다. 그 사이를 메꾸는 것이
+    <strong><code>MessageConverter</code></strong>다.
+  </p>
+
+  <table>
+    <thead><tr><th>방향</th><th>변환</th><th>일어나는 시점</th></tr></thead>
+    <tbody>
+      <tr><td>들어올 때</td><td><code>byte[]</code> → <code>OrderRequest</code></td>
+          <td><code>@MessageMapping</code> 메서드를 호출하기 직전</td></tr>
+      <tr><td>나갈 때</td><td><code>Tick</code> → <code>byte[]</code> (JSON)</td>
+          <td><code>convertAndSend(...)</code>를 호출하는 <strong>그 자리에서 바로</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <code>convertAndSend</code>라는 이름이 그래서 붙었다 — <strong>convert</strong>(객체를 바이트로) 하고
+    <strong>send</strong>(채널에 넣기) 한다는 뜻이다. 두 동작이 이름에 그대로 들어 있다.
+    <strong>중요한 결과:</strong> JSON 직렬화는 <em>발행 시점에 한 번만</em> 일어나고,
+    브로커가 500명에게 복제할 때는 이미 만들어진 바이트 배열을 <strong>재사용</strong>한다.
+    직렬화가 500번 일어나지 않는다.
+  </p>
+
+  <h2>3. <code>MessageChannel</code> — 소켓이 아니라 JVM 안의 우편함이다</h2>
+
+  <p class="warn">
+    <strong>이름 때문에 가장 많이 오해하는 지점.</strong> <code>clientInboundChannel</code>의 "Channel"은
+    <em>네트워크 채널이 아니다.</em> TCP 연결도, 소켓도, NIO Channel도 아니다.
+    <strong>같은 JVM 안에서 객체를 다음 사람에게 넘기는 손잡이</strong>일 뿐이다.
+  </p>
+
+  <p>인터페이스는 이번에도 어이없이 단순하다.</p>
+
+  <div class="java">public interface MessageChannel {
+    boolean send(Message&lt;?&gt; message);        <i>// 넣는다</i>
+}
+
+public interface SubscribableChannel extends MessageChannel {
+    boolean subscribe(MessageHandler handler);   <i>// 받을 사람을 등록한다</i>
+}</div>
+
+  <p>
+    Spring이 실제로 쓰는 구현체는 <code>ExecutorSubscribableChannel</code>이고, 안에는 딱 두 가지가 들어 있다 —
+    <strong>등록된 핸들러 목록</strong>과 <strong>스레드 풀</strong>.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 340" role="img" aria-label="ExecutorSubscribableChannel 내부 구조">
+      <defs>
+        <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+
+      <rect class="d-box" x="16" y="130" width="160" height="56"/>
+      <text class="d-label" x="32" y="152">누군가</text>
+      <text class="d-label-mono" x="32" y="172" font-size="11">channel.send(msg)</text>
+      <path class="d-line-a" d="M 176 158 L 214 158" marker-end="url(#c1)"/>
+
+      <rect x="220" y="30" width="420" height="270" rx="10" fill="#fbfbf9" stroke="#0f766e" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text class="d-title" x="238" y="56">ExecutorSubscribableChannel</text>
+
+      <rect class="d-box" x="240" y="72" width="180" height="120"/>
+      <text class="d-label-sm" x="252" y="92">① 등록된 핸들러 목록</text>
+      <text class="d-label-mono" x="252" y="116" font-size="10">SimpAnnotationMethod…</text>
+      <text class="d-label-mono" x="252" y="138" font-size="10">UserDestination…</text>
+      <text class="d-label-mono" x="252" y="160" font-size="10">SimpleBrokerMessage…</text>
+      <text class="d-label-sm" x="252" y="182">(subscribe() 로 등록됨)</text>
+
+      <rect class="d-box-c" x="440" y="72" width="180" height="120"/>
+      <text class="d-label-sm" x="452" y="92">② 스레드 풀 (Executor)</text>
+      <rect x="454" y="106" width="30" height="30" rx="4" fill="#ffffff" stroke="#6b7280"/>
+      <rect x="494" y="106" width="30" height="30" rx="4" fill="#ffffff" stroke="#6b7280"/>
+      <rect x="534" y="106" width="30" height="30" rx="4" fill="#ffffff" stroke="#6b7280"/>
+      <rect x="574" y="106" width="30" height="30" rx="4" fill="#ffffff" stroke="#6b7280"/>
+      <text class="d-label-sm" x="452" y="160">worker 스레드들이</text>
+      <text class="d-label-sm" x="452" y="176">작업을 하나씩 집어간다</text>
+
+      <text class="d-label-sm" x="240" y="222">send() 가 하는 일: 핸들러 개수만큼 "이 핸들러에게 이 메시지를 넘겨라"</text>
+      <text class="d-label-sm" x="240" y="240">작업을 풀에 제출하고 — <tspan font-weight="700" fill="#b45309">호출한 스레드는 즉시 리턴한다.</tspan></text>
+      <text class="d-label-sm" x="240" y="272">그래서 send() 가 성공했다는 것은 "전달됐다"가 아니라</text>
+      <text class="d-label-sm" x="240" y="288">"큐에 넣었다"는 뜻이다.</text>
+
+      <path class="d-line-a" d="M 640 100 L 686 100" marker-end="url(#c1)"/>
+      <path class="d-line-a" d="M 640 165 L 686 165" marker-end="url(#c1)"/>
+      <path class="d-line-a" d="M 640 230 L 686 230" marker-end="url(#c1)"/>
+      <rect class="d-box" x="690" y="76" width="170" height="48"/>
+      <rect class="d-box" x="690" y="141" width="170" height="48"/>
+      <rect class="d-box" x="690" y="206" width="170" height="48"/>
+      <text class="d-label-mono" x="702" y="98" font-size="11">handler1</text>
+      <text class="d-label-mono" x="702" y="116" font-size="10">.handleMessage(msg)</text>
+      <text class="d-label-mono" x="702" y="163" font-size="11">handler2</text>
+      <text class="d-label-mono" x="702" y="181" font-size="10">.handleMessage(msg)</text>
+      <text class="d-label-mono" x="702" y="228" font-size="11">handler3</text>
+      <text class="d-label-mono" x="702" y="246" font-size="10">.handleMessage(msg)</text>
+    </svg>
+    <figcaption>
+      채널 = <strong>우편함 + 배달원</strong>. 누구나 편지를 넣을 수 있고, 등록된 수신자마다 배달원(worker 스레드)이
+      한 부씩 들고 간다. 네트워크는 어디에도 없다.
+    </figcaption>
+  </figure>
+
+  <h3>그럼 왜 세 개인가</h3>
+
+  <p>
+    하나로 합쳐도 동작은 한다. 세 개로 나눈 이유는 <strong>방향과 목적이 다르고, 서로의 스레드 풀을
+    빼앗으면 안 되기 때문</strong>이다.
+  </p>
+
+  <table>
+    <thead><tr><th>채널</th><th>누가 넣나</th><th>누가 꺼내나</th><th>우체국 비유</th></tr></thead>
+    <tbody>
+      <tr><td><code>clientInboundChannel</code></td>
+          <td><code>StompSubProtocolHandler</code><br>(소켓에서 읽은 것)</td>
+          <td>핸들러 3종<br>(<code>/app</code>, <code>/user</code>, 브로커)</td>
+          <td><strong>접수 창구</strong> — 밖에서 들어온 우편물이 쌓이는 곳</td></tr>
+      <tr><td><code>brokerChannel</code></td>
+          <td><strong>내 애플리케이션 코드</strong><br>(<code>SimpMessagingTemplate</code>)</td>
+          <td><code>SimpleBrokerMessageHandler</code></td>
+          <td><strong>사내 발송함</strong> — 안에서 만든 우편물을 넣는 곳</td></tr>
+      <tr><td><code>clientOutboundChannel</code></td>
+          <td>브로커<br>(복제된 메시지들)</td>
+          <td><code>StompSubProtocolHandler</code></td>
+          <td><strong>발송 창구</strong> — 밖으로 나갈 우편물이 쌓이는 곳</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>이게 왜 실무에서 중요한가.</strong> 셋이 별도 스레드 풀이라서, 주문이 폭주해도
+    (inbound 포화) 시세 전송(outbound)은 계속 나간다. 반대로 outbound가 막혀도 주문 접수는 살아 있다.
+    <strong>하나로 합쳤다면 한쪽 폭주가 반대쪽을 굶겼을 것이다.</strong>
+    <br><br>
+    동시에 이건 <a href="./0031-stomp-simplebroker-tick-streaming.html#">0031 §9</a>의 "느린 클라이언트 한 명이
+    남의 시세를 늦춘다" 문제의 정체이기도 하다 — <code>clientOutboundChannel</code>의 풀은
+    <strong>모든 사용자가 공유</strong>하기 때문이다.
+  </p>
+
+  <h2>4. <code>MessageHandler</code> — 그렇다, 콜백이 맞다</h2>
+
+  <p>
+    "Handler는 특정 이벤트가 발생했을 때 수행하는 콜백 같은 것 아닌가?" — <strong class="ok">정확히 맞다.</strong>
+    인터페이스가 이렇게 생겼다.
+  </p>
+
+  <div class="java">public interface MessageHandler {
+    void handleMessage(Message&lt;?&gt; message);
+}</div>
+
+  <p>
+    메서드 하나짜리 인터페이스. <code>channel.subscribe(handler)</code>로 채널에 등록해 두면,
+    그 채널에 메시지가 들어올 때마다 채널이 <code>handleMessage()</code>를 불러준다.
+    <strong>등록해두면 알아서 불리는 함수</strong> — 콜백의 정의 그대로다.
+  </p>
+
+  <p class="note">
+    <strong>다만 한 가지만 보정하자.</strong> 콜백을 "상태 없는 함수"로 생각하기 쉬운데,
+    <code>SimpleBrokerMessageHandler</code>는 <strong>상태를 가진 오래 사는 객체</strong>다.
+    애플리케이션이 뜰 때 한 번 만들어져서 죽을 때까지 살아 있고, 내부에
+    <strong><code>DefaultSubscriptionRegistry</code>를 필드로 들고 있다.</strong>
+    <br><br>
+    그래서 정확한 표현은 "콜백 함수"가 아니라 <strong>"콜백 메서드를 가진, 구독 명부를 들고 있는 담당자"</strong>다.
+    우체국 비유로는 — 배달원이 아니라 <strong>구독자 명부를 관리하는 창구 직원</strong>.
+  </p>
+
+  <h3>SimpleBrokerMessageHandler가 실제로 하는 일 전부</h3>
+
+  <p>
+    <code>handleMessage()</code> 안은 사실상 메시지 타입에 따른 분기 하나다. <strong>이게 브로커의 전부다.</strong>
+  </p>
+
+  <table>
+    <thead><tr><th>들어온 메시지의 <code>simpMessageType</code></th><th>하는 일</th><th>어느 채널에서 왔나</th></tr></thead>
+    <tbody>
+      <tr><td><code>SUBSCRIBE</code></td><td>레지스트리에 <strong>한 줄 추가</strong><br>(목적지, 세션ID, 구독ID)</td><td>clientInbound</td></tr>
+      <tr><td><code>UNSUBSCRIBE</code></td><td>레지스트리에서 <strong>그 한 줄 삭제</strong></td><td>clientInbound</td></tr>
+      <tr><td><code>DISCONNECT</code></td><td>그 세션의 <strong>모든 줄 삭제</strong></td><td>clientInbound</td></tr>
+      <tr><td><code>MESSAGE</code></td><td>레지스트리 <strong>조회</strong> → 매칭된 구독 수만큼 복제해서<br><code>clientOutboundChannel</code>로 <code>send()</code></td><td>broker</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>여기서 가장 중요한 한 문장 — 브로커는 메시지를 저장하지 않는다.</strong>
+    <br><br>
+    브로커가 <em>오래 보관</em>하는 것은 <strong>구독 목록뿐</strong>이다. 틱 메시지는 들어와서
+    복제되고 <code>clientOutboundChannel</code>로 넘어가면 <strong>그 자리에서 끝</strong>이고, 곧 GC 대상이 된다.
+    <br><br>
+    그래서 <strong>구독하기 전에 발행된 틱은 영원히 볼 수 없다.</strong>
+    (<a href="./0016-kafka-core-concepts-event-streaming.html">Kafka</a>와 결정적으로 다른 지점이다 —
+    Kafka는 로그에 남겨두고 나중에 온 컨슈머도 과거를 읽을 수 있다.)
+    <a href="./0031-stomp-simplebroker-tick-streaming.html">0031 §4</a>의 "스냅샷 공백" 문제가 존재하는 이유가 바로 이것이다.
+  </p>
+
+  <h3>브로커는 소켓을 만지지 않는다</h3>
+
+  <p>
+    "브로커가 매칭된 세션의 소켓에 바로 쓰는 건가?" — <strong class="no">아니다.</strong> 한 단계가 더 있다.
+    브로커는 소켓의 존재를 모른다. <strong>세션 ID라는 문자열만 안다.</strong>
+    복제한 메시지의 헤더에 <code>simpSessionId=s1</code>을 박아서 <code>clientOutboundChannel</code>에 넣을 뿐이다.
+  </p>
+
+  <p>
+    그 문자열을 실제 소켓으로 바꾸는 것은 <code>StompSubProtocolHandler</code>다.
+    <strong>이 분리 덕분에 브로커는 WebSocket을 몰라도 된다</strong> — 운반 수단이 바뀌어도 브로커 코드는 그대로다.
+  </p>
+
+  <h2>5. destination은 주소가 아니라 이름표다</h2>
+
+  <p>
+    <code>SUBSCRIBE</code>에 적은 목적지와, 나중에 서버가 보내는 <code>MESSAGE</code>의 목적지가
+    <strong>같은 문자열</strong>이라는 걸 눈치챘다면 정확하다. <strong>그게 바로 매칭이 일어나는 원리다</strong> —
+    같은 글자니까 레지스트리에서 찾아지는 것이다.
+  </p>
+
+  <p>다만 <code>SEND</code>는 성격이 다르다. 세 프레임에서 <code>destination</code>이 하는 일이 각각 다르다.</p>
+
+  <table>
+    <thead><tr><th>프레임</th><th>destination의 역할</th><th>예</th><th>MESSAGE와 같은 값인가</th></tr></thead>
+    <tbody>
+      <tr><td><code>SUBSCRIBE</code></td><td><strong>등록</strong> — "이 이름표를 내 옆에 적어줘"</td>
+          <td><code>/topic/ticks/005930</code></td><td><span class="ok">예</span> — 같아야 매칭된다</td></tr>
+      <tr><td><code>SEND</code></td><td><strong>라우팅</strong> — "이 요청을 어느 핸들러로"</td>
+          <td><code>/app/order</code></td><td><span class="no">아니오</span> — 전혀 다른 목적지로 답이 온다</td></tr>
+      <tr><td><code>MESSAGE</code></td><td><strong>출처 표시</strong> — "이 메시지는 이 이름표로 발행됐다"</td>
+          <td><code>/topic/ticks/005930</code></td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <code>SEND /app/order</code>로 주문을 보냈다고 해서 <code>/app/order</code>로 답이 오지 않는다.
+    <strong><code>/app</code>은 애초에 브로커 주소가 아니라 아무도 구독할 수 없다.</strong>
+    답은 <code>/user/queue/execution</code> 같은 <em>완전히 다른 목적지</em>로 온다.
+    요청과 응답이 같은 주소를 쓰는 HTTP와 여기서 갈라진다.
+  </p>
+
+  <h3>그럼 destination은 무엇을 가리키는가 — 아무것도 안 가리킨다</h3>
+
+  <p>
+    HTTP의 URL은 <em>장소</em>를 가리킨다. 서버 어딘가에 그 리소스가 실제로 있다.
+    <strong>STOMP의 destination은 아무것도 가리키지 않는다.</strong>
+    서버 안에 <code>/topic/ticks/005930</code>이라는 이름의 객체는 <em>존재하지 않는다.</em>
+    큐도 아니고 폴더도 아니고 방도 아니다. 그냥 <strong>비교당하는 문자열</strong>이다.
+  </p>
+
+  <ul>
+    <li><code>SUBSCRIBE</code> 때 — "이 문자열을 내 이름 옆에 적어둬"</li>
+    <li>발행 때 — "이 문자열이 적힌 사람 전부 찾아줘"</li>
+  </ul>
+
+  <p>
+    둘이 같으면 매칭. 그게 전부다. 서버도 브로커도 그 문자열의 <em>의미</em>는 모른다 —
+    <code>005930</code>이 삼성전자라는 건 사람만 안다.
+    <strong>목적지는 번지수가 아니라 잡지 이름에 가깝다.</strong>
+    "005930 시세지"를 구독 신청하면 명부에 적히고, 그 잡지가 나올 때 명부에 적힌 사람에게 배달된다.
+    "005930 시세지"라는 <em>장소</em>는 어디에도 없다.
+  </p>
+
+  <h3>"내가 구독한 것 중 어디"를 말하는 헤더는 따로 있다</h3>
+
+  <p>
+    <code>MESSAGE</code> 프레임에는 <strong>두 헤더가 같이</strong> 온다. 보통은 값이 1:1로 대응해서
+    구분이 안 보이지만, 나르는 정보가 다르다.
+  </p>
+
+  <table>
+    <thead><tr><th>헤더</th><th>뜻</th><th>클라이언트가 쓰는 용도</th></tr></thead>
+    <tbody>
+      <tr><td><code>subscription: sub-0</code></td><td><strong>"네가 등록한 구독 중 이거"</strong></td>
+          <td><strong>어느 콜백 함수로 넘길지</strong> — 실제 라우팅 키</td></tr>
+      <tr><td><code>destination: /topic/ticks/005930</code></td><td>"이 메시지는 이 이름표로 발행됐다"</td>
+          <td>그래서 <strong>구체적으로 무엇인지</strong> 식별</td></tr>
+    </tbody>
+  </table>
+
+  <p>둘이 갈라지는 순간이 <strong>와일드카드 구독</strong>이다.</p>
+
+  <div class="frame"><i>--- 클라이언트가 전 종목을 한 번에 구독 ---</i>
+<b>SUBSCRIBE</b>
+id:sub-0
+destination:<u>/topic/ticks/*</u>
+
+<i>--- 그 뒤 도착하는 프레임들 ---</i>
+<b>MESSAGE</b>  subscription:<u>sub-0</u>  destination:/topic/ticks/005930
+<b>MESSAGE</b>  subscription:<u>sub-0</u>  destination:/topic/ticks/000660
+<b>MESSAGE</b>  subscription:<u>sub-0</u>  destination:/topic/ticks/035720
+
+<i>subscription 은 항상 같다 (내 구독은 하나니까)</i>
+<i>destination 은 매번 다르다 (실제로 어느 종목인지)</i></div>
+
+  <p class="note">
+    <strong>그래서 질문의 답은 — 반은 맞고, 헤더가 하나 더 있다.</strong>
+    "클라이언트가 구독한 것 중 어디인가"를 말하는 것은 <code>subscription</code> 헤더이고,
+    <code>destination</code>은 그와 별개로 "그게 구체적으로 무엇인지"를 알려준다.
+    와일드카드가 없으면 둘이 항상 짝지어 다녀서 같은 말처럼 보일 뿐이다.
+    <br><br>
+    <strong>실무 규칙:</strong> 클라이언트에서 메시지를 분기할 때는 <code>destination</code> 문자열이 아니라
+    <strong>구독 콜백 단위로</strong> 처리하자. 특히 <code>/user</code> 목적지는 브로커 내부에서
+    세션별 주소로 재작성되므로, 프레임에 실려 오는 <code>destination</code>이 구독할 때 적었던
+    <code>/user/queue/execution</code>과 다를 수 있다.
+  </p>
+
+  <h2>6. 지금까지 배운 것 중 WebSocket 기술은 하나도 없다</h2>
+
+  <p>
+    여기서 한 걸음 물러나면 놀라운 사실이 보인다. §2~§4에서 배운
+    <code>Message</code> · <code>MessageChannel</code> · <code>MessageHandler</code> ·
+    <code>SimpleBrokerMessageHandler</code> 중에서 <strong>WebSocket에 속한 것은 하나도 없다.</strong>
+    전부 <strong><code>spring-messaging</code></strong>이라는 별개 모듈의 것이다.
+  </p>
+
+  <p>
+    <strong>패키지 이름이 증거다.</strong> <code>org.springframework.<u>messaging</u>.MessageChannel</code> —
+    <code>web.socket</code>이 어디에도 없다.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 400" role="img" aria-label="spring-boot-starter-websocket 이 끌어오는 모듈 구성">
+      <defs>
+        <marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+
+      <text class="d-title" x="20" y="24">implementation 'org.springframework.boot:spring-boot-starter-websocket'</text>
+      <text class="d-label-sm" x="20" y="42">— 이 한 줄이 끌어오는 것</text>
+
+      <!-- box 1 -->
+      <rect class="d-box-c" x="20" y="58" width="266" height="290"/>
+      <text class="d-title" x="34" y="82">spring-boot-starter-web</text>
+      <text class="d-label-sm" x="34" y="100">(서블릿 컨테이너까지 함께)</text>
+      <line x1="34" y1="112" x2="272" y2="112" stroke="#c9c9c1"/>
+      <text class="d-label-sm" x="34" y="134">· Tomcat</text>
+      <text class="d-label-sm" x="34" y="156">· 핸드셰이크 HTTP GET을</text>
+      <text class="d-label-sm" x="46" y="172">받아주는 곳</text>
+      <text class="d-label-sm" x="34" y="194">· Security 필터 체인이</text>
+      <text class="d-label-sm" x="46" y="210">도는 곳 → Principal 확정</text>
+      <text class="d-label-sm" x="34" y="246">101 이후로는 이 모듈이</text>
+      <text class="d-label-sm" x="34" y="262">할 일이 없다.</text>
+
+      <!-- box 2 -->
+      <rect class="d-box" x="302" y="58" width="266" height="290"/>
+      <text class="d-title" x="316" y="82">spring-websocket</text>
+      <text class="d-label-mono" x="316" y="100" font-size="10">org.springframework.web.socket.*</text>
+      <line x1="316" y1="112" x2="554" y2="112" stroke="#c9c9c1"/>
+      <text class="d-label-sm" x="316" y="134">· @EnableWebSocketMessageBroker</text>
+      <text class="d-label-sm" x="316" y="156">· WebSocketSession · 소켓 수명</text>
+      <text class="d-label-sm" x="316" y="178">· 핸드셰이크 · Origin 검사</text>
+      <text class="d-label-sm" x="316" y="206" fill="#b45309">· StompSubProtocolHandler</text>
+      <text class="d-label-sm" x="316" y="228" fill="#b45309">· WebSocketAnnotationMethod…</text>
+      <rect class="d-box-b" x="316" y="244" width="238" height="88"/>
+      <text class="d-label-sm" x="328" y="266">주황색 둘은 <tspan font-weight="700">어댑터</tspan>다.</text>
+      <text class="d-label-sm" x="328" y="286">"소켓 세계"와 "메시징 세계"를</text>
+      <text class="d-label-sm" x="328" y="304">잇는 것이 이 모듈의 진짜 일 —</text>
+      <text class="d-label-sm" x="328" y="322">단순 연결 관리가 아니다.</text>
+
+      <!-- box 3 -->
+      <rect class="d-box-a" x="584" y="58" width="276" height="290"/>
+      <text class="d-title" x="598" y="82">spring-messaging ⭐</text>
+      <text class="d-label-mono" x="598" y="100" font-size="10">org.springframework.messaging.*</text>
+      <line x1="598" y1="112" x2="846" y2="112" stroke="#99d3cb"/>
+      <text class="d-label-sm" x="598" y="134">· Message · MessageHeaders</text>
+      <text class="d-label-sm" x="598" y="156">· MessageChannel</text>
+      <text class="d-label-sm" x="598" y="178">· MessageHandler</text>
+      <text class="d-label-sm" x="598" y="200">· SimpleBrokerMessageHandler</text>
+      <text class="d-label-sm" x="598" y="222">· DefaultSubscriptionRegistry</text>
+      <text class="d-label-sm" x="598" y="244">· SimpMessagingTemplate</text>
+      <text class="d-label-sm" x="598" y="266">· StompDecoder / StompEncoder</text>
+      <text class="d-label-sm" x="598" y="288">· StompBrokerRelayMessageHandler</text>
+      <rect x="598" y="302" width="248" height="34" rx="4" fill="#ffffff" stroke="#0f766e"/>
+      <text class="d-label-sm" x="610" y="323" fill="#0f766e">이 레슨 §2~§4는 전부 이 칸이다.</text>
+
+      <path class="d-line-a" d="M 568 380 L 700 380" marker-end="url(#d1)"/>
+      <text class="d-label-sm" x="300" y="384">spring-websocket 이 spring-messaging 에 의존한다 →</text>
+    </svg>
+    <figcaption>
+      스프링은 <strong>전송 통로(WebSocket)</strong>와 <strong>메시지 처리(Messaging)</strong>를 다른 모듈로 갈라 두었다.
+      직접 확인하려면 <code>./gradlew dependencies --configuration runtimeClasspath</code>.
+    </figcaption>
+  </figure>
+
+  <h3>어느 클래스가 어느 모듈인지</h3>
+
+  <table>
+    <thead><tr><th>클래스</th><th>패키지</th><th>모듈</th></tr></thead>
+    <tbody>
+      <tr><td><code>Message</code>, <code>MessageChannel</code>, <code>MessageHandler</code></td>
+          <td><code>org.springframework.messaging</code></td><td><strong>spring-messaging</strong></td></tr>
+      <tr><td><code>SimpleBrokerMessageHandler</code>, <code>DefaultSubscriptionRegistry</code></td>
+          <td><code>…messaging.simp.broker</code></td><td><strong>spring-messaging</strong></td></tr>
+      <tr><td><code>SimpMessagingTemplate</code>, <code>SimpMessageHeaderAccessor</code></td>
+          <td><code>…messaging.simp</code></td><td><strong>spring-messaging</strong></td></tr>
+      <tr><td><code>StompDecoder</code>, <code>StompEncoder</code>, <code>StompCommand</code></td>
+          <td><code>…messaging.simp.stomp</code></td><td><strong>spring-messaging</strong></td></tr>
+      <tr><td><code>StompSubProtocolHandler</code>, <code>WebSocketAnnotationMethodMessageHandler</code></td>
+          <td><code>org.springframework.web.socket.messaging</code></td><td><strong>spring-websocket</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>여기서 흔히 잘못 요약하는 것.</strong> "spring-websocket은 그냥 연결만 맺고 글자를 받아오고,
+    파싱부터는 spring-messaging이 한다"고 말하기 쉬운데 — <strong>STOMP 파싱조차 spring-messaging의 것이다.</strong>
+    <code>StompDecoder</code>·<code>StompEncoder</code>가 거기 있다.
+    <br><br>
+    spring-websocket이 가진 것은 <strong>어댑터</strong>다. <code>StompSubProtocolHandler</code>는
+    "WebSocket 세션에서 읽은 바이트를 <code>StompDecoder</code>에 넘기고, 나온 <code>Message</code>를
+    <code>clientInboundChannel</code>에 태우는" <em>연결 담당</em>이다. 파싱 자체를 하지 않는다.
+    <br><br>
+    상속 관계를 보면 더 분명하다 —
+    <code>WebSocketAnnotationMethodMessageHandler</code>는
+    <code>SimpAnnotationMethodMessageHandler</code>(spring-messaging)를 <strong>상속</strong>한다.
+    <strong>프로토콜 중립 로직이 아래, WebSocket 특화가 위</strong>라는 층이 코드에 그대로 새겨져 있다.
+  </p>
+
+  <h3>이 분리가 실제로 만들어내는 것 세 가지</h3>
+
+  <table>
+    <thead><tr><th>결과</th><th>왜 가능한가</th></tr></thead>
+    <tbody>
+      <tr><td>SimpleBroker → RabbitMQ 릴레이로 교체해도<br><strong>컨트롤러 코드가 안 바뀐다</strong></td>
+          <td><code>StompBrokerRelayMessageHandler</code>도 같은 <code>MessageHandler</code>다.
+              <code>brokerChannel</code>에 등록되는 객체만 바뀐다.
+              (<a href="./0031-stomp-simplebroker-tick-streaming.html">0031 §9</a>의 "서버 2대" 시나리오)</td></tr>
+      <tr><td>WebSocket 없이 <strong>TCP 위에서 STOMP</strong>를 써도 같은 코드</td>
+          <td>STOMP 관련 클래스가 전부 spring-messaging에 있어서 WebSocket을 안 끌어와도 된다.</td></tr>
+      <tr><td>여기서 배운 어휘가 <strong>Spring Integration에서도 그대로</strong> 통한다</td>
+          <td>Spring Integration도 같은 <code>Message</code>/<code>MessageChannel</code> 위에 서 있다.
+              이 레슨은 WebSocket 지식이 아니라 <strong>스프링 메시징 지식</strong>이다.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. 한 장으로 정리 — 우체국 비유</h2>
+
+  <table class="analogy">
+    <thead><tr><th>Spring 용어</th><th>정체</th><th>우체국이라면</th></tr></thead>
+    <tbody>
+      <tr><td>WebSocket</td><td>양방향 바이트 통로</td><td>건물 사이에 뚫린 <strong>기송관</strong></td></tr>
+      <tr><td>STOMP 프레임</td><td>규격화된 텍스트</td><td>정해진 <strong>양식으로 쓴 편지</strong></td></tr>
+      <tr><td><code>Message</code></td><td>headers + payload</td><td><strong>봉투</strong>(겉봉 정보 + 내용물)</td></tr>
+      <tr><td><code>MessageChannel</code></td><td>큐 + 스레드 풀 + 수신자 목록</td><td><strong>우편함</strong>과 배달원들</td></tr>
+      <tr><td><code>MessageHandler</code></td><td>등록해두면 불리는 콜백</td><td>우편함 앞의 <strong>담당 직원</strong></td></tr>
+      <tr><td><code>SimpleBrokerMessageHandler</code></td><td>구독 명부를 든 핸들러</td><td><strong>구독자 명부를 관리하는 창구</strong></td></tr>
+      <tr><td>구독 레지스트리</td><td>목적지 → 세션 목록 맵</td><td>창구 서랍 속 <strong>구독자 명부</strong></td></tr>
+      <tr><td><code>StompSubProtocolHandler</code></td><td>인코딩/디코딩 담당</td><td>편지를 <strong>기송관에 넣고 빼는 사람</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    이 비유로 0031의 틱 전달을 다시 읽으면 이렇게 된다 —
+    <em>스케줄러가 "005930 앞으로" 라고 겉봉에 적은 편지 한 통을 <strong>사내 발송함</strong>에 넣는다.
+    창구 직원이 그걸 꺼내 <strong>명부</strong>를 펼치고, 005930을 구독한 사람이 s1과 s2임을 확인한다.
+    편지를 두 부 복사해 각각 "s1 앞", "s2 앞"이라 겉봉을 고쳐 쓰고 <strong>발송 창구</strong>에 놓는다.
+    기송관 담당자가 그걸 집어 각 건물로 쏘아 보낸다. 원본 편지는 버린다.</em>
+  </p>
+
+  <h2>8. 확인해보기</h2>
+
+  <section class="quiz" aria-label="Spring 메시징 어휘 퀴즈">
+    <p><strong>Q1.</strong> Spring <code>Message</code> 객체가 담고 있는 두 가지는?</p>
+    <button type="button" data-target="a1" data-answer="wrong">목적지(destination)와 세션(session)</button>
+    <button type="button" data-target="a1" data-answer="correct">헤더(headers)와 페이로드(payload)</button>
+    <button type="button" data-target="a1" data-answer="wrong">명령어(command)와 본문(body)</button>
+    <p class="answer" id="a1"></p>
+
+    <p><strong>Q2.</strong> <code>simpSessionId</code> 헤더는 어디에서 채워지는가?</p>
+    <button type="button" data-target="a2" data-answer="wrong">클라이언트가 프레임 헤더에 실어서 보낸다</button>
+    <button type="button" data-target="a2" data-answer="correct">서버가 어느 소켓인지 알기에 덧붙인다</button>
+    <button type="button" data-target="a2" data-answer="wrong">브로커가 구독 레지스트리를 조회해 넣는다</button>
+    <p class="answer" id="a2"></p>
+
+    <p><strong>Q3.</strong> <code>clientOutboundChannel</code>의 정체는?</p>
+    <button type="button" data-target="a3" data-answer="wrong">클라이언트와 이어진 TCP 소켓 그 자체다</button>
+    <button type="button" data-target="a3" data-answer="wrong">브로커가 구독을 저장해 두는 공간이다</button>
+    <button type="button" data-target="a3" data-answer="correct">JVM 안의 큐와 스레드 풀 조합이다</button>
+    <p class="answer" id="a3"></p>
+
+    <p><strong>Q4.</strong> <code>SimpleBrokerMessageHandler</code>가 오래 보관하는 것은?</p>
+    <button type="button" data-target="a4" data-answer="correct">구독 목록만 보관하고 메시지는 버린다</button>
+    <button type="button" data-target="a4" data-answer="wrong">지나간 틱 메시지를 전부 보관해 둔다</button>
+    <button type="button" data-target="a4" data-answer="wrong">세션별 소켓 객체를 직접 보관해 둔다</button>
+    <p class="answer" id="a4"></p>
+
+    <p><strong>Q5.</strong> 브로커가 소켓에 직접 쓰지 않고 채널에 넣는 이유는?</p>
+    <button type="button" data-target="a5" data-answer="wrong">브로커가 세션 아이디를 모르기 때문이다</button>
+    <button type="button" data-target="a5" data-answer="correct">프레임 인코딩 담당이 따로 있기 때문이다</button>
+    <button type="button" data-target="a5" data-answer="wrong">소켓이 스레드 안전하지 않기 때문이다</button>
+    <p class="answer" id="a5"></p>
+
+    <p><strong>Q6.</strong> <code>/topic/ticks/*</code> 로 구독했을 때 도착하는 MESSAGE 프레임에서 매번 값이 달라지는 헤더는?</p>
+    <button type="button" data-target="a6" data-answer="wrong"><code>subscription</code> — 종목마다 새로 발급된다</button>
+    <button type="button" data-target="a6" data-answer="correct"><code>destination</code> — 실제 종목이 담긴다</button>
+    <button type="button" data-target="a6" data-answer="wrong">둘 다 — 매 메시지마다 새로 정해진다</button>
+    <p class="answer" id="a6"></p>
+
+    <p><strong>Q7.</strong> <code>MessageChannel</code>과 <code>SimpleBrokerMessageHandler</code>가 속한 모듈은?</p>
+    <button type="button" data-target="a7" data-answer="wrong">spring-websocket — 소켓 전송 담당 모듈</button>
+    <button type="button" data-target="a7" data-answer="correct">spring-messaging — 메시지 처리 담당 모듈</button>
+    <button type="button" data-target="a7" data-answer="wrong">spring-boot-starter-web — 서블릿 담당 모듈</button>
+    <p class="answer" id="a7"></p>
+
+  </section>
+
+  <h2>더 읽을 것</h2>
+
+  <p>
+    <strong>1순위 원문:</strong>
+    <a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/message-flow.html">Spring Framework Reference — Flow of Messages</a>의
+    맨 아래 "messaging abstractions" 부분. <code>Message</code>, <code>MessageHandler</code>,
+    <code>MessageChannel</code>, <code>SubscribableChannel</code>, <code>ExecutorSubscribableChannel</code>을
+    한 문단씩 정의해 둔 곳이다.
+  </p>
+  <ul>
+    <li><a href="https://stomp.github.io/stomp-specification-1.2.html">STOMP Protocol Specification 1.2</a> —
+        프레임 문법과 명령어 전체. 규격이 짧아서 한 번 훑을 만하다.</li>
+    <li><a href="https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/messaging/Message.html"><code>Message</code> Javadoc</a> ·
+        <a href="https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/messaging/support/ExecutorSubscribableChannel.html"><code>ExecutorSubscribableChannel</code> Javadoc</a></li>
+    <li><a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/configuration-performance.html">Spring — Configuration and Performance</a> —
+        세 채널의 스레드 풀을 실제로 조절하는 설정.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="./0031-stomp-simplebroker-tick-streaming.html">0031 — 모의투자 틱 스트리밍</a>(이 어휘가 실제로 쓰이는 flow) ·
+    <a href="../reference/0017-stomp-simplebroker-cheatsheet.html">0017 치트시트</a>.
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> "그럼 <code>@MessageMapping</code> 메서드는 어느 스레드에서 도는 거냐",
+    "레지스트리 자료구조를 더 구체적으로 보고 싶다", "채널 풀 크기는 어떻게 잡느냐" 같은 것도 좋은 다음 질문이다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

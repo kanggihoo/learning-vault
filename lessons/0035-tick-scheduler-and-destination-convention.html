@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>틱 재생 스케줄러: destination은 누가 정하는가</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    pre { font-size: 0.86rem; }
+    pre .k { color: #c792ea; }
+    pre .a { color: #82aaff; }
+    pre .s { color: #c3e88d; }
+    pre .c { color: #7f8ba6; }
+    pre .t { color: #ffcb6b; }
+    pre .bad { color: #ff8b8b; }
+    .frame {
+      background: #111827; color: #f9fafb; padding: 14px 16px; border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.88rem; line-height: 1.55; overflow-x: auto; white-space: pre;
+    }
+    .frame b { color: #5eead4; font-weight: 700; }
+    .frame i { color: #94a3b8; font-style: normal; }
+    .frame u { color: #fbbf24; text-decoration: none; }
+    ol.diag { counter-reset: d; list-style: none; padding-left: 0; }
+    ol.diag > li { counter-increment: d; position: relative; padding: 0 0 16px 44px; }
+    ol.diag > li::before {
+      content: counter(d); position: absolute; left: 0; top: 0;
+      width: 28px; height: 28px; border-radius: 50%; background: #b45309; color: #fff;
+      font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; justify-content: center;
+    }
+  </style>
+</head>
+<body>
+<main>
+
+  <h1>틱 재생 스케줄러: destination은 누가 정하는가</h1>
+
+  <p class="note">
+    <a href="./0031-stomp-simplebroker-tick-streaming.html">0031 §5</a>에서 "스케줄러가
+    <code>convertAndSend("/topic/ticks/005930", tick)</code>을 호출한다"고 하고 넘어갔다.
+    그런데 <strong>스케줄러는 그 문자열을 어떻게 아는가?</strong>
+    <br><br>
+    이 질문의 답이 이 시리즈에서 가장 실전적인 부분이다 — 그리고 답을 알고 나면
+    <strong>"구독은 되는데 메시지가 안 와요"라는 흔한 버그의 정체</strong>도 같이 보인다.
+  </p>
+
+  <h2>1. 스케줄러도 그냥 발행자다</h2>
+
+  <p>
+    먼저 확인 — <strong>"스케줄러 → 브로커 → 구독 중인 클라이언트들 순회 전달"이 맞다.</strong>
+    그리고 이 길은 <a href="./0033-stomp-config-controller-and-broker-in-code.html">0033</a>에서 본
+    컨트롤러의 길과 <strong>완전히 같다.</strong>
+  </p>
+
+  <table>
+    <thead><tr><th></th><th>컨트롤러</th><th>틱 스케줄러</th></tr></thead>
+    <tbody>
+      <tr><td>계기</td><td>클라이언트가 <code>SEND</code>를 보냄</td><td><strong>시간</strong> (<code>@Scheduled</code>)</td></tr>
+      <tr><td>도는 스레드</td><td><code>clientInboundChannel</code> 워커</td><td><strong>스케줄러 스레드</strong></td></tr>
+      <tr><td>발행 방법</td><td>반환값 or <code>SimpMessagingTemplate</code></td><td><code>SimpMessagingTemplate</code></td></tr>
+      <tr><td><strong>그다음 길</strong></td><td colspan="2" style="text-align:center"><strong><code>brokerChannel</code> → 브로커 → 레지스트리 조회 → <code>clientOutboundChannel</code> → 소켓</strong> (동일)</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    브로커 안에서 일어나는 일도 <a href="./0032-stomp-and-spring-messaging-vocabulary.html">0032 §4</a>에서 본
+    그대로다 — 레지스트리에서 그 목적지에 매칭되는 구독을 찾아 <strong>세션 수만큼 복제</strong>한다.
+    "for문으로 순회한다"는 표현이 정확하다. 다만 순회하는 대상은 <em>접속자 전원</em>이 아니라
+    <strong>그 목적지를 구독한 세션들</strong>이다.
+  </p>
+
+  <h2>2. 핵심 질문 — destination은 아무도 알려주지 않는다</h2>
+
+  <p class="warn">
+    <strong>서버 어딘가에 <code>/topic/ticks/005930</code>이라는 목적지가 미리 만들어져 있지 않다.</strong>
+    <a href="./0032-stomp-and-spring-messaging-vocabulary.html">0032 §5</a>에서 본 대로
+    destination은 <em>주소가 아니라 이름표</em>이고, 그 이름표는 <strong>양쪽이 각자 문자열을 만들어</strong>
+    브로커에서 비교당할 뿐이다.
+  </p>
+
+  <p>
+    그래서 답은 시시하지만 중요하다 — <strong>스케줄러는 DB에서 읽은 종목 코드로 문자열을 직접 조립한다.</strong>
+    그리고 그 조립 규칙이 프론트엔드가 구독할 때 쓰는 규칙과 <strong>글자 하나까지 같아야</strong> 한다.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 400" role="img" aria-label="프론트엔드와 스케줄러가 같은 규약으로 destination 문자열을 만든다">
+      <defs>
+        <marker id="t1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+
+      <rect class="d-box" x="24" y="30" width="360" height="120"/>
+      <text class="d-title" x="40" y="54">프론트엔드</text>
+      <text class="d-label-sm" x="40" y="74">사용자가 삼성전자 화면을 켜면</text>
+      <text class="d-label-mono" x="40" y="100" font-size="11">const code = "005930";</text>
+      <text class="d-label-mono" x="40" y="122" font-size="11">subscribe(<tspan fill="#0f766e" font-weight="700">"/topic/ticks/" + code</tspan>);</text>
+      <text class="d-label-sm" x="40" y="142">→ SUBSCRIBE 프레임을 보낸다</text>
+
+      <rect class="d-box" x="496" y="30" width="360" height="120"/>
+      <text class="d-title" x="512" y="54">틱 재생 스케줄러 (서버)</text>
+      <text class="d-label-sm" x="512" y="74">DB에서 이 시각의 틱을 읽으면</text>
+      <text class="d-label-mono" x="512" y="100" font-size="11">String code = tick.getCode();</text>
+      <text class="d-label-mono" x="512" y="122" font-size="11">convertAndSend(<tspan fill="#0f766e" font-weight="700">"/topic/ticks/" + code</tspan>, …)</text>
+      <text class="d-label-sm" x="512" y="142">→ brokerChannel 로 발행</text>
+
+      <path class="d-line-a" d="M 204 152 C 204 200, 300 205, 356 232" marker-end="url(#t1)"/>
+      <path class="d-line-a" d="M 676 152 C 676 200, 580 205, 524 232" marker-end="url(#t1)"/>
+
+      <rect class="d-box-a" x="250" y="238" width="380" height="110"/>
+      <text class="d-title" x="266" y="262">브로커의 구독 장부</text>
+      <rect x="266" y="272" width="348" height="30" rx="4" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+      <text class="d-label-mono" x="278" y="292" font-size="11" fill="#0f766e">"/topic/ticks/005930"  →  s1, s2</text>
+      <text class="d-label-sm" x="266" y="322">두 문자열이 <tspan font-weight="700">완전히 같아야</tspan> 이 줄에서 만난다.</text>
+      <text class="d-label-sm" x="266" y="340">브로커는 비교만 할 뿐, 만들어 주지 않는다.</text>
+
+      <rect class="d-box-b" x="24" y="330" width="200" height="56"/>
+      <text class="d-label-sm" x="38" y="352">규약이 어긋나면?</text>
+      <text class="d-label-sm" x="38" y="372" fill="#b45309">에러 없이 <tspan font-weight="700">조용히</tspan> 실패한다.</text>
+    </svg>
+    <figcaption>
+      같은 규칙(<code>/topic/ticks/{종목코드}</code>)을 <strong>프론트와 서버가 각각 독립적으로 구현</strong>한다.
+      이걸 맞춰 주는 장치는 <strong>어디에도 없다</strong> — 그래서 이건 코드 문제가 아니라 <em>규약</em> 문제다.
+    </figcaption>
+  </figure>
+
+  <h3>규약이 어긋나면 어떻게 실패하는가</h3>
+
+  <p class="warn">
+    <strong>가장 무서운 점 — 에러가 나지 않는다.</strong> HTTP였다면 404가 났을 상황에서
+    STOMP는 <strong>아무 말도 하지 않는다.</strong> 존재하지 않는 목적지를 구독하는 것도,
+    아무도 구독하지 않은 목적지로 발행하는 것도 <em>완전히 합법</em>이기 때문이다.
+  </p>
+
+  <table>
+    <thead><tr><th>어긋난 곳</th><th>증상</th><th>서버 로그</th></tr></thead>
+    <tbody>
+      <tr><td>프론트: <code>/topic/tick/005930</code><br>서버: <code>/topic/ticks/005930</code></td>
+          <td>구독은 성공. 데이터만 안 옴.</td><td><span class="no">아무것도 안 남음</span></td></tr>
+      <tr><td>종목 코드 포맷 불일치<br>(<code>5930</code> vs <code>005930</code>)</td>
+          <td>특정 종목만 안 옴</td><td><span class="no">아무것도 안 남음</span></td></tr>
+      <tr><td>프론트가 <code>/app/ticks/...</code>를 구독</td>
+          <td>구독 자체가 브로커에 등록조차 안 됨</td><td><span class="no">아무것도 안 남음</span></td></tr>
+      <tr><td>브로커 접두사에 <code>/topic</code>이 없음</td>
+          <td>전부 안 옴</td><td><span class="no">아무것도 안 남음</span></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <strong>그래서 규약을 문서가 아니라 코드로 강제해야 한다.</strong> §4에서 다룬다.
+  </p>
+
+  <h2>3. 가장 단순한 스케줄러</h2>
+
+<pre><span class="a">@Component</span>
+<span class="a">@RequiredArgsConstructor</span>
+<span class="k">public class</span> <span class="t">TickPlaybackScheduler</span> {
+
+    <span class="k">private final</span> <span class="t">SimpMessagingTemplate</span> template;
+    <span class="k">private final</span> <span class="t">TickRepository</span> tickRepository;
+    <span class="k">private final</span> <span class="t">VirtualClock</span> clock;          <span class="c">// 전 사용자 공용 가상 시계</span>
+
+    <span class="a">@Scheduled</span>(fixedRate = <span class="t">1000</span>)
+    <span class="k">public void</span> playback() {
+        <span class="c">// ① 가상 시계를 한 칸 민다</span>
+        <span class="t">Instant</span> from = clock.now();
+        <span class="t">Instant</span> to   = clock.advance();
+
+        <span class="c">// ② 그 구간의 틱을 한 번에 읽는다 — 접속자 수와 무관한 쿼리 1회</span>
+        <span class="t">List</span>&lt;<span class="t">Tick</span>&gt; ticks = tickRepository.findBetween(from, to);
+
+        <span class="k">for</span> (<span class="t">Tick</span> tick : ticks) {
+            <span class="c">// ③ ⭐ 약속된 규칙대로 destination 을 조립한다</span>
+            <span class="t">String</span> destination = <span class="s">"/topic/ticks/"</span> + tick.getCode();
+
+            <span class="c">// ④ brokerChannel 로. 여기서 리턴은 "전송 완료"가 아니라 "큐에 넣음"</span>
+            template.convertAndSend(destination, tick);
+        }
+    }
+}</pre>
+
+  <p>
+    <strong>이게 전부다.</strong> 구독자가 몇 명인지 알 필요도 없고, 세션을 뒤질 필요도 없다.
+    "누구에게 보낼지"는 <a href="./0031-stomp-simplebroker-tick-streaming.html">이미 구독 시점에 결정</a>됐다.
+  </p>
+
+  <h2>4. 이 코드의 문제 네 가지</h2>
+
+  <ol class="diag">
+    <li>
+      <strong>규약 문자열이 코드베이스에 흩어진다.</strong>
+      <code>"/topic/ticks/"</code>가 스케줄러에도, 주문 서비스에도, 프론트에도 따로 적혀 있다.
+      한 곳에서 오타가 나면 §2의 <em>조용한 실패</em>가 된다.
+      <br><br>
+      <strong>고치는 법:</strong> 목적지를 만드는 함수를 하나만 두고 서버 코드 전체가 그것만 쓰게 한다.
+      문자열 리터럴이 서버에 <strong>딱 한 번</strong>만 등장하게 만드는 것이 목표다.
+      프론트에도 같은 헬퍼를 두고, 규칙 자체는 API 명세에 적어 둔다.
+    </li>
+    <li>
+      <strong>아무도 안 보는 종목까지 DB에서 읽고 발행한다.</strong>
+      코스피 전 종목을 재생하는데 실제로 열려 있는 화면이 30종목이라면, 나머지는 전부 낭비다.
+      브로커가 빈 목록을 받아 아무 일도 안 하긴 하지만 — <strong>DB 조회와 JSON 직렬화는 이미 끝난 뒤</strong>다.
+      <br><br>
+      <strong>고치는 법:</strong> <code>SessionSubscribeEvent</code> / <code>SessionUnsubscribeEvent</code> /
+      <code>SessionDisconnectEvent</code>로 <strong>종목별 구독자 수</strong>를 세어 두고,
+      0명인 종목은 <em>쿼리에서부터</em> 뺀다.
+    </li>
+    <li>
+      <strong><code>@Scheduled</code>는 기본이 스레드 <em>하나</em>다.</strong>
+      그리고 <code>convertAndSend</code>의 JSON 직렬화는 <strong>이 스케줄러 스레드에서</strong> 일어난다
+      (<a href="./0032-stomp-and-spring-messaging-vocabulary.html">0032 §2</a>).
+      DB 조회가 느리거나 틱이 많으면 <strong>다음 틱이 통째로 밀린다</strong> — 가상 시계가 느려지는 것이다.
+      <br><br>
+      <strong>고치는 법:</strong> 스케줄러 풀 크기를 늘리거나, 조회·직렬화를 가볍게 유지한다.
+      "1초에 한 번 도는 일이 1초 안에 끝나는가"를 반드시 측정한다.
+    </li>
+    <li>
+      <strong>배속과 일시정지를 넣을 자리가 없다.</strong>
+      <code>fixedRate = 1000</code>은 <em>실제</em> 1초다. 가상 시계를 2배속으로 돌리고 싶다면
+      이 값을 건드리는 게 아니라 <strong>한 번에 미는 가상 시간의 폭</strong>을 바꿔야 한다.
+      <br><br>
+      <strong>고치는 법:</strong> "얼마나 자주 도는가"(실제 시간)와 "한 번에 얼마나 미는가"(가상 시간)를
+      분리한다. 일시정지는 가상 시계를 안 미는 것으로 구현한다 — <strong>스케줄러는 계속 돌되
+      할 일이 없는 상태</strong>가 되는 편이 껐다 켜는 것보다 다루기 쉽다.
+    </li>
+  </ol>
+
+  <h3>여기서 걸리는 함정 하나 — UNSUBSCRIBE에는 destination이 없다</h3>
+
+  <p>
+    2번의 "종목별 구독자 수 세기"를 구현하려 하면 바로 벽에 부딪힌다.
+    <a href="./0031-stomp-simplebroker-tick-streaming.html">0031 §7</a>에서 봤듯이
+    <strong><code>UNSUBSCRIBE</code> 프레임에는 <code>id</code>만 있고 <code>destination</code>이 없다.</strong>
+  </p>
+
+  <div class="frame"><b>SUBSCRIBE</b>
+id:sub-0
+destination:/topic/ticks/005930   <i>← 여기엔 있다. 카운터 +1 가능.</i>
+
+<b>UNSUBSCRIBE</b>
+id:sub-0                          <i>← 이것뿐. 어느 종목인지 알 수 없다!</i>
+                                  <i>   무엇을 -1 해야 하지?</i></div>
+
+  <p>
+    그래서 카운터를 유지하려면 <strong>(세션ID, 구독ID) → 목적지 매핑을 직접 기억해 둬야 한다.</strong>
+    <code>SessionSubscribeEvent</code>에서 그 매핑을 저장하고, <code>SessionUnsubscribeEvent</code>에서
+    그 키로 목적지를 되찾아 카운터를 내린다. 그리고 <code>SessionDisconnectEvent</code>에서는
+    <strong>그 세션에 딸린 매핑 전부</strong>를 훑어 일괄로 내려야 한다.
+  </p>
+
+  <p class="note">
+    <strong>이게 브로커가 이미 하고 있는 일과 똑같다는 걸 눈치챘다면 정확하다.</strong>
+    브로커의 <code>DefaultSubscriptionRegistry</code>가 바로 그 매핑이다.
+    그래서 대안도 있다 — 카운터를 따로 두지 않고 <code>SimpUserRegistry</code>를 조회하는 방법.
+    다만 <strong>매 틱마다 조회하는 것은 비싸다.</strong> 틱은 초당 수십~수백 번 발생하고
+    구독 변화는 훨씬 드물다. <strong>드물게 바뀌는 것을 미리 세어 두고, 잦은 쪽에서는 읽기만 하는 것</strong>이
+    이 상황의 정석이다.
+  </p>
+
+  <h2>5. 고친 스케줄러</h2>
+
+<pre><span class="c">// ── 규약을 코드로 강제한다. 문자열 리터럴은 여기 한 번만 등장. ──</span>
+<span class="k">public final class</span> <span class="t">Destinations</span> {
+    <span class="k">private static final</span> <span class="t">String</span> TICKS = <span class="s">"/topic/ticks/"</span>;
+
+    <span class="k">public static</span> <span class="t">String</span> ticks(<span class="t">String</span> code) { <span class="k">return</span> TICKS + code; }
+    <span class="k">public static</span> <span class="t">Optional</span>&lt;<span class="t">String</span>&gt; codeOf(<span class="t">String</span> destination) {   <span class="c">// 역변환도 여기서</span>
+        <span class="k">return</span> destination.startsWith(TICKS)
+             ? <span class="t">Optional</span>.of(destination.substring(TICKS.length()))
+             : <span class="t">Optional</span>.empty();
+    }
+}
+
+<span class="c">// ── 종목별 구독자 수를 이벤트로 유지한다 ──</span>
+<span class="a">@Component</span>
+<span class="k">public class</span> <span class="t">TickSubscriberCounter</span> {
+
+    <span class="k">private final</span> <span class="t">Map</span>&lt;<span class="t">String</span>, <span class="t">AtomicInteger</span>&gt; countByCode = <span class="k">new</span> <span class="t">ConcurrentHashMap</span>&lt;&gt;();
+    <span class="c">// UNSUBSCRIBE 엔 destination 이 없으므로 (세션ID, 구독ID) → 종목코드 를 직접 기억한다</span>
+    <span class="k">private final</span> <span class="t">Map</span>&lt;<span class="t">SubKey</span>, <span class="t">String</span>&gt; codeBySubscription = <span class="k">new</span> <span class="t">ConcurrentHashMap</span>&lt;&gt;();
+
+    <span class="a">@EventListener</span>
+    <span class="k">public void</span> onSubscribe(<span class="t">SessionSubscribeEvent</span> e) {
+        <span class="t">StompHeaderAccessor</span> h = <span class="t">StompHeaderAccessor</span>.wrap(e.getMessage());
+        <span class="t">Destinations</span>.codeOf(h.getDestination()).ifPresent(code -&gt; {
+            codeBySubscription.put(<span class="k">new</span> <span class="t">SubKey</span>(h.getSessionId(), h.getSubscriptionId()), code);
+            countByCode.computeIfAbsent(code, k -&gt; <span class="k">new</span> <span class="t">AtomicInteger</span>()).incrementAndGet();
+        });
+    }
+
+    <span class="a">@EventListener</span>
+    <span class="k">public void</span> onUnsubscribe(<span class="t">SessionUnsubscribeEvent</span> e) {
+        <span class="t">StompHeaderAccessor</span> h = <span class="t">StompHeaderAccessor</span>.wrap(e.getMessage());
+        <span class="c">// destination 이 없으니 아까 저장해 둔 매핑에서 되찾는다</span>
+        release(<span class="k">new</span> <span class="t">SubKey</span>(h.getSessionId(), h.getSubscriptionId()));
+    }
+
+    <span class="a">@EventListener</span>
+    <span class="k">public void</span> onDisconnect(<span class="t">SessionDisconnectEvent</span> e) {
+        <span class="c">// 그 세션에 딸린 매핑을 전부 정리. 안 하면 카운터가 영원히 안 내려간다.</span>
+        codeBySubscription.keySet().removeIf(key -&gt; {
+            <span class="k">if</span> (!key.sessionId().equals(e.getSessionId())) <span class="k">return</span> <span class="k">false</span>;
+            decrement(codeBySubscription.get(key));
+            <span class="k">return</span> <span class="k">true</span>;
+        });
+    }
+
+    <span class="k">public</span> <span class="t">Set</span>&lt;<span class="t">String</span>&gt; watchedCodes() {           <span class="c">// 스케줄러가 매 틱 읽는 값 — O(1) 조회</span>
+        <span class="k">return</span> countByCode.entrySet().stream()
+                .filter(en -&gt; en.getValue().get() &gt; <span class="t">0</span>)
+                .map(<span class="t">Map</span>.<span class="t">Entry</span>::getKey).collect(toSet());
+    }
+}
+
+<span class="c">// ── 스케줄러 ──</span>
+<span class="a">@Component</span>
+<span class="a">@RequiredArgsConstructor</span>
+<span class="k">public class</span> <span class="t">TickPlaybackScheduler</span> {
+
+    <span class="k">private final</span> <span class="t">SimpMessagingTemplate</span> template;
+    <span class="k">private final</span> <span class="t">TickRepository</span> tickRepository;
+    <span class="k">private final</span> <span class="t">TickSubscriberCounter</span> counter;
+    <span class="k">private final</span> <span class="t">VirtualClock</span> clock;
+
+    <span class="a">@Scheduled</span>(fixedRate = <span class="t">200</span>)                 <span class="c">// 실제 시간: 200ms 마다 깨어난다</span>
+    <span class="k">public void</span> playback() {
+        <span class="k">if</span> (clock.isPaused()) <span class="k">return</span>;                <span class="c">// 일시정지 = 시계를 안 민다</span>
+
+        <span class="t">Set</span>&lt;<span class="t">String</span>&gt; codes = counter.watchedCodes();
+        <span class="k">if</span> (codes.isEmpty()) { clock.advance(); <span class="k">return</span>; }   <span class="c">// 보는 사람이 없으면 조회조차 안 한다</span>
+
+        <span class="t">Instant</span> from = clock.now();
+        <span class="t">Instant</span> to   = clock.advance();               <span class="c">// 가상 시간: 배속만큼 민다</span>
+
+        <span class="c">// 구독 중인 종목만, 마지막 값 하나로 눌러서 (틱 폭주 대응)</span>
+        tickRepository.findLatestPerCode(from, to, codes)
+            .forEach(tick -&gt; template.convertAndSend(<span class="t">Destinations</span>.ticks(tick.getCode()), tick));
+    }
+}</pre>
+
+  <table>
+    <thead><tr><th>바뀐 점</th><th>효과</th></tr></thead>
+    <tbody>
+      <tr><td><code>Destinations.ticks(code)</code></td><td>규약 문자열이 서버에 한 번만 존재 → 오타로 인한 조용한 실패 차단</td></tr>
+      <tr><td><code>watchedCodes()</code>로 필터</td><td>보는 사람 없는 종목은 <strong>DB 조회조차 안 한다</strong></td></tr>
+      <tr><td><code>fixedRate=200</code> + <code>clock.advance()</code></td><td>실제 주기와 가상 시간 진행을 분리 → 배속 구현 가능</td></tr>
+      <tr><td><code>isPaused()</code></td><td>스케줄러는 계속 돌되 시계만 멈춤 → 껐다 켜는 것보다 안전</td></tr>
+      <tr><td><code>findLatestPerCode</code></td><td>200ms 창의 틱을 마지막 값으로 눌러 브라우저 폭주 방지</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. "구독은 되는데 메시지가 안 와요" 진단 순서</h2>
+
+  <p>이 시리즈에서 배운 것을 순서대로 확인하면 대부분 여기서 잡힌다.</p>
+
+  <table>
+    <thead><tr><th>순서</th><th>확인할 것</th><th>어디서 배웠나</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>브라우저 개발자도구 → 그 WebSocket 연결 → Messages에서 <strong><code>SUBSCRIBE</code> 프레임이 실제로 나갔는지</strong>, destination 글자가 정확한지</td>
+          <td><a href="./0033-stomp-config-controller-and-broker-in-code.html">0033 §1</a></td></tr>
+      <tr><td>2</td><td>그 destination이 <strong>브로커 접두사</strong>(<code>/topic</code>, <code>/queue</code>)로 시작하는지. <code>/app</code>으로 구독하고 있진 않은지</td>
+          <td><a href="./0033-stomp-config-controller-and-broker-in-code.html">0033 §4</a></td></tr>
+      <tr><td>3</td><td>서버가 발행하는 문자열과 <strong>글자 단위로 같은지</strong>. 로그를 찍어 눈으로 대조</td>
+          <td>이 레슨 §2</td></tr>
+      <tr><td>4</td><td>컨트롤러가 <code>void</code>인데 <strong>아무것도 발행하지 않고</strong> 끝나는 건 아닌지</td>
+          <td><a href="./0033-stomp-config-controller-and-broker-in-code.html">0033 §6</a></td></tr>
+      <tr><td>5</td><td>개인 데이터라면 — <code>/user</code> 접두사 설정과 브로커 접두사에 <code>/queue</code>가 있는지</td>
+          <td><a href="./0031-stomp-simplebroker-tick-streaming.html">0031 §6</a></td></tr>
+      <tr><td>6</td><td><strong>구독보다 발행이 먼저</strong>였던 건 아닌지. 브로커는 저장하지 않는다</td>
+          <td><a href="./0032-stomp-and-spring-messaging-vocabulary.html">0032 §4</a></td></tr>
+      <tr><td>7</td><td>앱 서버가 2대 이상인데 SimpleBroker를 쓰고 있진 않은지</td>
+          <td><a href="./0034-swapping-simplebroker-for-rabbitmq-relay.html">0034 §5</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. 확인해보기</h2>
+
+  <section class="quiz" aria-label="틱 스케줄러와 destination 규약 퀴즈">
+    <p><strong>Q1.</strong> 틱 스케줄러는 <code>/topic/ticks/005930</code>이라는 목적지를 어떻게 아는가?</p>
+    <button type="button" data-target="a1" data-answer="wrong">브로커에 등록된 목적지 목록을 조회한다</button>
+    <button type="button" data-target="a1" data-answer="correct">약속된 규칙대로 문자열을 직접 조립한다</button>
+    <button type="button" data-target="a1" data-answer="wrong">구독한 클라이언트가 서버에 알려서 안다</button>
+    <p class="answer" id="a1"></p>
+
+    <p><strong>Q2.</strong> 프론트가 <code>/topic/tick/005930</code>(오타)을 구독하면?</p>
+    <button type="button" data-target="a2" data-answer="wrong">구독 단계에서 서버가 에러를 돌려준다</button>
+    <button type="button" data-target="a2" data-answer="correct">구독은 성공하고 데이터만 안 온다</button>
+    <button type="button" data-target="a2" data-answer="wrong">브로커가 비슷한 목적지로 연결해 준다</button>
+    <p class="answer" id="a2"></p>
+
+    <p><strong>Q3.</strong> 종목별 구독자 수 카운터를 만들 때 <code>UNSUBSCRIBE</code>에서 생기는 문제는?</p>
+    <button type="button" data-target="a3" data-answer="correct">목적지가 없어서 무엇을 뺄지 모른다</button>
+    <button type="button" data-target="a3" data-answer="wrong">세션이 이미 닫혀 이벤트가 안 온다</button>
+    <button type="button" data-target="a3" data-answer="wrong">구독 번호가 매번 새로 발급돼 있다</button>
+    <p class="answer" id="a3"></p>
+
+    <p><strong>Q4.</strong> <code>convertAndSend</code>의 JSON 직렬화는 어느 스레드에서 일어나는가?</p>
+    <button type="button" data-target="a4" data-answer="correct">호출한 스레드 — 여기서는 스케줄러</button>
+    <button type="button" data-target="a4" data-answer="wrong">브로커 채널의 워커 스레드에서 한다</button>
+    <button type="button" data-target="a4" data-answer="wrong">세션마다 소켓 쓰기 직전에 각각 한다</button>
+    <p class="answer" id="a4"></p>
+
+    <p><strong>Q5.</strong> 가상 시계를 2배속으로 만들려면 무엇을 바꾸는가?</p>
+    <button type="button" data-target="a5" data-answer="wrong"><code>fixedRate</code>를 절반으로 줄인다</button>
+    <button type="button" data-target="a5" data-answer="correct">한 번에 미는 가상 시간을 늘린다</button>
+    <button type="button" data-target="a5" data-answer="wrong">스케줄러 스레드 풀을 두 배로 한다</button>
+    <p class="answer" id="a5"></p>
+  </section>
+
+  <h2>더 읽을 것</h2>
+
+  <p>
+    <strong>1순위 원문:</strong>
+    <a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/handle-send.html">Spring Framework Reference — Sending Messages</a>.
+    애플리케이션 어디서나 <code>SimpMessagingTemplate</code>으로 발행하는 방법이 여기 있다.
+  </p>
+  <ul>
+    <li><a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/application-context-events.html">Spring — WebSocket STOMP Events</a> —
+        §4의 구독자 카운터가 쓰는 네 가지 이벤트.</li>
+    <li><a href="https://docs.spring.io/spring-framework/reference/integration/scheduling.html">Spring — Task Execution and Scheduling</a> —
+        <code>@Scheduled</code>의 기본 스레드 수와 풀 설정.</li>
+    <li><a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/stats.html">Spring — Monitoring</a> —
+        <code>SimpUserRegistry</code>로 접속·구독 현황을 보는 법.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="./0031-stomp-simplebroker-tick-streaming.html">0031 — 흐름</a> ·
+    <a href="./0032-stomp-and-spring-messaging-vocabulary.html">0032 — 어휘</a> ·
+    <a href="./0033-stomp-config-controller-and-broker-in-code.html">0033 — 코드</a> ·
+    <a href="./0034-swapping-simplebroker-for-rabbitmq-relay.html">0034 — 브로커 교체</a> ·
+    <a href="../reference/0017-stomp-simplebroker-cheatsheet.html">0017 치트시트</a>.
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> 남은 후보는
+    <strong><code>ChannelInterceptor</code>로 SUBSCRIBE 권한 검사</strong>(존재하지 않는 종목 구독 차단 포함),
+    <strong><code>@MessageExceptionHandler</code>로 에러를 본인에게만</strong>,
+    <strong>재연결 시 스냅샷과 스트림 이어붙이기</strong>다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

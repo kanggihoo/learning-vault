@@ -127,6 +127,34 @@
   Kafka 원작자 Jay Kreps의 글. Use for: Kafka의 다양한 사용 사례가 왜 하나의 로그 추상화에서 나오는지 확인.
 
 
+## WebSocket / STOMP Knowledge
+
+- [Spring Framework: STOMP](https://docs.spring.io/spring-framework/reference/web/websocket/stomp.html)
+  Spring STOMP 공식 문서 루트. Use for: `@EnableWebSocketMessageBroker`, `registerStompEndpoints`, `enableSimpleBroker`, `setApplicationDestinationPrefixes` 확인.
+- [Spring Framework: Flow of Messages](https://docs.spring.io/spring-framework/reference/web/websocket/stomp/message-flow.html)
+  세 채널과 핸들러 배관의 원문. Use for: `clientInboundChannel`/`brokerChannel`/`clientOutboundChannel`, `StompSubProtocolHandler`, `SimpleBrokerMessageHandler`가 어떤 채널을 구독하는지 확인.
+- [Spring Framework: User Destinations](https://docs.spring.io/spring-framework/reference/web/websocket/stomp/user-destination.html)
+  `/user` 목적지 재작성 규칙. Use for: `/user/queue/x` → `/queue/x-{sessionId}` 변환, `convertAndSendToUser`, `broadcast=false`, Principal 없는 세션의 동작 확인.
+- [Spring Framework: Simple Broker](https://docs.spring.io/spring-framework/reference/web/websocket/stomp/handle-simple-broker.html)
+  SimpleBroker 공식 설명. Use for: 메모리 기반 구독 레지스트리, 단일 서버 전제, 하트비트 설정 확인.
+- [Spring Framework: WebSocket STOMP Events](https://docs.spring.io/spring-framework/reference/web/websocket/stomp/application-context-events.html)
+  세션 이벤트 문서. Use for: `SessionConnectedEvent`, `SessionSubscribeEvent`, `SessionUnsubscribeEvent`, `SessionDisconnectEvent`가 발생하는 시점 확인.
+- [Spring Framework: Configuration and Performance](https://docs.spring.io/spring-framework/reference/web/websocket/stomp/configuration-performance.html)
+  채널 스레드 풀과 전송 한도 설정. Use for: 느린 클라이언트 대응(send buffer/time limit), inbound/outbound 풀 크기 판단.
+- [DefaultSubscriptionRegistry Javadoc](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/messaging/simp/broker/DefaultSubscriptionRegistry.html)
+  구독 레지스트리 구현 문서. Use for: `AntPathMatcher` 기반 목적지 매칭, 캐시 한도 기본값(1024), selector 헤더 확인.
+- [STOMP Protocol Specification 1.2](https://stomp.github.io/stomp-specification-1.2.html)
+  STOMP 표준 문서. Use for: CONNECT/CONNECTED/SUBSCRIBE/UNSUBSCRIBE/SEND/MESSAGE/DISCONNECT 프레임의 필수 헤더, `heart-beat` 협상 규칙(양쪽 MAX), ack 모드 확인.
+
+- [MDN: The WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
+  WebSocket 개요. Use for: HTTP 핸드셰이크로 시작해 같은 TCP 연결에서 프로토콜만 바뀐다는 것, 브라우저 API 확인.
+- [RFC 6455: The WebSocket Protocol](https://www.rfc-editor.org/rfc/rfc6455.html)
+  WebSocket 표준 문서. Use for: `Upgrade`/`Connection` 헤더, `101 Switching Protocols`, `Sec-WebSocket-Key`, Origin 검사 책임이 서버에 있다는 규정 확인.
+- [OWASP: Testing for Cross Site WebSocket Hijacking](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/11-Client-side_Testing/10-Testing_WebSockets)
+  CSWSH 설명. Use for: 쿠키 인증 WebSocket에서 Origin 화이트리스트가 왜 필수인지 확인.
+- [Spring Framework: WebSocket Security](https://docs.spring.io/spring-security/reference/servlet/integrations/websocket.html)
+  Spring Security WebSocket 연동 문서. Use for: 핸드셰이크에서 Principal이 확정되는 경로, 메시지 단위 인가 설정 확인.
+
 ## Wisdom (Communities)
 
 - [Stack Overflow: git tag](https://stackoverflow.com/questions/tagged/git)
@@ -146,3 +174,7 @@
 - [Stack Overflow: apache-kafka tag](https://stackoverflow.com/questions/tagged/apache-kafka)
   Kafka 관련 에러/설정 질문이 많다. Use for: 구체적 에러 메시지 기반 검색.
 
+- [Stack Overflow: spring-websocket tag](https://stackoverflow.com/questions/tagged/spring-websocket)
+  Spring WebSocket/STOMP 질문 태그. Use for: "구독은 되는데 메시지가 안 온다" 류의 실제 사례와 설정 함정 확인.
+- [Stack Overflow: stomp tag](https://stackoverflow.com/questions/tagged/stomp)
+  STOMP 프로토콜 전반 질문 태그. Use for: 프레임/하트비트/ack 관련 클라이언트-서버 불일치 사례 확인.

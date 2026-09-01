@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>모의투자 틱 스트리밍: STOMP + SimpleBroker는 내부에서 무슨 일을 하는가</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .frame {
+      background: #111827; color: #f9fafb; padding: 14px 16px; border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.88rem; line-height: 1.5; overflow-x: auto; white-space: pre;
+    }
+    .frame b { color: #5eead4; font-weight: 700; }
+    .frame i { color: #94a3b8; font-style: normal; }
+    .mem {
+      background: #fdfdfb; border: 1px solid #deded6; border-left: 4px solid #0f766e;
+      padding: 14px 16px; border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.86rem; line-height: 1.6; overflow-x: auto; white-space: pre;
+    }
+    .layers td:first-child { white-space: nowrap; font-weight: 700; }
+    .steps { counter-reset: step; padding-left: 0; list-style: none; }
+    .steps > li {
+      counter-increment: step; position: relative;
+      padding: 0 0 14px 44px; margin: 0;
+    }
+    .steps > li::before {
+      content: counter(step); position: absolute; left: 0; top: 0;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: #0f766e; color: #fff; font-weight: 700; font-size: 0.85rem;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tag {
+      display: inline-block; font-size: 0.75rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px; vertical-align: middle;
+    }
+    .tag-topic { background: #eef7f5; color: #0f766e; border: 1px solid #99d3cb; }
+    .tag-user  { background: #fff7ed; color: #b45309; border: 1px solid #f0c88a; }
+  </style>
+</head>
+<body>
+<main>
+
+  <h1>모의투자 틱 스트리밍: STOMP + SimpleBroker는 내부에서 무슨 일을 하는가</h1>
+
+  <p class="note">
+    <strong>이 레슨의 무대.</strong> 과거 틱 데이터를 이미 DB에 넣어 뒀다. 외부 증권사 WebSocket은 붙이지 않는다.
+    서버는 <strong>1대</strong>, 브로커는 Spring 내장 <strong>SimpleBroker</strong>, 프로토콜은 <strong>STOMP</strong>,
+    그리고 재생 시계는 <strong>전 사용자 공용</strong>이다 — 서버가 하나의 가상 장(場)을 돌리고, 09:30:01 틱은 그 종목을
+    구독한 모두에게 같은 값으로 간다.
+    <br><br>
+    <strong>목표.</strong> "연결 → 종목 구독 → 틱 발생 시 전달 → 구독 취소"의 각 단계에서 <em>서버 메모리 안에서
+    실제로 무엇이 바뀌는지</em>를 말로 설명할 수 있게 된다. 코드가 아니라 배관을 본다.
+    <br><br>
+    <strong>먼저 볼 것.</strong> "STOMP가 뭔지", "Message·Channel·Handler가 각각 뭔지"가 흐릿하다면
+    <a href="./0032-stomp-and-spring-messaging-vocabulary.html">0032 — STOMP와 Spring 메시징의 어휘</a>를 먼저 보자.
+    이 레슨은 그 단어들을 안다고 가정하고 <em>흐름</em>에 집중한다.
+  </p>
+
+  <h2>0. 먼저 깨야 할 오해 하나</h2>
+
+  <p>
+    "사용자마다 다른 정보를 보내야 한다"는 요구를 들으면 대부분 이렇게 생각한다 —
+    <em>"그럼 사용자별로 채널을 하나씩 만들고, 틱이 올 때마다 접속자 전원을 순회하면서 각자에게 맞는 걸 골라 보내야겠네."</em>
+  </p>
+  <p>
+    <strong>거의 정반대다.</strong> STOMP 브로커 모델에서 "누가 무엇을 받을지"를 결정하는 주체는 서버 코드가 아니라
+    <strong>클라이언트가 보낸 SUBSCRIBE 프레임</strong>이다. 서버 코드는 <code>/topic/ticks/005930</code> 이라는
+    <strong>주소 하나에 메시지를 한 번 던질 뿐</strong>이고, "그 주소를 구독 중인 세션이 누구누구인지"는 브로커가 자기
+    메모리 안의 구독 레지스트리를 보고 알아서 복제해 뿌린다.
+  </p>
+  <p>
+    그래서 이 도메인에서 "사용자마다 다른 정보"는 사실 <strong>세 가지 서로 다른 층위</strong>가 섞여 있는 말이고,
+    이 셋을 분리하는 것이 설계의 8할이다.
+  </p>
+
+  <table class="layers">
+    <thead><tr><th>층위</th><th>이 도메인의 예</th><th>값이 사용자마다 다른가?</th><th>목적지</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>① 공용 데이터</td>
+        <td>005930의 09:30:01 틱</td>
+        <td><span class="no">아니오</span> — 공용 시계라서 전원 동일</td>
+        <td><span class="tag tag-topic">/topic/ticks/005930</span></td>
+      </tr>
+      <tr>
+        <td>② 구독 조합</td>
+        <td>A는 005930+000660, B는 005930만</td>
+        <td><span class="no">아니오</span> — <em>값</em>이 아니라 <em>구독 목록</em>이 다른 것</td>
+        <td>①과 동일 (topic 여러 개를 각자 구독)</td>
+      </tr>
+      <tr>
+        <td>③ 개인 데이터</td>
+        <td>내 주문 체결, 내 잔고, 내 평가손익</td>
+        <td><span class="ok">예</span> — 값 자체가 그 사람 것</td>
+        <td><span class="tag tag-user">/user/queue/execution</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>가장 흔한 설계 실수:</strong> 층위 ②를 층위 ③처럼 구현하는 것. 즉 "사용자마다 보는 종목이 다르니까
+    사용자별 큐로 보내자"고 결정하는 순간, 서버는 매 틱마다 <em>접속자 수 × 종목 수</em> 만큼의 메시지를 직접
+    만들어야 한다. 브로커가 공짜로 해주는 1:N 복제를 버리고 그걸 손으로 다시 짜는 셈이다.
+  </p>
+
+  <h2>1. 배관도 — Spring이 만드는 3개의 채널과 4명의 핸들러</h2>
+
+  <p>
+    <code>@EnableWebSocketMessageBroker</code> 하나가 켜지면 Spring은 내부에 <strong>3개의 메시지 채널</strong>을
+    만들고, 거기에 <strong>핸들러들을 구독시킨다</strong>. 이 그림이 이 레슨의 전부다 — 아래 모든 단계는 이 그림 위에서
+    화살표가 어디로 흐르느냐의 문제일 뿐이다.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 700" role="img" aria-label="Spring STOMP 내부 채널과 핸들러 배관도">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/>
+        </marker>
+        <marker id="aha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+
+      <!-- browsers -->
+      <rect class="d-box" x="60"  y="16" width="170" height="52"/>
+      <rect class="d-box" x="250" y="16" width="170" height="52"/>
+      <rect class="d-box" x="440" y="16" width="170" height="52"/>
+      <text class="d-label" x="74"  y="38">userA · 세션 s1</text>
+      <text class="d-label-sm" x="74"  y="56">005930, 000660 구독</text>
+      <text class="d-label" x="264" y="38">userB · 세션 s2</text>
+      <text class="d-label-sm" x="264" y="56">005930 구독</text>
+      <text class="d-label" x="454" y="38">userC · 세션 s3</text>
+      <text class="d-label-sm" x="454" y="56">035720 구독</text>
+      <text class="d-label-sm" x="628" y="38">탭 하나 = 세션 하나</text>
+      <text class="d-label-sm" x="628" y="56">사람 수 ≠ 세션 수</text>
+
+      <!-- server container -->
+      <rect x="30" y="96" width="820" height="590" rx="10" fill="#fbfbf9" stroke="#c9c9c1" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text class="d-title" x="46" y="120">Spring 서버 1대 — @EnableWebSocketMessageBroker</text>
+
+      <!-- protocol handler -->
+      <rect class="d-box" x="60" y="138" width="760" height="54"/>
+      <text class="d-title" x="76" y="162">StompSubProtocolHandler</text>
+      <text class="d-label-sm" x="76" y="180">WebSocket 텍스트 프레임 ⇄ STOMP 프레임 ⇄ Spring Message 로 번역하는 유일한 지점</text>
+
+      <!-- channels -->
+      <rect class="d-box-c" x="60" y="222" width="350" height="38"/>
+      <text class="d-label-mono" x="76" y="246">clientInboundChannel</text>
+      <rect class="d-box-c" x="470" y="222" width="350" height="38"/>
+      <text class="d-label-mono" x="486" y="246">clientOutboundChannel</text>
+
+      <!-- inbound spine -->
+      <path class="d-line" d="M 90 260 L 90 452" stroke-dasharray="4 3"/>
+      <path class="d-line" d="M 90 309 L 114 309" marker-end="url(#ah)"/>
+      <path class="d-line" d="M 90 359 L 114 359" marker-end="url(#ah)"/>
+      <path class="d-line" d="M 90 452 L 114 452" marker-end="url(#ah)"/>
+
+      <!-- handlers -->
+      <rect class="d-box" x="120" y="288" width="290" height="42"/>
+      <text class="d-label" x="134" y="306">SimpAnnotationMethodMessageHandler</text>
+      <text class="d-label-sm" x="134" y="322">접두사 /app → @MessageMapping 메서드</text>
+
+      <rect class="d-box" x="120" y="338" width="290" height="42"/>
+      <text class="d-label" x="134" y="356">UserDestinationMessageHandler</text>
+      <text class="d-label-sm" x="134" y="372">접두사 /user → 세션별 목적지로 재작성</text>
+
+      <rect class="d-box-a" x="120" y="404" width="560" height="96"/>
+      <text class="d-title" x="136" y="428">SimpleBrokerMessageHandler</text>
+      <text class="d-label-sm" x="136" y="448">접두사 /topic, /queue 를 담당. clientInboundChannel 과 brokerChannel 을 둘 다 구독한다.</text>
+      <rect x="136" y="458" width="528" height="30" rx="4" fill="#ffffff" stroke="#0f766e" stroke-width="1"/>
+      <text class="d-label-mono" x="148" y="478">DefaultSubscriptionRegistry — 구독 목록을 JVM 힙에 보관 (AntPathMatcher 매칭)</text>
+
+      <!-- broker channel -->
+      <rect class="d-box-c" x="200" y="540" width="480" height="38"/>
+      <text class="d-label-mono" x="216" y="564">brokerChannel</text>
+
+      <!-- scheduler -->
+      <rect class="d-box-b" x="160" y="608" width="560" height="62"/>
+      <text class="d-title" x="176" y="630">틱 재생 스케줄러 · 주문 체결 서비스</text>
+      <text class="d-label-sm" x="176" y="650">가상 시계를 한 칸 밀고 → DB에서 그 구간 틱을 읽고 → SimpMessagingTemplate 로 던진다</text>
+
+      <!-- arrows: inbound -->
+      <path class="d-line-a" d="M 200 70 L 200 134" marker-end="url(#aha)"/>
+      <text class="d-label-sm" x="208" y="100">① 프레임 텍스트</text>
+      <path class="d-line-a" d="M 200 194 L 200 218" marker-end="url(#aha)"/>
+      <text class="d-label-sm" x="208" y="212">② 디코드</text>
+
+      <!-- arrows: publish path -->
+      <path class="d-line-a" d="M 440 606 L 440 582" marker-end="url(#aha)"/>
+      <text class="d-label-sm" x="448" y="600">④ convertAndSend</text>
+      <path class="d-line-a" d="M 440 538 L 440 504" marker-end="url(#aha)"/>
+
+      <!-- arrows: outbound -->
+      <path class="d-line-a" d="M 645 402 L 645 264" marker-end="url(#aha)"/>
+      <text class="d-label-sm" x="653" y="340">⑤ 레지스트리 조회 후</text>
+      <text class="d-label-sm" x="653" y="356">세션 수만큼 복제</text>
+      <path class="d-line-a" d="M 645 220 L 645 196" marker-end="url(#aha)"/>
+      <text class="d-label-sm" x="653" y="214">⑥ 인코드</text>
+      <path class="d-line-a" d="M 645 134 L 645 72" marker-end="url(#aha)"/>
+      <text class="d-label-sm" x="653" y="106">⑦ MESSAGE 프레임</text>
+
+      <text class="d-label-sm" x="120" y="278">③ 목적지 접두사를 보고 담당 핸들러가 집어간다</text>
+    </svg>
+    <figcaption>
+      3개 채널(<code>clientInboundChannel</code> / <code>brokerChannel</code> / <code>clientOutboundChannel</code>)과
+      그 위에 얹힌 핸들러들. 세 채널은 모두 <code>ExecutorSubscribableChannel</code> — 즉 <strong>각자 스레드 풀을 가진
+      비동기 큐</strong>다. 출처: <a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/message-flow.html">Spring Framework — Flow of Messages</a>
+    </figcaption>
+  </figure>
+
+  <p>
+    여기서 놓치기 쉬운 두 가지를 못박아 두자.
+  </p>
+  <ul>
+    <li>
+      <strong><code>SimpleBrokerMessageHandler</code>는 채널을 두 개 구독한다.</strong>
+      <code>clientInboundChannel</code>을 구독하는 이유는 클라이언트가 보낸 <code>SUBSCRIBE</code>/<code>UNSUBSCRIBE</code>를
+      직접 받아 레지스트리를 고치기 위해서고, <code>brokerChannel</code>을 구독하는 이유는 서버 코드가 발행한 메시지를
+      받기 위해서다. <em>구독 등록</em>과 <em>메시지 발행</em>이 서로 다른 입구로 들어온다는 것이 핵심이다.
+    </li>
+    <li>
+      <strong>채널이 비동기라는 사실이 나중에 성능 문제로 돌아온다.</strong> 스케줄러가 <code>convertAndSend</code>를 호출해도
+      그 스레드는 즉시 리턴한다. 실제 전송은 <code>clientOutboundChannel</code>의 워커 스레드가 한다.
+      느린 클라이언트 한 명이 이 풀을 붙잡으면 <em>다른 사람의 시세까지</em> 늦어진다. (§7에서 다시)
+    </li>
+  </ul>
+
+  <h2>2. 연결 — 소켓 하나 위에 STOMP 세션 하나</h2>
+
+  <p>
+    <strong>엔드포인트는 종목마다 파는 것이 아니다.</strong> 이 서비스에 필요한 STOMP 엔드포인트는 사실상
+    <code>/ws/market</code> <strong>하나면 충분하다</strong>. 종목 구분은 URL이 아니라 <em>목적지 문자열</em>이 한다.
+    엔드포인트는 "건물 정문"이고, 목적지는 "건물 안의 호실 번호"다. 정문을 종목 수만큼 만들 이유가 없다.
+  </p>
+
+  <p>연결은 두 단계로 나뉜다. 이 구분이 인증 설계를 좌우한다.</p>
+
+  <table>
+    <thead><tr><th>단계</th><th>무슨 일</th><th>여기서만 할 수 있는 것</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>1단계</strong><br>HTTP 핸드셰이크</td>
+        <td>평범한 HTTP GET 요청에 <code>Upgrade: websocket</code>이 붙어 오고, 서버가 <code>101 Switching Protocols</code>로 답한다. <strong>같은 TCP 연결을 그대로 쓰면서 프로토콜만 바꾼다</strong> — 그래서 "업그레이드"다.</td>
+        <td><strong>쿠키·세션·헤더를 읽는 마지막 기회.</strong> 이 GET은 진짜 HTTP 요청이라 서블릿 필터 체인을 그대로 통과한다. 업그레이드 이후에는 HTTP 헤더 자체가 없으니 쿠키도 없다.</td>
+      </tr>
+      <tr>
+        <td><strong>2단계</strong><br>STOMP <code>CONNECT</code></td>
+        <td>클라이언트가 <code>CONNECT</code> 프레임을 보내고 서버가 <code>CONNECTED</code>로 답한다. 이때 프로토콜 버전과 <strong>하트비트 주기를 협상</strong>한다.</td>
+        <td>세션 쿠키 방식이면 <strong>여기서 할 일이 없다</strong> — 인증은 이미 1단계에서 끝났다. (토큰 방식이라면 이 프레임의 네이티브 헤더로 토큰을 받아 검증한다.)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="frame"><i>--- 1단계: 브라우저가 보내는 진짜 HTTP 요청 ---</i>
+GET /ws/market HTTP/1.1
+Host: trade.example.com
+<b>Upgrade: websocket</b>
+<b>Connection: Upgrade</b>
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+Origin: https://trade.example.com
+<b>Cookie: JSESSIONID=8A1F...</b>          <i>← 브라우저가 자동으로 붙인다</i>
+
+<i>--- 서버 응답. 이후 이 소켓에 HTTP는 더 이상 흐르지 않는다 ---</i>
+HTTP/1.1 <b>101 Switching Protocols</b>
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=</div>
+
+  <h3>세션 쿠키 인증이라면 — 사실 아무것도 안 해도 된다</h3>
+
+  <p>
+    핸드셰이크가 <strong>평범한 HTTP 요청</strong>이라는 사실이 여기서 전부를 결정한다.
+    그 요청은 Spring Security 필터 체인을 정상적으로 통과하고, <code>JSESSIONID</code> 쿠키로
+    <code>HttpSession</code>이 복원되고, 거기서 <code>Authentication</code>이 나온다.
+    Spring의 기본 핸드셰이크 처리기는 그 결과(<code>request.getUserPrincipal()</code>)를 집어
+    <strong>WebSocket 세션에 영구히 붙여둔다.</strong>
+  </p>
+
+  <p>결과적으로 이렇게 된다.</p>
+
+  <ul>
+    <li><code>@MessageMapping</code> 메서드에서 <code>Principal</code>을 파라미터로 그냥 받으면 된다.</li>
+    <li><code>/user/queue/...</code> (§6)가 이 <code>Principal</code>을 기준으로 동작한다. 별도 설정이 필요 없다.</li>
+    <li>메시지마다 인증을 다시 하지 않는다. <strong>핸드셰이크 때 한 번 확정된 것이 소켓이 살아 있는 내내 유지된다.</strong></li>
+  </ul>
+
+  <p class="warn">
+    <strong>대신 쿠키 방식이라 반드시 챙겨야 할 두 가지.</strong>
+    <br><br>
+    <strong>① Origin 제한 (CSWSH).</strong> WebSocket 핸드셰이크는 브라우저의 동일 출처 정책이
+    <em>막아주지 않는다.</em> 악성 사이트가 열어둔 <code>new WebSocket("wss://trade.example.com/ws/market")</code>에도
+    브라우저는 <strong>쿠키를 그대로 붙여 보낸다.</strong> 이게 Cross-Site WebSocket Hijacking이다.
+    HTTP API를 지켜주던 CSRF 토큰도 여기서는 소용이 없다 — 핸드셰이크에는 토큰을 실을 자리가 없기 때문이다.
+    <strong>허용 Origin을 명시적으로 화이트리스트</strong>로 잡아야 한다.
+    (<a href="./0010-csrf-token-attack-and-defense.html">0010 CSRF 레슨</a>에서 본 "쿠키는 자동으로 붙는다"는
+    성질이 그대로 재현되는 것이다.)
+    <br><br>
+    <strong>② 세션 만료와 소켓 수명의 불일치.</strong> 핸드셰이크 이후 <code>HttpSession</code>이 만료되어도
+    <strong>WebSocket 연결은 죽지 않는다.</strong> 소켓이 끊기기 전까지 계속 인증된 것으로 취급된다.
+    장 시간 열어두는 시세 화면에서는 이 간극을 인지하고, 필요하면 주기적으로 재검증하거나 세션 만료 시
+    해당 WebSocket 세션을 끊는 처리를 넣는다.
+  </p>
+
+  <div class="frame"><b>CONNECT</b>
+accept-version:1.2
+host:trade.example.com
+heart-beat:10000,10000     <i>← 내가 보낼 수 있는 주기, 내가 받고 싶은 주기 (ms)</i>
+
+^@
+<i>--- 서버 응답 ---</i>
+<b>CONNECTED</b>
+version:1.2
+heart-beat:10000,10000     <i>← 실제 주기는 양쪽 값의 MAX 로 결정된다</i>
+session:s1
+
+^@</div>
+
+  <p>
+    <code>CONNECTED</code>가 나가는 시점에 Spring은 <code>SessionConnectedEvent</code>를 발행한다.
+    이제부터 이 연결에는 <strong><code>simpSessionId</code></strong>(위 예에서 <code>s1</code>)가 붙고, 모든 후속
+    프레임에 이 값이 따라다닌다. 브로커가 "누구에게 보낼지"를 아는 근거가 바로 이 문자열이다.
+  </p>
+
+  <p class="warn">
+    <strong>세션 ≠ 사람.</strong> 한 사용자가 탭을 3개 열면 세션이 3개다. 각각 독립적으로 구독하고 독립적으로 끊긴다.
+    "사용자 단위"로 뭔가를 보내고 싶다면 세션 ID가 아니라 <code>Principal</code>(로그인 사용자)을 기준으로 삼아야 하고,
+    그게 §6의 <code>/user</code> 목적지가 존재하는 이유다.
+  </p>
+
+  <h2>3. 종목 구독 — 프레임 한 장이 레지스트리 한 줄을 만든다</h2>
+
+  <p>사용자가 삼성전자 차트를 열면 클라이언트는 이 프레임을 보낸다.</p>
+
+  <div class="frame"><b>SUBSCRIBE</b>
+id:sub-0                            <i>← 이 연결 안에서만 유일하면 되는 구독 번호. 클라이언트가 정한다.</i>
+destination:/topic/ticks/005930     <i>← 구독할 주소</i>
+ack:auto                            <i>← 기본값. 서버가 보내면 전달된 것으로 친다.</i>
+
+^@</div>
+
+  <p>이 프레임이 서버 안에서 겪는 일은 정확히 다음과 같다.</p>
+
+  <ol class="steps">
+    <li><code>StompSubProtocolHandler</code>가 텍스트를 파싱해 Spring <code>Message</code>로 바꾸고, 헤더에
+        <code>simpMessageType=SUBSCRIBE</code>, <code>simpSessionId=s1</code>, <code>simpSubscriptionId=sub-0</code>,
+        <code>simpDestination=/topic/ticks/005930</code>을 심는다. <strong>여기서 세션 ID가 메시지에 각인된다.</strong></li>
+    <li>메시지가 <code>clientInboundChannel</code>에 실린다. 이 채널을 구독한 핸들러들이 각자 "내 담당인가?"를 본다.</li>
+    <li>목적지가 <code>/topic</code>으로 시작하므로 <code>SimpleBrokerMessageHandler</code>가 처리한다.
+        (<code>/app</code>이 아니므로 <code>@MessageMapping</code> 쪽은 관심을 갖지 않는다.)</li>
+    <li>브로커가 <code>DefaultSubscriptionRegistry</code>에 <strong>(목적지, 세션 ID, 구독 ID)</strong> 한 줄을 추가한다.
+        DB도 파일도 아니고 <strong>그냥 JVM 힙 안의 맵</strong>이다.</li>
+    <li>Spring이 <code>SessionSubscribeEvent</code>를 발행한다. "이 종목의 구독자가 방금 0명에서 1명이 되었다" 같은
+        판단을 여기서 걸 수 있다.</li>
+  </ol>
+
+  <p>레지스트리에 쌓인 결과를 눈으로 그려보면 대략 이런 모양이다.</p>
+
+  <div class="mem">DefaultSubscriptionRegistry  (SimpleBroker 내부, 서버 메모리)
+
+  "/topic/ticks/005930" ─┬─ 세션 s1 ─ [ "sub-0" ]
+                         └─ 세션 s2 ─ [ "sub-3" ]
+
+  "/topic/ticks/000660" ─── 세션 s1 ─ [ "sub-1" ]
+
+  "/topic/ticks/035720" ─── 세션 s3 ─ [ "sub-0" ]   <i>← 구독 ID는 연결마다 독립. s1의 sub-0 과 무관하다.</i>
+
+  "/queue/execution-s1" ─── 세션 s1 ─ [ "sub-2" ]   <i>← /user/queue/execution 이 재작성된 결과 (§6)</i>
+</div>
+
+  <p class="note">
+    <strong>이 표가 곧 "사용자마다 다른 정보"의 정체다.</strong> 서버는 매 틱마다 "userA는 뭘 봐야 하지?"를 계산하지
+    않는다. 그 답은 이미 사용자가 SUBSCRIBE로 <em>미리 적어 둔 것</em>이고, 서버는 그저 주소를 부를 뿐이다.
+    개인화가 <strong>발행 시점</strong>이 아니라 <strong>구독 시점</strong>으로 옮겨진 것 — 이것이 브로커 모델의 핵심 이득이다.
+  </p>
+
+  <p>
+    구독 ID(<code>id:sub-0</code>)가 왜 따로 필요한지도 짚어두자. 같은 세션이 <strong>같은 목적지를 두 번 구독</strong>할 수
+    있기 때문이다 (예: 상단 차트 위젯과 하단 호가창이 각각 <code>/topic/ticks/005930</code>을 구독). 서버가 보내는
+    <code>MESSAGE</code> 프레임에는 <code>subscription:sub-0</code> 헤더가 붙고, 클라이언트 라이브러리는 그 값으로
+    <em>어느 콜백 함수로 넘길지</em>를 고른다. 목적지가 아니라 구독 ID가 라우팅 키다.
+  </p>
+
+  <h2>4. 처음 연결됐을 때의 공백 — 스냅샷 문제</h2>
+
+  <p>
+    구독은 끝났다. 그런데 화면은 비어 있다. <strong>다음 틱이 올 때까지 클라이언트는 아무것도 모른다.</strong>
+    실시간 시세라면 몇 초만 참으면 되지만, <strong>과거 데이터 재생에서는 이 문제가 훨씬 날카롭다</strong> —
+    거래가 뜸한 종목이면 다음 틱까지 가상 시간으로 몇 분이 걸릴 수도 있다.
+  </p>
+
+  <p>선택지는 세 가지이고, 실무 판단이 갈리는 지점이다.</p>
+
+  <table>
+    <thead><tr><th>방식</th><th>동작</th><th>평가</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>(a)</strong> <code>@SubscribeMapping</code></td>
+        <td>구독 프레임을 <code>/app</code> 접두사로 받아 처리하고, 반환값이 <strong>브로커를 거치지 않고</strong>
+            구독한 그 세션에게만 곧장 간다.</td>
+        <td>한 왕복으로 끝나 깔끔하다. 다만 목적지가 <code>/app/...</code>이어야 해서, 스냅샷용 구독과 스트림용 구독이
+            <em>서로 다른 주소</em>가 된다.</td>
+      </tr>
+      <tr>
+        <td><strong>(b)</strong> REST 스냅샷 후 구독</td>
+        <td>클라이언트가 <code>GET /api/quotes/005930</code>로 현재 상태를 받고, 그 다음 SUBSCRIBE 한다.</td>
+        <td><strong>가장 흔하고 안전한 선택.</strong> 캐시·페이징·에러 처리 등 HTTP 도구를 그대로 쓸 수 있다.</td>
+      </tr>
+      <tr>
+        <td><strong>(c)</strong> <code>SessionSubscribeEvent</code> 리스너</td>
+        <td>구독 이벤트를 잡아 그 세션에게 스냅샷을 밀어 넣는다.</td>
+        <td>목적지는 하나로 유지되지만, 이벤트 시점과 구독 등록 완료 시점 사이 경합을 신경 써야 한다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>어느 방식을 쓰든 경계에서 구멍이나 중복이 난다.</strong> 스냅샷을 읽는 사이에 틱이 지나가면 <em>구멍</em>,
+    스냅샷에 이미 포함된 틱이 스트림으로 또 오면 <em>중복</em>이다. 정답은 하나다 —
+    <strong>모든 틱에 단조 증가하는 시퀀스 번호(또는 가상 타임스탬프)를 실어 보내고, 클라이언트가 마지막으로 본 번호
+    이하를 버리게 한다.</strong> 이건 프로토콜 문제가 아니라 데이터 설계 문제라서 STOMP가 해주지 않는다.
+  </p>
+
+  <h2>5. 틱 발생 — 메시지 1개가 N개로 복제되는 지점</h2>
+
+  <p>이제 스케줄러가 가상 시계를 09:30:01로 한 칸 민다. 서버가 하는 일은 놀랄 만큼 단순하다.</p>
+
+  <ol class="steps">
+    <li>DB에서 09:30:00 &lt; ts ≤ 09:30:01 구간의 틱을 <strong>한 번에</strong> 읽는다. (사용자 수와 무관한 쿼리 1회)</li>
+    <li>종목별로 묶어서, 종목 코드마다 <code>convertAndSend("/topic/ticks/" + code, tick)</code>을 호출한다.
+        <strong>접속자가 1명이든 500명이든 이 호출 횟수는 "그 시각에 틱이 있는 종목 수"와 같다.</strong></li>
+    <li>메시지가 <code>brokerChannel</code>에 실리고, <code>SimpleBrokerMessageHandler</code>가 집어간다.</li>
+    <li>브로커가 레지스트리에서 그 목적지에 매칭되는 구독을 전부 찾는다
+        (<code>AntPathMatcher</code> 기반이라 <code>/topic/ticks/*</code> 같은 와일드카드 구독도 매칭된다).</li>
+    <li><strong>매칭된 구독 하나당 메시지를 한 벌씩 복제</strong>하면서, 헤더에 그 구독의
+        <code>simpSessionId</code>와 <code>simpSubscriptionId</code>를 박아 <code>clientOutboundChannel</code>로 보낸다.</li>
+    <li><code>StompSubProtocolHandler</code>가 각 메시지를 <code>MESSAGE</code> 프레임으로 인코딩해
+        해당 세션의 WebSocket으로 써넣는다.</li>
+  </ol>
+
+  <div class="frame"><i>--- s1 이 받는 프레임 ---</i>
+<b>MESSAGE</b>
+destination:/topic/ticks/005930
+subscription:sub-0                  <i>← s1 이 정했던 구독 번호</i>
+message-id:s1-42
+content-type:application/json
+
+{"code":"005930","ts":"09:30:01","price":68400,"vol":120,"seq":10471}^@
+
+<i>--- s2 가 받는 프레임 (같은 틱, 다른 세션) ---</i>
+<b>MESSAGE</b>
+destination:/topic/ticks/005930
+subscription:sub-3                  <i>← s2 가 정했던 번호라 값이 다르다</i>
+message-id:s2-17
+content-type:application/json
+
+{"code":"005930","ts":"09:30:01","price":68400,"vol":120,"seq":10471}^@</div>
+
+  <p>
+    본문(payload)은 완전히 동일하고 <strong>라우팅 헤더만 다르다</strong>. 공용 시계 모델의 이득이 여기서 그대로 드러난다 —
+    서버 코드가 만든 객체는 <em>하나</em>이고, 나머지는 브로커의 기계적인 복제다.
+    JSON 직렬화도 <code>convertAndSend</code> 시점에 <strong>딱 한 번</strong> 일어나고, 복제할 때는 이미 만들어진
+    바이트 배열을 재사용한다.
+  </p>
+
+  <p class="warn">
+    <strong>여기서 오해하기 쉬운 것 — 브로커는 틱을 저장하지 않는다.</strong>
+    브로커가 <em>오래 보관</em>하는 것은 <strong>구독 목록뿐</strong>이다.
+    틱 메시지는 들어와서 → 복제되고 → <code>clientOutboundChannel</code>로 넘어가면 그 자리에서 끝이고,
+    곧 GC 대상이 된다.
+    <br><br>
+    <strong>그래서 구독하기 전에 발행된 틱은 영원히 볼 수 없다.</strong> 이것이 §4의 스냅샷 공백 문제가
+    존재하는 근본 이유이고, <a href="./0016-kafka-core-concepts-event-streaming.html">Kafka</a>와
+    결정적으로 다른 지점이다 — Kafka는 로그에 남겨두어 나중에 온 컨슈머도 과거를 읽는다.
+    STOMP 브로커는 <strong>그 순간 붙어 있는 구독자에게만</strong> 보낸다.
+    <br><br>
+    그리고 브로커는 <strong>소켓을 만지지 않는다.</strong> 세션 ID라는 문자열만 알 뿐이고,
+    그 문자열을 실제 소켓으로 바꾸는 것은 <code>StompSubProtocolHandler</code>의 일이다.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 360" role="img" aria-label="topic fan-out 과 user queue 의 대비">
+      <defs>
+        <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+        <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309"/>
+        </marker>
+      </defs>
+
+      <line x1="440" y1="10" x2="440" y2="350" stroke="#deded6" stroke-width="1.5"/>
+
+      <!-- LEFT: topic -->
+      <text class="d-title" x="24" y="28">① 값이 모두에게 같다 → topic</text>
+      <rect class="d-box-a" x="120" y="46" width="200" height="42"/>
+      <text class="d-label" x="136" y="72">005930 틱 1개 (서버가 1번 생성)</text>
+      <path class="d-line-a" d="M 220 88 L 220 122" marker-end="url(#ah2)"/>
+      <rect class="d-box-a" x="40" y="126" width="360" height="38"/>
+      <text class="d-label-mono" x="56" y="150">/topic/ticks/005930</text>
+      <path class="d-line-a" d="M 220 164 L 220 186" />
+      <path class="d-line-a" d="M 90 186 L 350 186" />
+      <path class="d-line-a" d="M 90 186 L 90 218" marker-end="url(#ah2)"/>
+      <path class="d-line-a" d="M 220 186 L 220 218" marker-end="url(#ah2)"/>
+      <path class="d-line-a" d="M 350 186 L 350 218" marker-end="url(#ah2)"/>
+      <rect class="d-box" x="45"  y="222" width="90" height="38"/>
+      <rect class="d-box" x="175" y="222" width="90" height="38"/>
+      <rect class="d-box" x="305" y="222" width="90" height="38"/>
+      <text class="d-label" x="78"  y="246">세션 s1</text>
+      <text class="d-label" x="208" y="246">세션 s2</text>
+      <text class="d-label" x="338" y="246">세션 s3</text>
+      <text class="d-label-sm" x="40" y="296">복제는 브로커가 한다. 접속자가 500명이 되어도</text>
+      <text class="d-label-sm" x="40" y="314">서버 코드의 호출 횟수는 그대로 1번.</text>
+
+      <!-- RIGHT: user queue -->
+      <text class="d-title" x="470" y="28">② 값이 그 사람 것이다 → user queue</text>
+      <rect class="d-box-b" x="560" y="46" width="200" height="42"/>
+      <text class="d-label" x="576" y="72">userA 주문 체결 통보</text>
+      <path class="d-line" d="M 660 88 L 660 122" marker-end="url(#ah3)" stroke="#b45309"/>
+      <rect class="d-box-b" x="480" y="126" width="360" height="38"/>
+      <text class="d-label-mono" x="496" y="150">/queue/execution-s1</text>
+      <text class="d-label-sm" x="480" y="180">(클라이언트가 구독한 것은 /user/queue/execution)</text>
+      <path class="d-line" d="M 530 190 L 530 218" marker-end="url(#ah3)" stroke="#b45309"/>
+      <rect class="d-box" x="485" y="222" width="90" height="38"/>
+      <text class="d-label" x="518" y="246">세션 s1</text>
+      <rect x="615" y="222" width="90" height="38" rx="6" fill="#f6f6f3" stroke="#c9c9c1" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <rect x="745" y="222" width="90" height="38" rx="6" fill="#f6f6f3" stroke="#c9c9c1" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <text class="d-label-sm" x="646" y="246">세션 s2</text>
+      <text class="d-label-sm" x="776" y="246">세션 s3</text>
+      <text class="d-label-sm" x="470" y="296">s2·s3 는 애초에 다른 목적지(-s2, -s3)를 구독 중이라</text>
+      <text class="d-label-sm" x="470" y="314">이 메시지의 매칭 대상 자체가 아니다.</text>
+    </svg>
+    <figcaption>
+      같은 브로커, 같은 레지스트리, 같은 매칭 알고리즘. <strong>다른 것은 목적지 문자열 하나뿐</strong>이다.
+    </figcaption>
+  </figure>
+
+  <p class="note">
+    <strong>공짜로 따라오는 최적화.</strong> 아무도 구독하지 않은 종목은 매칭 결과가 빈 목록이라 아무 일도 일어나지 않는다.
+    한 걸음 더 나가면 — <code>SessionSubscribeEvent</code>/<code>SessionUnsubscribeEvent</code>로 종목별 구독자 수를
+    세어 두고, <strong>구독자가 0명인 종목은 DB에서 아예 읽지 않을</strong> 수 있다. 코스피 전 종목을 매 틱 읽어 뿌리는
+    설계와 실제 보고 있는 30종목만 읽는 설계의 차이는 크다.
+  </p>
+
+  <h2>6. 개인 데이터 — <code>/user</code> 목적지는 "가짜 주소"다</h2>
+
+  <p>
+    체결 통보, 잔고, 평가손익은 층위 ③이다. 값 자체가 그 사람 것이라 <code>/topic</code>에 두면 안 된다
+    (목적지 문자열만 알면 남의 것도 구독할 수 있으니까).
+  </p>
+
+  <p>클라이언트는 이렇게 구독한다. 주목할 점: <strong>사용자 ID가 어디에도 없다.</strong></p>
+
+  <div class="frame"><b>SUBSCRIBE</b>
+id:sub-2
+destination:/user/queue/execution     <i>← 모든 사용자가 글자 그대로 이 주소를 구독한다</i>
+
+^@</div>
+
+  <p>
+    <code>/user</code>는 브로커가 아는 주소가 아니다. <code>UserDestinationMessageHandler</code>가 중간에서 가로채
+    <strong>그 세션 전용 주소로 재작성</strong>한 뒤 브로커에 등록한다. 그래서 §3의 레지스트리 덤프에는
+    <code>/user/queue/execution</code>이 아니라 <code>/queue/execution-s1</code>이 들어 있었던 것이다.
+  </p>
+
+  <table>
+    <thead><tr><th>방향</th><th>겉으로 쓰는 주소</th><th>브로커가 실제로 아는 주소</th></tr></thead>
+    <tbody>
+      <tr><td>클라이언트가 구독</td><td><code>/user/queue/execution</code></td><td><code>/queue/execution-s1</code></td></tr>
+      <tr><td>서버가 발송<br><code>convertAndSendToUser("userA", "/queue/execution", …)</code></td>
+          <td><code>/user/userA/queue/execution</code></td>
+          <td>userA의 <strong>모든 세션</strong>으로 전개 →<br><code>/queue/execution-s1</code>, <code>/queue/execution-s7</code>, …</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    즉 발송 시점에 Spring은 "userA가 지금 열어 둔 세션이 뭐뭐지?"를 조회해서 <strong>세션 수만큼 목적지를 만들어</strong>
+    브로커에 넣는다. 탭 3개를 열어 뒀다면 3곳 모두에 체결 통보가 뜬다 (기본 <code>broadcast=true</code>).
+    반대로 "방금 요청 보낸 그 세션에게만" 답하고 싶다면 <code>broadcast=false</code>를 쓴다 — 에러 응답이 대표적이다.
+  </p>
+
+  <p class="warn">
+    <strong>설정에서 자주 틀리는 곳.</strong> <code>/user</code>는 <em>애플리케이션 접두사도 브로커 접두사도 아닌
+    제3의 접두사</em>다. 브로커에 <code>/queue</code>가 등록돼 있어야 재작성된 주소가 배달되고, <code>/user</code> 자체는
+    브로커 접두사 목록에 있으면 안 된다. 있으면 브로커가 <code>/user/...</code>를 그대로 삼켜버려서
+    <code>UserDestinationMessageHandler</code>가 손 쓸 기회를 잃는다.
+    <br><br>
+    그리고 로그인하지 않은 세션도 <code>/user</code> 목적지를 쓸 수 있다. 이때는 <code>Principal</code>이 없으니
+    "그 세션에게만" 이라는 의미(<code>broadcast=false</code>와 같은 동작)로 동작한다.
+  </p>
+
+  <h2>7. 구독 취소와 연결 종료 — 레지스트리에서 줄이 사라진다</h2>
+
+  <p>
+    사용자가 삼성전자 차트를 닫으면 클라이언트가 <code>UNSUBSCRIBE</code>를 보낸다.
+    <strong>여기에 <code>destination</code> 헤더가 없다는 점</strong>이 이 프레임의 성격을 말해준다.
+  </p>
+
+  <div class="frame"><b>UNSUBSCRIBE</b>
+id:sub-0        <i>← 이것뿐이다. 목적지는 안 보낸다.</i>
+
+^@</div>
+
+  <p>
+    브로커는 <code>(세션 s1, 구독 sub-0)</code> 조합으로 레지스트리의 그 한 줄을 지운다. 그 다음 틱부터 매칭 대상에서
+    빠지고, s1에게는 더 이상 005930 틱이 가지 않는다. <strong>서버 코드는 아무것도 바꾸지 않았다.</strong>
+    스케줄러는 여전히 같은 주소로 던지고 있고, 구독자 목록만 한 줄 줄었을 뿐이다.
+  </p>
+
+  <p>종료 경로는 세 가지고, 결과는 모두 같다.</p>
+
+  <table>
+    <thead><tr><th>경로</th><th>어떻게 감지되나</th><th>결과</th></tr></thead>
+    <tbody>
+      <tr><td><code>UNSUBSCRIBE</code></td><td>클라이언트가 명시적으로 보냄</td><td>해당 구독 <strong>1줄</strong>만 삭제</td></tr>
+      <tr><td><code>DISCONNECT</code> 후 소켓 종료</td><td>클라이언트가 정상 종료</td><td><code>SessionDisconnectEvent</code> → 그 세션의 <strong>모든 구독</strong> 삭제</td></tr>
+      <tr><td>비정상 끊김 (지하철·와이파이)</td><td>TCP 종료 감지, 또는 <strong>하트비트 미수신</strong>으로 서버가 판정</td><td>동일 — 모든 구독 삭제</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>하트비트가 왜 필요한가.</strong> TCP는 중간 프록시나 모바일 네트워크에서 조용히 죽는 경우가 흔하다.
+    양쪽이 주기적으로 빈 프레임을 주고받지 않으면, 서버는 이미 사라진 세션의 구독을 계속 유지한 채 메시지를 복제해
+    허공에 쓴다. 하트비트는 <em>연결 유지</em>보다 <strong>죽은 구독을 제때 청소하기 위한 장치</strong>에 가깝다.
+  </p>
+
+  <h2>8. 전체 시퀀스 한 장</h2>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 700" role="img" aria-label="연결부터 종료까지 STOMP 프레임 시퀀스">
+      <defs>
+        <marker id="sr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+        <marker id="sl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#b45309"/>
+        </marker>
+      </defs>
+
+      <rect class="d-box" x="60" y="16" width="180" height="40"/>
+      <text class="d-title" x="90" y="42">브라우저 (userA)</text>
+      <rect class="d-box-a" x="640" y="16" width="180" height="40"/>
+      <text class="d-title" x="668" y="42">Spring 서버 1대</text>
+      <line x1="150" y1="56" x2="150" y2="676" class="d-line-d"/>
+      <line x1="730" y1="56" x2="730" y2="676" class="d-line-d"/>
+
+      <!-- 1 -->
+      <path class="d-line-a" d="M 150 96 L 726 96" marker-end="url(#sr)"/>
+      <text class="d-label-mono" x="200" y="88">GET /ws/market   Upgrade: websocket</text>
+      <!-- 2 -->
+      <path class="d-line" d="M 730 140 L 154 140" marker-end="url(#sl)" stroke="#b45309"/>
+      <text class="d-label-mono" x="200" y="132">101 Switching Protocols</text>
+      <text class="d-label-sm" x="200" y="158" fill="#0f766e">세션 s1 생성 · Principal 확정 (쿠키를 읽을 마지막 기회)</text>
+      <!-- 3 -->
+      <path class="d-line-a" d="M 150 192 L 726 192" marker-end="url(#sr)"/>
+      <text class="d-label-mono" x="200" y="184">CONNECT  accept-version:1.2  heart-beat:10000,10000</text>
+      <!-- 4 -->
+      <path class="d-line" d="M 730 236 L 154 236" marker-end="url(#sl)" stroke="#b45309"/>
+      <text class="d-label-mono" x="200" y="228">CONNECTED  version:1.2  session:s1</text>
+      <text class="d-label-sm" x="200" y="254" fill="#0f766e">SessionConnectedEvent 발행</text>
+      <!-- 5 -->
+      <path class="d-line-a" d="M 150 288 L 726 288" marker-end="url(#sr)"/>
+      <text class="d-label-mono" x="200" y="280">SUBSCRIBE  id:sub-0  destination:/topic/ticks/005930</text>
+      <text class="d-label-sm" x="200" y="306" fill="#0f766e">레지스트리에 ("/topic/ticks/005930", s1, sub-0) 추가</text>
+      <!-- 6 -->
+      <path class="d-line-a" d="M 150 340 L 726 340" marker-end="url(#sr)"/>
+      <text class="d-label-mono" x="200" y="332">SUBSCRIBE  id:sub-2  destination:/user/queue/execution</text>
+      <text class="d-label-sm" x="200" y="358" fill="#0f766e">"/queue/execution-s1" 로 재작성되어 등록</text>
+      <!-- 7 -->
+      <path class="d-line" d="M 730 400 L 154 400" marker-end="url(#sl)" stroke="#b45309"/>
+      <text class="d-label-mono" x="200" y="392">MESSAGE  subscription:sub-0   (가상시각 09:30:01)</text>
+      <!-- 8 -->
+      <path class="d-line" d="M 730 436 L 154 436" marker-end="url(#sl)" stroke="#b45309"/>
+      <text class="d-label-mono" x="200" y="428">MESSAGE  subscription:sub-0   (가상시각 09:30:02)</text>
+      <text class="d-label-sm" x="200" y="456" fill="#0f766e">같은 틱이 s2 에게도 복제되어 나간다 (구독 ID만 다름)</text>
+      <!-- 9 -->
+      <path class="d-line-a" d="M 150 490 L 726 490" marker-end="url(#sr)"/>
+      <text class="d-label-mono" x="200" y="482">SEND  destination:/app/order   {"code":"005930","qty":10}</text>
+      <text class="d-label-sm" x="200" y="508" fill="#0f766e">@MessageMapping 으로 라우팅 → 체결 처리</text>
+      <!-- 10 -->
+      <path class="d-line" d="M 730 542 L 154 542" marker-end="url(#sl)" stroke="#b45309"/>
+      <text class="d-label-mono" x="200" y="534">MESSAGE  subscription:sub-2   (나에게만 가는 체결 통보)</text>
+      <!-- 11 -->
+      <path class="d-line-a" d="M 150 592 L 726 592" marker-end="url(#sr)"/>
+      <text class="d-label-mono" x="200" y="584">UNSUBSCRIBE  id:sub-0</text>
+      <text class="d-label-sm" x="200" y="610" fill="#0f766e">그 한 줄만 삭제 — 이후 005930 틱은 s1 에게 안 간다</text>
+      <!-- 12 -->
+      <path class="d-line-a" d="M 150 652 L 726 652" marker-end="url(#sr)"/>
+      <text class="d-label-mono" x="200" y="644">DISCONNECT  (또는 소켓 끊김 · 하트비트 미수신)</text>
+      <text class="d-label-sm" x="200" y="670" fill="#0f766e">SessionDisconnectEvent → s1 의 남은 구독 전부 삭제</text>
+    </svg>
+    <figcaption>
+      프레임 종류와 헤더는 <a href="https://stomp.github.io/stomp-specification-1.2.html">STOMP 1.2 명세</a> 기준.
+      초록 화살표는 클라이언트 → 서버, 주황 화살표는 서버 → 클라이언트.
+    </figcaption>
+  </figure>
+
+  <h2>9. 이 설계가 깨지는 지점 — 미리 알아둘 다섯 가지</h2>
+
+  <table>
+    <thead><tr><th>함정</th><th>왜 생기나</th><th>어떻게 다루나</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>서버가 2대가 되는 순간</strong></td>
+        <td>SimpleBroker의 레지스트리는 <strong>그 JVM의 힙</strong>이다. A서버 스케줄러가 발행한 틱은 B서버에 붙은
+            사용자에게 <em>절대</em> 가지 않는다.</td>
+        <td>서버 1대라는 전제가 무너지면 SimpleBroker도 같이 무너진다. 그때가 외부 브로커(RabbitMQ/ActiveMQ) 릴레이를
+            검토할 시점이다. <strong>지금은 1대이므로 SimpleBroker가 정답이다.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>재시작하면 전부 사라짐</strong></td>
+        <td>구독이 메모리에만 있으니 배포 한 번에 전 사용자 구독이 증발한다.</td>
+        <td>클라이언트가 재연결 후 <strong>스스로 재구독</strong>하게 만든다. "무엇을 구독 중이었는지"는 클라이언트가
+            기억해야 할 상태다.</td>
+      </tr>
+      <tr>
+        <td><strong>느린 클라이언트 한 명</strong></td>
+        <td><code>clientOutboundChannel</code>은 공용 스레드 풀이다. 소켓 버퍼가 막힌 세션 하나가 워커를 붙잡으면
+            <em>다른 사람의 시세까지</em> 밀린다.</td>
+        <td>전송 버퍼 크기·전송 시간 제한을 걸어 <strong>못 따라오는 세션은 끊어버린다.</strong> 시세는 밀린 데이터를
+            끝까지 배달하는 것보다 최신을 주는 게 낫다.</td>
+      </tr>
+      <tr>
+        <td><strong>틱 폭주</strong></td>
+        <td>재생 배속을 올리면 초당 수백 틱이 나온다. 그대로 뿌리면 브라우저가 먼저 죽는다.</td>
+        <td>발행 <em>전에</em> 서버에서 합친다 — 100ms 창 안의 틱은 마지막 값(또는 OHLC 요약) 하나로 눌러 보낸다.
+            브로커는 던지는 대로 다 보내므로, 조절은 발행자의 책임이다.</td>
+      </tr>
+      <tr>
+        <td><strong>구독 권한이 없다</strong></td>
+        <td>STOMP는 목적지 문자열만 맞으면 누구나 구독시킨다. 개인 정보를 <code>/topic/portfolio/userA</code> 같은
+            곳에 두면 남이 그 주소를 구독해 훔쳐볼 수 있다.</td>
+        <td>개인 데이터는 반드시 <code>/user</code> 목적지로. 추가로 <code>ChannelInterceptor</code>에서
+            <code>SUBSCRIBE</code> 프레임을 검사해 허용된 목적지인지 확인한다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>10. 정리 — 한 문장씩</h2>
+
+  <ul>
+    <li><strong>엔드포인트</strong>는 <code>/ws/market</code> 하나면 된다. 종목 구분은 URL이 아니라 목적지 문자열이 한다.</li>
+    <li><strong>연결</strong>은 HTTP 핸드셰이크(인증 확정)와 STOMP <code>CONNECT</code>(세션 확립) 두 단계다.</li>
+    <li><strong>구독</strong>은 브로커 메모리에 <code>(목적지, 세션, 구독ID)</code> 한 줄을 추가하는 행위다.</li>
+    <li><strong>개인화는 발행 시점이 아니라 구독 시점에 일어난다.</strong> 서버는 주소를 부르고, 브로커가 복제한다.</li>
+    <li><strong>공용 값은 <code>/topic</code>, 개인 값은 <code>/user/queue</code></strong> — 판단 기준은 딱 하나,
+        "이 값이 다른 사람에게도 똑같은가?"</li>
+    <li><strong>구독 취소</strong>는 그 한 줄을, <strong>연결 종료</strong>는 그 세션의 모든 줄을 지운다.</li>
+  </ul>
+
+  <h2>11. 확인해보기</h2>
+
+  <section class="quiz" aria-label="STOMP 모의투자 틱 스트리밍 퀴즈">
+    <p><strong>Q1.</strong> 공용 시계 모델에서 500명이 005930을 구독 중일 때, 틱 1건에 대해 서버 <em>애플리케이션 코드</em>가 만드는 메시지 객체는 몇 개인가?</p>
+    <button type="button" data-target="a1" data-answer="wrong">500개 — 접속한 세션 수만큼 만든다</button>
+    <button type="button" data-target="a1" data-answer="correct">1개 — 복제는 브로커가 담당한다</button>
+    <button type="button" data-target="a1" data-answer="wrong">2개 — 원본 하나와 사본 하나다</button>
+    <p class="answer" id="a1"></p>
+
+    <p><strong>Q2.</strong> <code>SimpleBrokerMessageHandler</code>가 <code>clientInboundChannel</code>까지 구독하는 이유는?</p>
+    <button type="button" data-target="a2" data-answer="wrong">서버가 발행한 메시지를 받기 위해서</button>
+    <button type="button" data-target="a2" data-answer="correct">구독·해지 프레임을 직접 받기 위해서</button>
+    <button type="button" data-target="a2" data-answer="wrong">완성된 프레임을 소켓에 쓰기 위해서</button>
+    <p class="answer" id="a2"></p>
+
+    <p><strong>Q3.</strong> <code>UNSUBSCRIBE</code> 프레임에 <code>destination</code> 헤더가 없는 이유는?</p>
+    <button type="button" data-target="a3" data-answer="wrong">목적지는 서버가 알아서 추측하기 때문</button>
+    <button type="button" data-target="a3" data-answer="correct">구독 ID 하나로 그 줄이 특정되기 때문</button>
+    <button type="button" data-target="a3" data-answer="wrong">해지는 전체 세션에 일괄 적용되기 때문</button>
+    <p class="answer" id="a3"></p>
+
+    <p><strong>Q4.</strong> 클라이언트가 <code>/user/queue/execution</code>을 구독했을 때, 브로커 레지스트리에 실제로 저장되는 목적지는?</p>
+    <button type="button" data-target="a4" data-answer="wrong"><code>/user/queue/execution</code> 원문 그대로</button>
+    <button type="button" data-target="a4" data-answer="correct"><code>/queue/execution-{세션ID}</code> 형태</button>
+    <button type="button" data-target="a4" data-answer="wrong"><code>/topic/execution-{사용자ID}</code> 형태</button>
+    <p class="answer" id="a4"></p>
+
+    <p><strong>Q5.</strong> 서버를 2대로 늘리면 이 설계에서 가장 먼저 깨지는 것은?</p>
+    <button type="button" data-target="a5" data-answer="wrong">STOMP 프레임 인코딩 형식이 서로 달라진다</button>
+    <button type="button" data-target="a5" data-answer="correct">구독 레지스트리가 서버마다 따로 존재한다</button>
+    <button type="button" data-target="a5" data-answer="wrong">클라이언트가 구독 ID를 새로 발급받아야 한다</button>
+    <p class="answer" id="a5"></p>
+  </section>
+
+  <h2>더 읽을 것</h2>
+
+  <p>
+    <strong>1순위 원문:</strong>
+    <a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/message-flow.html">Spring Framework Reference — Flow of Messages</a>.
+    이 레슨 §1의 배관도가 나온 곳이다. 짧으니 그림 두 개를 직접 보고 오면 나머지가 전부 그 위에 얹힌다.
+  </p>
+  <ul>
+    <li><a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/user-destination.html">Spring — User Destinations</a> — §6의 재작성 규칙 원문.</li>
+    <li><a href="https://stomp.github.io/stomp-specification-1.2.html">STOMP Protocol Specification 1.2</a> — 프레임과 헤더의 최종 근거.</li>
+    <li><a href="https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/messaging/simp/broker/DefaultSubscriptionRegistry.html">DefaultSubscriptionRegistry Javadoc</a> — 매칭 방식과 캐시 한도.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="./0032-stomp-and-spring-messaging-vocabulary.html">0032 — 어휘</a>(Message·Channel·Handler) ·
+    <a href="./0033-stomp-config-controller-and-broker-in-code.html">0033 — 코드</a> ·
+    <a href="./0034-swapping-simplebroker-for-rabbitmq-relay.html">0034 — 브로커 교체</a> ·
+    <a href="./0035-tick-scheduler-and-destination-convention.html">0035 — 틱 스케줄러와 destination 규약</a> ·
+    <a href="../reference/0017-stomp-simplebroker-cheatsheet.html">0017 — STOMP + SimpleBroker 치트시트</a>(목적지 규칙과 프레임을 빠르게 찾을 때).
+    브로커가 메시지를 복제해 여러 소비자에게 보내는 발상 자체는
+    <a href="./0016-kafka-core-concepts-event-streaming.html">0016 Kafka 핵심 개념</a>과 같은 뿌리다 —
+    다만 STOMP 브로커는 <em>저장하지 않고</em>, 그 순간 붙어 있는 구독자에게만 보낸다는 점이 결정적으로 다르다.
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> 이 레슨에서 한 줄이라도 흐릿하면 그대로 질문해도 된다 —
+    "구독 ID랑 세션 ID가 헷갈린다", "스냅샷 구멍 예시를 숫자로 보여달라", "실제 설정 코드로 보고 싶다" 같은 것도 좋다.
+    다음 단계 후보는 <strong>가상 시계 스케줄러 설계</strong>(배속·일시정지·구독자 0인 종목 스킵)와
+    <strong>SUBSCRIBE 권한 검사 인터셉터</strong>다.
+  </p>
+
+  <p>
+    <strong>실전 감각이 필요해지면:</strong>
+    <a href="https://stackoverflow.com/questions/tagged/spring-websocket">Stack Overflow의 <code>spring-websocket</code> 태그</a>는
+    "구독은 되는데 메시지가 안 온다" 류의 실제 사례가 가장 많이 모인 곳이다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

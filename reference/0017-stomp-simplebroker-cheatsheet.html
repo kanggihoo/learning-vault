@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>STOMP + SimpleBroker 치트시트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    main { max-width: 1000px; }
+    h2 { margin-top: 32px; padding-top: 14px; }
+    h3 { margin-top: 22px; font-size: 1.02rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; margin: 10px 0 4px; }
+    th, td { border: 1px solid #deded6; padding: 6px 9px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; white-space: nowrap; }
+    td code, th code { font-size: 0.92em; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .frame {
+      background: #111827; color: #f9fafb; padding: 12px 14px; border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.82rem; line-height: 1.5; overflow-x: auto; white-space: pre; margin: 8px 0;
+    }
+    .frame b { color: #5eead4; }
+    .frame i { color: #94a3b8; font-style: normal; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media (max-width: 780px) { .two { grid-template-columns: 1fr; } }
+    .lead { color: #52606d; font-size: 0.92rem; margin-top: 2px; }
+    .rule { border-left: 4px solid #0f766e; background: #eef7f5; padding: 10px 14px; margin: 14px 0; }
+    .danger { border-left: 4px solid #b45309; background: #fff7ed; padding: 10px 14px; margin: 14px 0; }
+    @media print { .frame { background: #f3f4f6; color: #111827; } .frame b { color: #0f766e; } .frame i { color: #6b7280; } }
+  </style>
+</head>
+<body>
+<main>
+
+  <h1>STOMP + SimpleBroker 치트시트</h1>
+  <p class="lead">
+    Spring 내장 SimpleBroker · 서버 1대 기준. 레슨:
+    <a href="../lessons/0031-stomp-simplebroker-tick-streaming.html">0031 — 모의투자 틱 스트리밍</a> ·
+    <a href="../lessons/0032-stomp-and-spring-messaging-vocabulary.html">0032 — STOMP와 Spring 메시징의 어휘</a>
+  </p>
+
+  <h2>0. 어휘 — 헷갈리면 여기부터</h2>
+
+  <table>
+    <thead><tr><th>용어</th><th>정체 (한 줄)</th></tr></thead>
+    <tbody>
+      <tr><td>WebSocket</td><td>양방향 바이트 통로. <strong>메시지의 뜻은 하나도 안 정해준다.</strong></td></tr>
+      <tr><td>STOMP</td><td>그 통로로 주고받을 <strong>텍스트 프레임 규격</strong>. 명령어 + 헤더 + 빈 줄 + 본문 + NULL.</td></tr>
+      <tr><td><code>Message&lt;T&gt;</code></td><td><code>getHeaders()</code> + <code>getPayload()</code>. <strong>봉투</strong>. 프레임을 파싱한 자바 객체.</td></tr>
+      <tr><td><code>MessageChannel</code></td><td>네트워크 아님. <strong>JVM 안의 큐 + 스레드 풀 + 수신자 목록</strong>. <code>send()</code>는 큐에 넣고 즉시 리턴.</td></tr>
+      <tr><td><code>MessageHandler</code></td><td><code>handleMessage(Message)</code> 하나짜리 인터페이스. <strong>채널에 등록해두면 불리는 콜백</strong>.</td></tr>
+      <tr><td><code>SimpleBrokerMessageHandler</code></td><td>구독 명부(<code>DefaultSubscriptionRegistry</code>)를 필드로 든 <strong>상태 있는 핸들러</strong>.</td></tr>
+      <tr><td><code>StompSubProtocolHandler</code></td><td>프레임 텍스트 ⇄ <code>Message</code> 번역 + <strong>실제 소켓 쓰기</strong>를 담당하는 유일한 곳.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="rule">
+    <strong>브로커가 오래 보관하는 것은 구독 목록뿐이다.</strong> 메시지는 복제되어 outbound 채널로 넘어가면 끝 —
+    저장하지 않는다. 그래서 <strong>구독 전에 발행된 것은 영원히 못 본다.</strong> (Kafka와의 결정적 차이)
+  </div>
+
+  <div class="rule">
+    <strong>서버가 덧붙이는 헤더 2개.</strong> <code>simpSessionId</code>와 <code>simpUser</code>는
+    <em>프레임에 없다.</em> 서버가 "어느 소켓으로 들어왔는지" 알기에 붙인다.
+    브로커가 누구에게 보낼지 아는 근거가 정확히 이 헤더다.
+  </div>
+
+  <h2>1. 목적지 접두사 — 어떤 글자로 시작하느냐가 전부</h2>
+
+  <table>
+    <thead><tr><th>접두사</th><th>담당 핸들러</th><th>의미</th><th>모의투자 예</th></tr></thead>
+    <tbody>
+      <tr><td><code>/app</code></td><td><code>SimpAnnotationMethodMessageHandler</code></td>
+          <td>서버 <strong>코드</strong>가 처리. 브로커를 거치지 않는다.</td><td><code>/app/order</code> 주문 전송</td></tr>
+      <tr><td><code>/topic</code></td><td><code>SimpleBrokerMessageHandler</code></td>
+          <td><strong>1:N</strong>. 구독자 전원에게 같은 값.</td><td><code>/topic/ticks/005930</code></td></tr>
+      <tr><td><code>/queue</code></td><td><code>SimpleBrokerMessageHandler</code></td>
+          <td>SimpleBroker에서는 <code>/topic</code>과 동작이 같다. 관례상 개인용 이름 공간.</td>
+          <td><code>/queue/execution-s1</code> (직접 쓰지 않음)</td></tr>
+      <tr><td><code>/user</code></td><td><code>UserDestinationMessageHandler</code></td>
+          <td>브로커가 모르는 <strong>가상 접두사</strong>. 세션별 주소로 재작성된다.</td>
+          <td><code>/user/queue/execution</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="danger">
+    <strong>설정 규칙 3가지.</strong>
+    ① 브로커 접두사에 <code>/queue</code>가 있어야 <code>/user</code> 재작성 결과가 배달된다.
+    ② <code>/user</code>는 브로커 접두사에 <strong>넣으면 안 된다</strong> — 브로커가 삼켜 재작성 기회를 잃는다.
+    ③ <code>/app</code>과 브로커 접두사는 <strong>겹치면 안 된다</strong>.
+  </div>
+
+  <h2>2. 목적지 고르는 판단 기준</h2>
+
+  <div class="rule">
+    <strong>질문 하나만 던진다 — "이 값이 다른 사람에게도 똑같은가?"</strong><br>
+    <strong>예</strong> → <code>/topic/...</code> · 브로커가 복제한다. 서버 코드는 1번만 발행.<br>
+    <strong>아니오</strong> → <code>/user/queue/...</code> · 값 자체가 그 사람 것이다.<br><br>
+    <em>"사용자마다 보는 종목이 다르다"는 <strong>아니오가 아니다.</strong></em> 값은 같고 구독 목록만 다른 것이므로
+    답은 여전히 <code>/topic</code>이다.
+  </div>
+
+  <table>
+    <thead><tr><th>데이터</th><th>목적지</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>종목 틱 / 호가 / 체결가</td><td><code>/topic/ticks/{code}</code></td><td>공용 시계라 전원 동일</td></tr>
+      <tr><td>가상 시계 상태 (개장·마감·배속)</td><td><code>/topic/clock</code></td><td>전원 동일</td></tr>
+      <tr><td>지수 · 랭킹 · 공지</td><td><code>/topic/index</code>, <code>/topic/notice</code></td><td>전원 동일</td></tr>
+      <tr><td>내 주문 접수 / 체결</td><td><code>/user/queue/execution</code></td><td>값이 그 사람 것</td></tr>
+      <tr><td>내 잔고 / 평가손익</td><td><code>/user/queue/portfolio</code></td><td>값이 그 사람 것</td></tr>
+      <tr><td>내 요청에 대한 에러</td><td><code>/user/queue/errors</code> (<code>broadcast=false</code>)</td><td>보낸 세션에게만</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. 프레임 레퍼런스 (STOMP 1.2)</h2>
+
+  <div class="two">
+    <div>
+      <h3>클라이언트 → 서버</h3>
+      <div class="frame"><b>CONNECT</b>
+accept-version:1.2      <i>필수</i>
+host:trade.example.com  <i>필수</i>
+heart-beat:10000,10000  <i>보낼주기,받을주기(ms)</i>
+</div>
+      <div class="frame"><b>SUBSCRIBE</b>
+id:sub-0                <i>필수 · 연결 내 유일</i>
+destination:/topic/...  <i>필수</i>
+ack:auto                <i>기본값</i>
+</div>
+      <div class="frame"><b>UNSUBSCRIBE</b>
+id:sub-0                <i>필수 · destination 없음!</i>
+</div>
+      <div class="frame"><b>SEND</b>
+destination:/app/order  <i>필수</i>
+content-type:application/json
+
+{"code":"005930","qty":10}
+</div>
+      <div class="frame"><b>DISCONNECT</b>
+receipt:bye             <i>선택 · RECEIPT 후 닫기</i>
+</div>
+    </div>
+    <div>
+      <h3>서버 → 클라이언트</h3>
+      <div class="frame"><b>CONNECTED</b>
+version:1.2             <i>필수</i>
+session:s1              <i>선택</i>
+heart-beat:10000,10000  <i>협상 결과 = 양쪽 MAX</i>
+</div>
+      <div class="frame"><b>MESSAGE</b>
+destination:/topic/...  <i>필수</i>
+message-id:s1-42        <i>필수</i>
+subscription:sub-0      <i>필수 · 라우팅 키</i>
+content-type:application/json
+
+{"code":"005930","price":68400}
+</div>
+      <div class="frame"><b>ERROR</b>
+message:...             <i>보낸 뒤 연결을 닫는다</i>
+</div>
+      <div class="frame"><b>RECEIPT</b>
+receipt-id:bye
+</div>
+      <h3>ack 모드</h3>
+      <table>
+        <tbody>
+          <tr><td><code>auto</code></td><td>기본. 보내면 전달된 것으로 간주. <strong>시세는 이것.</strong></td></tr>
+          <tr><td><code>client</code></td><td>누적 ACK. 앞의 것까지 한 번에 확인.</td></tr>
+          <tr><td><code>client-individual</code></td><td>메시지 하나씩 개별 ACK.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2>4. 서버 내부 배관</h2>
+
+  <table>
+    <thead><tr><th>채널</th><th>방향</th><th>구독하는 핸들러</th></tr></thead>
+    <tbody>
+      <tr><td><code>clientInboundChannel</code></td><td>클라이언트 → 서버</td>
+          <td><code>SimpAnnotationMethodMessageHandler</code>, <code>UserDestinationMessageHandler</code>,
+              <code>SimpleBrokerMessageHandler</code></td></tr>
+      <tr><td><code>brokerChannel</code></td><td>서버 코드 → 브로커</td><td><code>SimpleBrokerMessageHandler</code></td></tr>
+      <tr><td><code>clientOutboundChannel</code></td><td>서버 → 클라이언트</td><td><code>StompSubProtocolHandler</code></td></tr>
+    </tbody>
+  </table>
+  <p class="lead">셋 다 <code>ExecutorSubscribableChannel</code> — 스레드 풀 위의 비동기 큐다. <code>convertAndSend</code>는
+    즉시 리턴하고, 실제 전송은 워커 스레드가 한다.</p>
+
+  <h3>구독 레지스트리에 저장되는 것</h3>
+  <div class="frame">DefaultSubscriptionRegistry  <i>(JVM 힙. 영속성 없음.)</i>
+
+  목적지 문자열 ─→ { 세션ID ─→ [구독ID, ...] }
+
+  "/topic/ticks/005930" ─┬─ s1 ─ ["sub-0"]
+                         └─ s2 ─ ["sub-3"]
+  "/queue/execution-s1" ─── s1 ─ ["sub-2"]
+
+  <i>매칭: AntPathMatcher (/topic/ticks/* 같은 와일드카드 구독 가능)</i>
+  <i>캐시 한도 기본 1024</i></div>
+
+  <h2>5. 라이프사이클 이벤트</h2>
+
+  <table>
+    <thead><tr><th>이벤트</th><th>언제</th><th>쓸모</th></tr></thead>
+    <tbody>
+      <tr><td><code>SessionConnectedEvent</code></td><td>CONNECTED 응답 시점</td><td>접속자 수 집계, 세션 등록</td></tr>
+      <tr><td><code>SessionSubscribeEvent</code></td><td>SUBSCRIBE 처리 시점</td><td><strong>종목별 구독자 수 카운트</strong>, 스냅샷 푸시</td></tr>
+      <tr><td><code>SessionUnsubscribeEvent</code></td><td>UNSUBSCRIBE 처리 시점</td><td>카운트 감소</td></tr>
+      <tr><td><code>SessionDisconnectEvent</code></td><td>정상 종료 · 소켓 끊김 · 하트비트 미수신</td><td>그 세션 구독 전부 정리, 카운트 일괄 감소</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. 발송 API 대조표</h2>
+
+  <table>
+    <thead><tr><th>수단</th><th>어디로 가나</th><th>브로커 경유</th></tr></thead>
+    <tbody>
+      <tr><td><code>convertAndSend("/topic/x", p)</code></td><td><code>/topic/x</code> 구독자 전원</td><td>예</td></tr>
+      <tr><td><code>convertAndSendToUser("userA", "/queue/x", p)</code></td><td>userA의 <strong>모든 세션</strong></td><td>예 (재작성 후)</td></tr>
+      <tr><td><code>@SendTo("/topic/x")</code></td><td><code>/topic/x</code> 구독자 전원</td><td>예</td></tr>
+      <tr><td><code>@SendToUser(..., broadcast=false)</code></td><td>요청을 보낸 <strong>그 세션만</strong></td><td>예 (재작성 후)</td></tr>
+      <tr><td><code>@SubscribeMapping("/x")</code> 반환값</td><td>구독한 <strong>그 세션만</strong></td><td><strong>아니오</strong> — 곧장 outbound로</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. 모듈 경계 — 어느 클래스가 어디 사는가</h2>
+
+  <p class="lead"><code>spring-boot-starter-websocket</code> → <code>spring-boot-starter-web</code> + <code>spring-websocket</code> + <code>spring-messaging</code></p>
+
+  <table>
+    <thead><tr><th>클래스</th><th>패키지</th><th>모듈</th></tr></thead>
+    <tbody>
+      <tr><td><code>Message</code> · <code>MessageChannel</code> · <code>MessageHandler</code></td><td><code>org.springframework.messaging</code></td><td><strong>spring-messaging</strong></td></tr>
+      <tr><td><code>SimpleBrokerMessageHandler</code> · <code>DefaultSubscriptionRegistry</code></td><td><code>…messaging.simp.broker</code></td><td><strong>spring-messaging</strong></td></tr>
+      <tr><td><code>SimpMessagingTemplate</code> · <code>SimpMessageHeaderAccessor</code></td><td><code>…messaging.simp</code></td><td><strong>spring-messaging</strong></td></tr>
+      <tr><td><code>StompDecoder</code> · <code>StompEncoder</code> · <code>StompCommand</code></td><td><code>…messaging.simp.stomp</code></td><td><strong>spring-messaging</strong></td></tr>
+      <tr><td><code>StompSubProtocolHandler</code> · <code>WebSocketAnnotationMethodMessageHandler</code></td><td><code>org.springframework.web.socket.messaging</code></td><td><strong>spring-websocket</strong> (어댑터)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="rule">
+    <strong>STOMP 파싱도 spring-messaging의 것이다.</strong> spring-websocket이 가진 것은 <strong>어댑터</strong> —
+    소켓에서 읽은 바이트를 <code>StompDecoder</code>에 넘기고 결과를 채널에 태우는 연결 담당.
+    그래서 브로커를 RabbitMQ 릴레이로 바꿔도 컨트롤러 코드가 안 바뀐다.
+  </div>
+
+  <h2>8. 세션 쿠키 인증 (JWT 아님)</h2>
+
+  <table>
+    <thead><tr><th>단계</th><th>일어나는 일</th></tr></thead>
+    <tbody>
+      <tr><td>핸드셰이크 GET</td><td>진짜 HTTP 요청 → 서블릿/Security 필터 체인 통과 → <code>JSESSIONID</code>로 <code>HttpSession</code> 복원 → <code>Authentication</code> 확정</td></tr>
+      <tr><td>WebSocket 세션 생성</td><td><code>request.getUserPrincipal()</code>이 WebSocket 세션에 <strong>영구 부착</strong></td></tr>
+      <tr><td>이후 모든 프레임</td><td><code>simpUser</code> 헤더로 따라다닌다. <strong>재인증 없음.</strong></td></tr>
+      <tr><td>사용처</td><td><code>@MessageMapping(… Principal p)</code>, <code>/user/queue/…</code> 라우팅</td></tr>
+    </tbody>
+  </table>
+
+  <div class="danger">
+    <strong>쿠키 방식에서 반드시 챙길 두 가지.</strong><br>
+    ① <strong>Origin 화이트리스트</strong> — WebSocket 핸드셰이크는 동일 출처 정책이 막아주지 않는다.
+    악성 사이트에서 연 연결에도 브라우저가 쿠키를 붙여 보낸다(<strong>CSWSH</strong>). CSRF 토큰은 여기서 무력하다.<br>
+    ② <strong>세션 만료 ≠ 소켓 종료</strong> — <code>HttpSession</code>이 만료되어도 이미 열린 WebSocket은 계속 산다.
+    장시간 연결에서는 이 간극을 처리해야 한다.
+  </div>
+
+  <h2>9. 체크리스트 — 설계할 때 훑을 것</h2>
+
+  <table>
+    <thead><tr><th>항목</th><th>확인</th></tr></thead>
+    <tbody>
+      <tr><td>엔드포인트</td><td>종목별로 파지 않았는가? <code>/ws/market</code> 하나로 충분하다.</td></tr>
+      <tr><td>인증</td><td>HTTP 핸드셰이크 단계에서 확정했는가? (업그레이드 이후엔 쿠키가 없다)</td></tr>
+      <tr><td>스냅샷</td><td>구독 직후의 빈 화면을 어떻게 채우는가? 시퀀스 번호로 중복·구멍을 걸러내는가?</td></tr>
+      <tr><td>권한</td><td>개인 데이터가 <code>/topic</code>에 있지 않은가? SUBSCRIBE 인터셉터가 있는가?</td></tr>
+      <tr><td>유량</td><td>배속을 올렸을 때 서버가 틱을 합쳐 보내는가? 느린 세션을 끊는 한도가 있는가?</td></tr>
+      <tr><td>재연결</td><td>클라이언트가 구독 목록을 기억하고 스스로 재구독하는가?</td></tr>
+      <tr><td>스케일</td><td>서버 2대가 되는 순간 SimpleBroker는 못 쓴다. 그 시점을 알고 있는가?</td></tr>
+    </tbody>
+  </table>
+
+  <h2>출처</h2>
+  <ul>
+    <li><a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/message-flow.html">Spring — Flow of Messages</a></li>
+    <li><a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp/user-destination.html">Spring — User Destinations</a></li>
+    <li><a href="https://docs.spring.io/spring-framework/reference/web/websocket/stomp.html">Spring — STOMP</a></li>
+    <li><a href="https://stomp.github.io/stomp-specification-1.2.html">STOMP Protocol Specification 1.2</a></li>
+    <li><a href="https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/messaging/simp/broker/DefaultSubscriptionRegistry.html">DefaultSubscriptionRegistry Javadoc</a></li>
+  </ul>
+
+</main>
+</body>
+</html>

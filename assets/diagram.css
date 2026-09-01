@@ -1,0 +1,48 @@
+/* Shared diagram styling for Learning Vault lessons.
+   Pair with assets/lesson.css. Wrap every SVG in <figure class="diagram">. */
+
+figure.diagram {
+  margin: 28px 0;
+  padding: 18px 12px 12px;
+  background: #ffffff;
+  border: 1px solid #deded6;
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+figure.diagram svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
+
+figure.diagram figcaption {
+  margin-top: 12px;
+  font-size: 0.88rem;
+  color: #52606d;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* SVG primitives — keep every lesson's diagrams visually consistent. */
+.d-label      { font: 13px ui-sans-serif, system-ui, "Segoe UI", sans-serif; fill: #1f2933; }
+.d-label-sm   { font: 11px ui-sans-serif, system-ui, "Segoe UI", sans-serif; fill: #52606d; }
+.d-label-mono { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; fill: #1f2933; }
+.d-title      { font: 700 14px ui-sans-serif, system-ui, "Segoe UI", sans-serif; fill: #111827; }
+
+.d-box   { fill: #ffffff; stroke: #9aa5b1; stroke-width: 1.5; rx: 6; }
+.d-box-a { fill: #eef7f5; stroke: #0f766e; stroke-width: 1.5; rx: 6; }  /* accent / broker */
+.d-box-b { fill: #fff7ed; stroke: #b45309; stroke-width: 1.5; rx: 6; }  /* warn / caution */
+.d-box-c { fill: #f3f4f6; stroke: #6b7280; stroke-width: 1.5; rx: 6; }  /* muted / infra */
+
+.d-line   { stroke: #52606d; stroke-width: 1.5; fill: none; }
+.d-line-a { stroke: #0f766e; stroke-width: 2;   fill: none; }
+.d-line-d { stroke: #9aa5b1; stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+
+@media print {
+  figure.diagram {
+    break-inside: avoid;
+    border-color: #c9c9c1;
+  }
+}
