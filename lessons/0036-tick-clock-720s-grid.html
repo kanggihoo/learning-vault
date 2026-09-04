@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>가상 시계: 720초 그리드와 절대시각 스케줄링</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    pre { font-size: 0.86rem; }
+    pre .k { color: #c792ea; }
+    pre .a { color: #82aaff; }
+    pre .s { color: #c3e88d; }
+    pre .c { color: #7f8ba6; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .num { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">마켓 리플레이 백엔드 · 트랙 A(시간) 1/4 · 레슨 0036</p>
+  <h1>가상 시계: 720초 그리드와 절대시각 스케줄링</h1>
+
+  <p class="lead">
+    이 프로젝트의 심장은 가상 시계다. IPO 8건의 공시·마감·상장 시각, 폐장, 정산 발표가
+    전부 여기에 매달려 있다. 그리고 이 시계에는 <strong>기획서 문장 그대로 구현하면 반드시 깨지는
+    지점이 하나</strong> 있다.
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong> 틱 시각을 계산하는 올바른 식을 쓸 수 있고,
+    <code>@Scheduled(fixedDelay=35000)</code>과 <code>@Scheduled(fixedRate=35000)</code>이
+    <strong>각각 다른 이유로</strong> 틀린다는 것을 구분해 설명할 수 있다.
+    AI에게 스케줄러를 맡기면 거의 확실히 이 둘 중 하나를 쓴다.
+  </p>
+
+  <h2>§1 · 규칙은 하나뿐이고, 35초는 규칙이 아니다</h2>
+
+  <p>
+    기획서 0장과 4.1.1은 두 값을 나란히 적어 두었다.
+  </p>
+
+  <blockquote>
+    실제 12분 = 게임 1개월(<strong>종가 틱 약 35초</strong>). 하루 약 27개월 재생
+  </blockquote>
+
+  <p>
+    <strong>이 두 값은 동시에 참일 수 없다.</strong> 왜인지 계산해 보자.
+  </p>
+
+<pre><span class="c">// 규칙 (불변)</span>
+1개월 = 720초 (12분)
+
+<span class="c">// 그 달의 거래일 수 — 한국·미국 거래일의 합집합 (기획서 4.1.4)</span>
+N = 20 ~ 23일   <span class="c">← 달마다 다르다</span>
+
+<span class="c">// 그래서 틱 간격은</span>
+720 ÷ N = 31 ~ 36초   <span class="c">← "약 35초"의 정체</span></pre>
+
+  <p>
+    35초는 <code>N = 20.6</code>일 때만 나오는 값이다. 즉 <strong>35초는 규칙이 아니라 파생값</strong>이고,
+    분모가 달마다 바뀌므로 상수가 아니다. 기획서는 이걸 "약"으로 뭉갰는데,
+    구현자(또는 AI)가 그 문장을 읽으면 <strong>틱 간격 상수 35초</strong>를 잡는다.
+    그러면 1개월이 720초가 아니게 된다.
+  </p>
+
+  <p class="warn">
+    <strong>어느 쪽이 규칙인지 판정하는 방법.</strong> 둘 중 <strong>다른 것을 고정했을 때 무엇이 깨지는가</strong>를
+    본다. 720초를 고정하면 틱 간격이 유동적이 될 뿐 아무것도 깨지지 않는다.
+    35초를 고정하면 월 길이가 달마다 달라지고 — 그 위에 얹힌 일정 전부가 밀린다.
+    <strong>다른 것을 못 흔드는 쪽이 규칙이다.</strong>
+  </p>
+
+  <h2>§2 · 어긋남의 크기 — 27개월을 돌리면 폐장을 넘는다</h2>
+
+  <p>
+    재생 시작 11:05, 하루 27개월 기준이다. 27개월 × 12분 = 324분이므로 720초 그리드에서는
+    <strong>16:29</strong>에 재생이 끝나고 폐장(16:40)까지 11분이 운영 버퍼로 남는다.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>방식</th><th>월 길이</th><th>27개월 재생 종료</th><th></th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>720초 그리드 (규칙)</strong></td><td class="num">720초 = 12분</td><td class="num"><strong>16:29</strong></td><td class="ok">✓ 기획서와 일치</td></tr>
+      <tr><td>35초 고정 · 월 20거래일</td><td class="num">700초</td><td class="num">16:20</td><td class="mid">재생이 9분 일찍 끝난다</td></tr>
+      <tr><td>35초 고정 · 월 21거래일</td><td class="num">735초</td><td class="num">16:35</td><td class="mid">버퍼가 5분으로 줄어든다</td></tr>
+      <tr><td>35초 고정 · 월 22거래일</td><td class="num">770초</td><td class="num">16:51</td><td class="no">⚠ 폐장(16:40) 초과</td></tr>
+      <tr><td>35초 고정 · 월 23거래일</td><td class="num">805초</td><td class="num">17:07</td><td class="no">⚠ 정산 발표(17:00)까지 침범</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    재생 축이 <strong>한국·미국 거래일의 합집합</strong>이므로 N은 각 시장 단독보다 크다.
+    실제로는 22~23일 쪽이며 — <strong>재생이 폐장보다 늦게 끝난다.</strong>
+    폐장 시각은 랭킹 확정 스냅샷의 기준이라(기획서 11.4.1) 밀 수 없으므로,
+    그날 마지막 구간이 통째로 잘린다.
+  </p>
+
+  <p>
+    IPO 편성도 같이 무너진다. 리비안 상장은 편성표에서 <strong>15:29</strong>인데
+    (게임 2021.11 = 재생 시작으로부터 22개월째, 11:05 + 22×12분):
+  </p>
+
+  <table>
+    <thead><tr><th>방식</th><th>리비안 상장 시각</th><th>어긋남</th></tr></thead>
+    <tbody>
+      <tr><td>720초 그리드</td><td class="num"><strong>15:29</strong></td><td class="ok">✓</td></tr>
+      <tr><td>35초 고정 · 22거래일</td><td class="num">15:47</td><td class="no">18분 늦음</td></tr>
+      <tr><td>35초 고정 · 23거래일</td><td class="num">16:00</td><td class="no">31분 늦음</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>기획서가 스스로를 증명한다.</strong> IPO 8건의 공시·마감·상장 시각이 재생 시작 11:05로부터
+    <strong>전부 정확히 12분의 배수</strong>다. 12:17 공시 = 72분 = 6개월, 12:29 마감 = 84분 = 7개월,
+    12:41 상장 = 96분 = 8개월. 즉 <strong>월 경계가 실제 시각에 고정되어야 한다는 제약이 이미
+    기획서 안에 내장되어 있다</strong> — "35초" 문장만 그걸 모른다.
+  </p>
+
+  <h2>§3 · <code>fixedRate</code>도 답이 아니다 — 다만 이유가 다르다</h2>
+
+  <p>
+    여기가 이 레슨의 핵심이고, 프로젝트 문서에 <strong>없는</strong> 내용이다.
+    <code>market-replay-api/spec-revisions.md</code> R-1은 이렇게 적었다.
+  </p>
+
+  <blockquote>
+    간격이 정확하더라도, <strong>다음 틱 시각을 이전 틱에 더해서 구하면</strong> 오차가 누적된다.
+    … 하루 500틱이면 틱당 100ms만 밀려도 <strong>50초</strong>가 쌓인다.
+  </blockquote>
+
+  <p>
+    <strong>이 설명은 맞다. 그런데 <code>fixedDelay</code>에만 맞다.</strong>
+    JDK 표준 스케줄러의 두 메서드는 다음 시각을 서로 다르게 구한다.
+  </p>
+
+  <table>
+    <thead><tr><th></th><th>다음 실행 예정 시각</th><th>지연이 누적되나</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>scheduleWithFixedDelay</code><br><code>@Scheduled(fixedDelay=…)</code></td>
+        <td>앞 실행이 <strong>끝난 시점</strong> + 간격</td>
+        <td class="no">누적된다. 처리 시간이 전부 다음 기준 시각에 흡수된다</td>
+      </tr>
+      <tr>
+        <td><code>scheduleAtFixedRate</code><br><code>@Scheduled(fixedRate=…)</code></td>
+        <td><code>initialDelay</code>, <code>initialDelay + period</code>,
+            <code>initialDelay + 2×period</code>, …<br>
+            <strong>최초 시각에 앵커된다</strong></td>
+        <td class="ok">누적되지 않는다. 한 번 밀려도 예정 그리드는 제자리</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    앞은 javadoc의 <em>"between the termination of one execution and the commencement of the next"</em>,
+    뒤는 <em>"executions will commence after <code>initialDelay</code>, then
+    <code>initialDelay + period</code>, then <code>initialDelay + 2 * period</code>, and so on"</em>이다
+    (<a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ScheduledExecutorService.html">Java 21 javadoc</a>).
+  </p>
+
+  <p>
+    <strong>그래서 <code>fixedRate</code>는 드리프트 논거로는 탈락하지 않는다.</strong>
+    탈락하는 이유는 다른 것이다 — <code>period</code>가 <strong>상수</strong>인데,
+    우리에게 필요한 간격은 <code>720 ÷ N</code>이고 <strong>N이 달마다 바뀐다.</strong>
+  </p>
+
+<pre><span class="c">// 22거래일 달에 fixedRate = 35초를 쓰면</span>
+월 길이 = 22 × 35초 = 770초        <span class="c">// 720초여야 하는데 50초 초과</span>
+27개월  = 50초 × 27 = <strong>22분 30초 밀림</strong>   <span class="c">// 드리프트가 아니라 산술 오차</span></pre>
+
+  <p class="warn">
+    <strong>왜 이 구분이 실전에서 중요한가.</strong> AI가 <code>@Scheduled(fixedRate=35000)</code>을 써 왔을 때
+    <em>"fixedRate는 드리프트가 쌓여서 안 된다"</em>고 리뷰 코멘트를 달면 <strong>AI가 반박할 수 있고,
+    그 반박이 맞다.</strong> 정확한 지적은 <em>"간격이 상수가 아니다 — 720 ÷ N이고 N이 매달 바뀐다"</em>다.
+    틀린 이유로 옳은 결론을 내면, 다음 리뷰에서 설득력을 잃는다.
+  </p>
+
+  <h2>§4 · 절대값으로 계산하고, 매 틱 다시 예약한다</h2>
+
+  <p>
+    k번째 틱의 실제 시각은 <strong>월 시작 시각에서 절대값으로</strong> 구한다.
+  </p>
+
+<pre><span class="no">✗</span> tickAt(k) = tickAt(k-1) + 간격          <span class="c">// fixedDelay. 지연 누적</span>
+<span class="no">✗</span> tickAt(k) = 월시작 + 35초 × k           <span class="c">// fixedRate. 간격이 상수가 아님</span>
+
+<span class="ok">✓</span> tickAt(k) = 월시작 + round(720초 × k ÷ N)      (k = 1..N)
+      N = 그 달의 거래일 수 = 한국·미국 거래일의 <strong>합집합</strong></pre>
+
+  <p>
+    이 식의 두 가지 성질을 확인하자.
+  </p>
+
+  <ul>
+    <li><strong>월 경계가 정확히 닫힌다.</strong> <code>k = N</code>이면
+        <code>round(720 × N ÷ N) = 720</code>이므로, 몇 거래일이든 마지막 틱이 월 시작 + 720초에 정확히 떨어진다.
+        <strong>반올림 오차가 월을 넘지 않는다</strong> — 이게 27개월을 돌려도 안 밀리는 이유다.</li>
+    <li><strong>간격이 자연히 유동적이 된다.</strong> N=23이면 약 31.3초, N=20이면 36초.
+        상수를 안 잡았으므로 상수를 맞출 필요도 없다.</li>
+  </ul>
+
+  <p>
+    Spring에서 이 식을 표현하는 도구는 <code>fixedRate</code>가 아니라 <code>TaskScheduler</code>다.
+    가변 간격을 다루는 두 가지 시그니처가 이미 있다.
+  </p>
+
+<pre><span class="c">// ① Trigger — 다음 시각을 매번 우리가 계산해 돌려준다</span>
+<span class="a">ScheduledFuture</span>&lt;?&gt; <span class="k">schedule</span>(<span class="a">Runnable</span> task, <span class="a">Trigger</span> trigger);
+<span class="c">//   "invoking it whenever the trigger indicates a next execution time"</span>
+<span class="c">//   Trigger.nextExecution(TriggerContext) → Instant | null (null이면 끝)</span>
+
+<span class="c">// ② 매 틱 스스로 다시 예약 (self-rearming)</span>
+<span class="a">ScheduledFuture</span>&lt;?&gt; <span class="k">schedule</span>(<span class="a">Runnable</span> task, <span class="a">Instant</span> startTime);</pre>
+
+  <p>
+    둘 다 결과는 같다. <code>Trigger</code>는 "다음이 언제인가"를 한 곳에 모아 두므로
+    그리드 계산과 발행 로직이 분리되고, self-rearming은 틱 처리 끝에서 다음 것을 잡으므로 흐름이 선형이다.
+    <strong>어느 쪽이든 핵심은 <code>period</code>라는 상수를 프레임워크에 넘기지 않는 것</strong>이다.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 300" role="img" aria-label="세 가지 스케줄링 방식의 27개월 후 결과 비교">
+      <defs>
+        <marker id="t1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/>
+        </marker>
+        <marker id="t2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#b91c1c"/>
+        </marker>
+      </defs>
+
+      <text class="d-title" x="20" y="22">한 달(22거래일)을 세 방식으로 돌렸을 때</text>
+
+      <!-- row A: 720 grid -->
+      <text class="d-label" x="20" y="62">720초 그리드</text>
+      <line class="d-line" x1="150" y1="57" x2="700" y2="57" marker-end="url(#t1)"/>
+      <g>
+        <circle cx="150" cy="57" r="4" fill="#0f766e"/>
+        <circle cx="175" cy="57" r="3" fill="#0f766e"/><circle cx="200" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="225" cy="57" r="3" fill="#0f766e"/><circle cx="250" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="275" cy="57" r="3" fill="#0f766e"/><circle cx="300" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="325" cy="57" r="3" fill="#0f766e"/><circle cx="350" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="375" cy="57" r="3" fill="#0f766e"/><circle cx="400" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="425" cy="57" r="3" fill="#0f766e"/><circle cx="450" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="475" cy="57" r="3" fill="#0f766e"/><circle cx="500" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="525" cy="57" r="3" fill="#0f766e"/><circle cx="550" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="575" cy="57" r="3" fill="#0f766e"/><circle cx="600" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="625" cy="57" r="3" fill="#0f766e"/><circle cx="650" cy="57" r="3" fill="#0f766e"/>
+        <circle cx="675" cy="57" r="4" fill="#0f766e"/>
+      </g>
+      <line class="d-line-a" x1="675" y1="40" x2="675" y2="76"/>
+      <text class="d-label-mono" x="686" y="50">+720s</text>
+      <text class="d-label-sm" x="150" y="86">간격 32.7초 · 22틱 · 월 경계에 정확히 닫힌다</text>
+
+      <!-- row B: fixedRate 35s -->
+      <text class="d-label" x="20" y="146">fixedRate 35초</text>
+      <line class="d-line" x1="150" y1="141" x2="760" y2="141" marker-end="url(#t1)"/>
+      <g>
+        <circle cx="150" cy="141" r="4" fill="#b45309"/>
+        <circle cx="177" cy="141" r="3" fill="#b45309"/><circle cx="204" cy="141" r="3" fill="#b45309"/>
+        <circle cx="231" cy="141" r="3" fill="#b45309"/><circle cx="258" cy="141" r="3" fill="#b45309"/>
+        <circle cx="285" cy="141" r="3" fill="#b45309"/><circle cx="312" cy="141" r="3" fill="#b45309"/>
+        <circle cx="339" cy="141" r="3" fill="#b45309"/><circle cx="366" cy="141" r="3" fill="#b45309"/>
+        <circle cx="393" cy="141" r="3" fill="#b45309"/><circle cx="420" cy="141" r="3" fill="#b45309"/>
+        <circle cx="447" cy="141" r="3" fill="#b45309"/><circle cx="474" cy="141" r="3" fill="#b45309"/>
+        <circle cx="501" cy="141" r="3" fill="#b45309"/><circle cx="528" cy="141" r="3" fill="#b45309"/>
+        <circle cx="555" cy="141" r="3" fill="#b45309"/><circle cx="582" cy="141" r="3" fill="#b45309"/>
+        <circle cx="609" cy="141" r="3" fill="#b45309"/><circle cx="636" cy="141" r="3" fill="#b45309"/>
+        <circle cx="663" cy="141" r="3" fill="#b45309"/><circle cx="690" cy="141" r="3" fill="#b45309"/>
+        <circle cx="717" cy="141" r="4" fill="#b45309"/>
+      </g>
+      <line class="d-line-d" x1="675" y1="124" x2="675" y2="160"/>
+      <path class="d-line" stroke="#b91c1c" d="M 678 172 L 714 172" marker-end="url(#t2)"/>
+      <text class="d-label-mono" x="728" y="176" fill="#b91c1c">+50s</text>
+      <text class="d-label-sm" x="150" y="196">간격은 정확히 35초씩 앵커된다 — 그런데 22×35 = 770초. <tspan fill="#b91c1c">월마다 50초씩 초과 → 27개월에 22분</tspan></text>
+
+      <!-- row C: fixedDelay 35s -->
+      <text class="d-label" x="20" y="240">fixedDelay 35초</text>
+      <line class="d-line" x1="150" y1="235" x2="800" y2="235" marker-end="url(#t1)"/>
+      <g>
+        <circle cx="150" cy="235" r="4" fill="#b91c1c"/>
+        <circle cx="178" cy="235" r="3" fill="#b91c1c"/><circle cx="207" cy="235" r="3" fill="#b91c1c"/>
+        <circle cx="237" cy="235" r="3" fill="#b91c1c"/><circle cx="268" cy="235" r="3" fill="#b91c1c"/>
+        <circle cx="300" cy="235" r="3" fill="#b91c1c"/><circle cx="333" cy="235" r="3" fill="#b91c1c"/>
+        <circle cx="367" cy="235" r="3" fill="#b91c1c"/><circle cx="402" cy="235" r="3" fill="#b91c1c"/>
+        <circle cx="438" cy="235" r="3" fill="#b91c1c"/><circle cx="475" cy="235" r="3" fill="#b91c1c"/>
+        <circle cx="513" cy="235" r="3" fill="#b91c1c"/><circle cx="552" cy="235" r="3" fill="#b91c1c"/>
+        <circle cx="592" cy="235" r="3" fill="#b91c1c"/><circle cx="633" cy="235" r="3" fill="#b91c1c"/>
+        <circle cx="675" cy="235" r="3" fill="#b91c1c"/><circle cx="718" cy="235" r="3" fill="#b91c1c"/>
+        <circle cx="762" cy="235" r="4" fill="#b91c1c"/>
+      </g>
+      <text class="d-label-sm" x="150" y="290">간격이 <tspan fill="#b91c1c">점점 벌어진다</tspan> — 매 틱의 처리 시간이 다음 기준 시각에 흡수되기 때문. 오차가 하루 내내 쌓인다</text>
+    </svg>
+    <figcaption>
+      세 방식 모두 "35초쯤"으로 보이지만 결과가 다르다. <code>fixedRate</code>는 <strong>간격은 정확한데
+      월 길이가 틀리고</strong>, <code>fixedDelay</code>는 <strong>간격 자체가 무너진다.</strong>
+      720초 그리드만 월 경계에서 오차를 0으로 되돌린다.
+    </figcaption>
+  </figure>
+
+  <h2>§5 · 스레드 하나가 가상 시계 전체를 붙잡는다</h2>
+
+  <p>
+    Spring 스케줄러의 기본 풀은 <strong>스레드 1개</strong>다 —
+    <em>"If you do not provide a <code>pool-size</code> attribute, the default thread pool has only a single thread"</em>
+    (<a href="https://docs.spring.io/spring-framework/reference/integration/scheduling.html">Spring Framework Reference</a>).
+    <a href="./0035-tick-scheduler-and-destination-convention.html">0035 §스레드</a>에서 이미 본 사실인데,
+    720초 그리드와 만나면 새로운 의미가 붙는다.
+  </p>
+
+  <p>
+    한 틱의 처리는 가벼운 일이 아니다. 이 프로젝트에서 틱 하나가 하는 일을 세어 보자.
+  </p>
+
+  <ul>
+    <li>28종 종가 + 환율 조회 → <code>market.prices</code> 브로드캐스트</li>
+    <li>그 종목들의 미체결 예약 <strong>전건 판정</strong> → 체결 처리 → 개인 <code>order.filled</code></li>
+    <li><strong>전 계좌 순회</strong> → 평가액·시즌 순위·일간 순위 재계산 (<code>rank.md</code>)</li>
+    <li>같은 순회에서 카테고리별 자금 분포 합산 (<code>soc.md</code> 히트맵)</li>
+    <li>개인별 <code>account.valuation</code> · <code>ranking.me</code> 발행</li>
+  </ul>
+
+  <p class="warn">
+    <strong><code>scheduleAtFixedRate</code>는 겹쳐 실행하지 않는다.</strong> javadoc:
+    <em>"If any execution of this task takes longer than its period, then subsequent executions
+    may start late, but will not concurrently execute."</em>
+    즉 틱 처리가 31초를 넘기면 <strong>다음 틱이 그만큼 늦게 나간다.</strong>
+    예정 시각 그리드는 제자리에 있지만 <strong>실제 발행이 밀린다.</strong>
+  </p>
+
+  <p>
+    그리고 이것이 <code>adm.md</code>의 F-ADM-05가 <strong>틱 지연</strong>을 핵심 지표로 꼽은 이유다.
+    <code>tickAt(k)</code>가 절대 시각이므로 <strong>예정과 실제의 차이가 그대로 지표가 된다</strong> —
+    간격 기반 스케줄링이었다면 밀린 것이 새 기준이 되어 지연이 지표에 안 잡힌다.
+    <strong>절대시각 설계가 관측 가능성까지 만들어 준다.</strong>
+  </p>
+
+  <h2>§6 · 클라이언트 쪽 절반 — 남은 초를 보내지 않는다</h2>
+
+  <p>
+    같은 원칙이 API 계약에도 나온다. <code>GET /api/v1/game/clock</code>은 "남은 초"가 아니라
+    <strong>절대 시각과 서버 시각</strong>을 보낸다.
+  </p>
+
+<pre>{
+  <span class="s">"serverTime"</span>:   <span class="s">"2026-09-21T05:31:33Z"</span>,   <span class="c">// 응답 생성 시각</span>
+  <span class="s">"nextTickAt"</span>:  <span class="s">"2026-09-21T05:32:07Z"</span>,   <span class="c">// 다음 종가 확정</span>
+  <span class="s">"phaseEndsAt"</span>: <span class="s">"2026-09-21T07:40:00Z"</span>    <span class="c">// 다음 phase 전환</span>
+}</pre>
+
+  <p>
+    이유는 브라우저다. 백그라운드 탭의 타이머는 스로틀된다 — MDN이 조건까지 명시한다.
+  </p>
+
+  <table>
+    <thead><tr><th>브라우저</th><th>비활성 탭에서</th></tr></thead>
+    <tbody>
+      <tr><td>Chrome · <em>Throttling</em></td><td>타이머를 <strong>초당 1회</strong> 확인. 비슷한 타임아웃끼리 묶일 수 있다</td></tr>
+      <tr><td>Chrome · <em>Intensive throttling</em> (88+)</td><td><strong>분당 1회.</strong> 조건: 비가시 5분 초과 + 무음 30초 초과 + 체인 5단 이상 + WebRTC 비활성</td></tr>
+      <tr><td>Firefox Desktop</td><td>최소 타임아웃 <strong>1초</strong></td></tr>
+      <tr><td>Firefox for Android</td><td>최소 <strong>15분</strong>. <strong>탭을 통째로 언로드할 수도 있다</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p class="d-label-sm">
+    출처: <a href="https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout#timeouts_in_inactive_tabs">MDN — Timeouts in inactive tabs</a>.
+    기획서 문장 "초당 1회 → 분당 1회"는 Chrome의 두 스로틀 단계를 정확히 가리킨다.
+  </p>
+
+  <p>
+    남은 초를 받아 클라이언트가 세어 내려가면, 탭을 30분 방치하고 돌아온 사용자의 화면은 <strong>거짓</strong>이 된다.
+    폐장까지 40분 카운트다운에서 이 오차는 <em>"예약을 걸다 폐장을 맞는"</em> 결과가 되고,
+    무료 타임 10분에서는 더 치명적이다.
+  </p>
+
+  <p>
+    절대 시각 + 서버 시각을 함께 보내면 클라이언트는 한 번만 계산해 둔다.
+  </p>
+
+<pre>오프셋   = serverTime − 로컬시계          <span class="c">// 한 번 구해 보관</span>
+남은시간 = phaseEndsAt − (로컬시계 + 오프셋)   <span class="c">// 매 렌더링마다 다시 계산</span></pre>
+
+  <p>
+    백그라운드에서 깨어난 순간 즉시 정확하고, 사용자의 로컬 시계가 틀려 있어도 오프셋이 흡수한다.
+    <strong>§4에서 서버가 한 것과 정확히 같은 일이다</strong> — 이전 값에 더하지 말고 절대 기준에서 다시 구한다.
+  </p>
+
+  <h2>§7 · 회수</h2>
+
+  <p>이 레슨의 한 문장: <strong>시간은 누적하지 말고 절대 기준에서 매번 다시 구한다.</strong>
+  서버의 <code>tickAt(k)</code>도, 클라이언트의 카운트다운도 같은 규칙이다.</p>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> <code>@Scheduled(fixedRate = 35000)</code>이 이 프로젝트에 부적합한 이유는?</p>
+    <button type="button" data-target="a1" data-answer="wrong"
+      data-hint="오답. fixedRate는 initialDelay + k×period로 최초 시각에 앵커되므로 지연이 누적되지 않는다. 누적되는 것은 fixedDelay 쪽이다.">
+      매 실행의 처리 시간이 다음 기준 시각에 흡수되어 지연이 계속 누적되기 때문이다</button>
+    <button type="button" data-target="a1" data-answer="correct">
+      필요한 간격이 720÷N이고 N이 달마다 바뀌는데 period는 상수여야 하기 때문이다</button>
+    <button type="button" data-target="a1" data-answer="wrong"
+      data-hint="오답. 스레드 수는 겹침·지연 문제이고 fixedRate·Trigger 어느 쪽을 써도 똑같이 걸린다. 방식 선택의 근거가 아니다.">
+      스케줄러의 기본 스레드가 하나여서 틱 처리가 밀리면 다음 틱이 늦어지기 때문이다</button>
+    <p class="answer" id="a1"></p>
+
+    <p><strong>Q2.</strong> <code>tickAt(k) = 월시작 + round(720 × k ÷ N)</code>에서, 27개월을 돌려도 일정이 안 밀리는 직접적인 이유는?</p>
+    <button type="button" data-target="a2" data-answer="wrong"
+      data-hint="오답. round는 개별 틱을 최대 0.5초 어긋나게 만드는 원인이지 정확성의 근거가 아니다. 핵심은 그 오차가 월을 못 넘는다는 것이다.">
+      반올림이 매 틱의 오차를 0.5초 이내로 잡아 주기 때문이다</button>
+    <button type="button" data-target="a2" data-answer="wrong"
+      data-hint="오답. 합집합은 N의 값을 키우는 규칙(기획서 4.1.4)이고, 어떤 N이 오든 식이 성립하는 것이 요점이다.">
+      거래일을 합집합으로 잡아 N이 항상 충분히 크게 확보되기 때문이다</button>
+    <button type="button" data-target="a2" data-answer="correct">
+      k가 N일 때 값이 정확히 720이 되어 오차가 월 경계를 넘지 못하기 때문이다</button>
+    <p class="answer" id="a2"></p>
+
+    <p><strong>Q3.</strong> 서버가 카운트다운을 "남은 초"가 아니라 절대 시각으로 보내는 이유는?</p>
+    <button type="button" data-target="a3" data-answer="correct">
+      백그라운드 탭의 타이머가 스로틀되어 클라이언트가 센 값이 거짓이 되기 때문이다</button>
+    <button type="button" data-target="a3" data-answer="wrong"
+      data-hint="오답. 절대 시각이 오히려 더 긴 문자열이다. 페이로드 크기는 이 결정의 근거가 아니다.">
+      절대 시각이 정수 초보다 페이로드가 작아 매 틱 전송에 유리하기 때문이다</button>
+    <button type="button" data-target="a3" data-answer="wrong"
+      data-hint="오답. 서버·클라이언트 시계 차이는 serverTime을 함께 보내 오프셋으로 흡수하는 것이고, 절대 시각만으로는 오히려 시계 오차에 노출된다.">
+      절대 시각은 클라이언트 로컬 시계와 무관하게 그대로 표시할 수 있기 때문이다</button>
+    <p class="answer" id="a3"></p>
+  </section>
+
+  <h2>§8 · 다음</h2>
+
+  <p>
+    이 레슨은 <strong>한 틱이 언제 일어나는가</strong>를 다뤘다. 다음은
+    <strong>그 틱에서 6가지가 동시에 바뀌는 것을 어떻게 한 덩어리로 만드는가</strong>다 —
+    <code>tickSeq</code>가 논리 시계로 하는 일, 그리고 그게 Kafka offset·Redis Stream ID와 어떻게 같은지.
+  </p>
+
+  <p>
+    <strong>1차 출처 (하나만 읽는다면 이것):</strong>
+    <a href="https://docs.spring.io/spring-framework/reference/integration/scheduling.html">Spring Framework Reference — Task Execution and Scheduling</a>.
+    <code>fixedDelay</code>/<code>fixedRate</code>의 정의, 기본 풀 크기, <code>TaskScheduler</code>·<code>Trigger</code> 추상화가
+    한 페이지에 있다. §3·§4·§5가 전부 이 문서에서 나왔다.
+  </p>
+
+  <ul>
+    <li><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ScheduledExecutorService.html">Java 21 — <code>ScheduledExecutorService</code></a> —
+        <code>scheduleAtFixedRate</code>가 앵커된다는 원문. §3의 근거.</li>
+    <li><a href="https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/scheduling/TaskScheduler.html">Spring — <code>TaskScheduler</code></a> —
+        <code>schedule(Runnable, Trigger)</code>과 <code>schedule(Runnable, Instant)</code> 시그니처.</li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout#timeouts_in_inactive_tabs">MDN — Timeouts in inactive tabs</a> —
+        §6 표의 출처. 브라우저별 스로틀 조건.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="../reference/0018-tick-clock-cheatsheet.html">0018 가상 시계 치트시트</a> ·
+    <a href="./0035-tick-scheduler-and-destination-convention.html">0035 — 틱 스케줄러와 destination</a> ·
+    <a href="./0031-stomp-simplebroker-tick-streaming.html">0031 — 틱 스트리밍 흐름</a>.
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> 이 레슨에서 파고들 만한 곳:
+    <strong>월 경계에 걸친 틱을 어떻게 처리하나</strong>(마지막 틱과 다음 달 첫 틱 사이) ·
+    <strong>서버 재시작 시 <code>tickSeq</code>를 어디서 복구하나</strong> ·
+    <strong>세션 조기 종료가 그리드를 어떻게 자르나</strong>.
+    이 중 무엇이든 지금 물어보면 다음 레슨 전에 다룰 수 있다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

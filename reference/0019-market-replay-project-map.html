@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>마켓 리플레이 프로젝트 지도</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    main { max-width: 1080px; padding-top: 28px; }
+    h1 { font-size: 1.85rem; }
+    h2 { margin-top: 34px; padding-top: 15px; font-size: 1.2rem; }
+    h3 { margin-top: 22px; font-size: 1.02rem; color: #0f766e; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.87rem; margin: 10px 0; }
+    th, td { border: 1px solid #deded6; padding: 5px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; position: sticky; top: 0; }
+    td code, th code { font-size: 0.9em; word-break: break-all; }
+    pre { font-size: 0.82rem; padding: 14px; }
+    pre .c { color: #7f8ba6; }
+    pre .s { color: #c3e88d; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .pub { background: #ecfdf5; }
+    ul { margin: 8px 0; padding-left: 22px; }
+    li { margin: 3px 0; }
+    .toc { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 14px 18px; }
+    .toc ol { margin: 0; padding-left: 22px; columns: 2; column-gap: 28px; }
+    .toc li { margin: 2px 0; font-size: 0.92rem; }
+    .lead { font-size: 1.06rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    @media print { h2 { break-after: avoid; } table, pre, figure { break-inside: avoid; } .toc ol { columns: 2; } }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="sm">레퍼런스 0019 · 계속 돌아오는 문서 · 통독용이 아니라 <strong>찾아보는 용도</strong></p>
+  <h1>마켓 리플레이 프로젝트 지도</h1>
+
+  <p class="lead">
+    기획서 16장 · API 문서 20개 · 엔드포인트 약 60개 · WS 메시지 18종 · 테이블 25개를
+    한 장에 펼친 것이다. <strong>"지금 내가 어디 있는지"</strong>를 잃지 않기 위한 문서다.
+  </p>
+
+  <div class="toc">
+    <ol>
+      <li><a href="#s0">30초 요약</a></li>
+      <li><a href="#s1">하루 — 타임라인과 phase</a></li>
+      <li><a href="#s2">시즌 3일과 IPO 8건 편성</a></li>
+      <li><a href="#s3">유니버스 28종</a></li>
+      <li><a href="#s4">기능 16장 ↔ 문서 ↔ 도메인</a></li>
+      <li><a href="#s5">엔드포인트 전체</a></li>
+      <li><a href="#s6">WS 메시지 18종</a></li>
+      <li><a href="#s7">데이터 모델 — 테이블 25개</a></li>
+      <li><a href="#s8">영역 간 의존 그래프</a></li>
+      <li><a href="#s9">게임 규칙 숫자 총정리</a></li>
+      <li><a href="#s10">미결과 결정 시한</a></li>
+      <li><a href="#s11">착수 전 선행 작업</a></li>
+      <li><a href="#s12">용어 사전</a></li>
+      <li><a href="#s13">문서 읽는 순서 · 다음 학습</a></li>
+    </ol>
+  </div>
+
+  <h2 id="s0">§0 · 30초 요약</h2>
+
+  <p>
+    <strong>과거 80개월(2020.01~2026.08)의 실제 시세를 3일 시즌으로 재생하는 모의투자 게임.</strong>
+    수백 명이 <strong>같은 가상 시각</strong>을 공유한다 — 서버가 하나의 장(場)을 돌린다.
+  </p>
+
+  <table>
+    <tbody>
+      <tr><th>재생 페이스</th><td>게임 1개월 = 실제 <strong>720초(12분)</strong> 고정. 틱 간격은 31~36초 유동. 하루 약 27개월</td></tr>
+      <tr><th>가격 모델</th><td><strong>단일 가격</strong> — 일봉 종가만. 시가·고가·저가·거래량을 게임 전체에서 쓰지 않는다. 차트는 선 그래프</td></tr>
+      <tr><th>시드</th><td>1억 원. 1주 단위 정수 거래. 공매도·레버리지·부분 체결 없음</td></tr>
+      <tr><th>통화</th><td>원화·달러 <strong>두 지갑</strong>. 수동 환전. 나스닥·코인은 달러 결제, 국내는 원화</td></tr>
+      <tr><th>인증</th><td>소셜 로그인 전용(Google·Kakao). <strong>세션 방식</strong>, JWT 없음. Redis 인덱스 세션</td></tr>
+      <tr><th>실시간</th><td>STOMP over WebSocket. destination 4개. <strong>서버→클라이언트 단방향</strong>(`SEND` 프레임 없음)</td></tr>
+      <tr><th>핵심 설계 원칙</th><td><strong>"모르는 채로 겪기"</strong> — 미래 데이터는 서버에만 존재하고 응답 계층이 게임 시각으로 잘라 낸다</td></tr>
+      <tr><th>스택</th><td>Spring Boot 4.1.1 · Java 21 · PostgreSQL + Flyway · Redis · JPA · springdoc-openapi</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s1">§1 · 하루 — 타임라인과 phase</h2>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 340" role="img" aria-label="하루 타임라인: phase, 무료 타임, 암전, IPO 청약 창">
+      <defs>
+        <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/>
+        </marker>
+      </defs>
+
+      <text class="d-title" x="16" y="20">1일차 하루 (실제 시각) · 눈금 1시간</text>
+
+      <!-- phase bar -->
+      <rect class="d-box-c" x="60"  y="40" width="10"  height="30"/>
+      <rect class="d-box-a" x="70"  y="40" width="670" height="30"/>
+      <rect class="d-box-c" x="740" y="40" width="40"  height="30"/>
+      <rect class="d-box"   x="780" y="40" width="80"  height="30"/>
+
+      <text class="d-label-sm" x="62"  y="59" transform="rotate(-90 62 59)">BRIEFING</text>
+      <text class="d-label" x="330" y="60">TRADING · 재생·거래</text>
+      <text class="d-label-sm" x="744" y="59">SETTLING</text>
+      <text class="d-label-sm" x="784" y="59">REVIEW_ONLY</text>
+
+      <!-- hour ticks -->
+      <line class="d-line" x1="60" y1="78" x2="862" y2="78" marker-end="url(#m1)"/>
+      <g class="d-label-sm">
+        <line class="d-line" x1="60"  y1="74" x2="60"  y2="82"/><text x="48"  y="95">11:00</text>
+        <line class="d-line" x1="180" y1="74" x2="180" y2="82"/><text x="168" y="95">12:00</text>
+        <line class="d-line" x1="300" y1="74" x2="300" y2="82"/><text x="288" y="95">13:00</text>
+        <line class="d-line" x1="420" y1="74" x2="420" y2="82"/><text x="408" y="95">14:00</text>
+        <line class="d-line" x1="540" y1="74" x2="540" y2="82"/><text x="528" y="95">15:00</text>
+        <line class="d-line" x1="660" y1="74" x2="660" y2="82"/><text x="648" y="95">16:00</text>
+        <line class="d-line" x1="780" y1="74" x2="780" y2="82"/><text x="768" y="95">17:00</text>
+      </g>
+
+      <!-- flags -->
+      <rect x="180" y="112" width="20" height="22" fill="#fff7ed" stroke="#b45309" stroke-width="1.5" rx="3"/>
+      <text class="d-label-sm" x="206" y="127" fill="#b45309">feeFree 12:00~12:10 — 거래 수수료 0% (환전은 대상 아님)</text>
+
+      <rect x="660" y="142" width="80" height="22" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5" rx="3"/>
+      <text class="d-label-sm" x="746" y="157">leaderboardBlackout 16:00~16:40 — 리더보드만 가림. 거래는 계속</text>
+
+      <!-- key instants -->
+      <line class="d-line-d" x1="718" y1="36" x2="718" y2="196"/>
+      <text class="d-label-sm" x="600" y="190">16:29 재생 종료 (27개월)</text>
+      <line class="d-line-a" x1="740" y1="36" x2="740" y2="212"/>
+      <text class="d-label-sm" x="640" y="226" fill="#0f766e">16:40 폐장 — 미체결 예약 자동 취소 · 순위 확정 스냅샷</text>
+      <line class="d-line-a" x1="780" y1="36" x2="780" y2="240"/>
+      <text class="d-label-sm" x="640" y="254" fill="#0f766e">17:00 정산 발표 — 순위 공개 · 시상 · 일일 복기 열람</text>
+
+      <!-- IPO windows (day 1) -->
+      <text class="d-title" x="16" y="288">1일차 IPO 청약 창 4건 — 공시 → 12분 → 마감·추첨 → 12분 → 상장</text>
+      <g>
+        <rect x="214" y="298" width="24" height="16" fill="#eef7f5" stroke="#0f766e" stroke-width="1.5" rx="2"/>
+        <line class="d-line-d" x1="238" y1="306" x2="262" y2="306"/>
+        <circle cx="262" cy="306" r="3.5" fill="#0f766e"/>
+        <text class="d-label-sm" x="200" y="330">카카오게임즈</text>
+      </g>
+      <g>
+        <rect x="382" y="298" width="24" height="16" fill="#eef7f5" stroke="#0f766e" stroke-width="1.5" rx="2"/>
+        <line class="d-line-d" x1="406" y1="306" x2="430" y2="306"/>
+        <circle cx="430" cy="306" r="3.5" fill="#0f766e"/>
+        <text class="d-label-sm" x="378" y="330">코인베이스</text>
+      </g>
+      <g>
+        <rect x="478" y="298" width="24" height="16" fill="#eef7f5" stroke="#0f766e" stroke-width="1.5" rx="2"/>
+        <line class="d-line-d" x1="502" y1="306" x2="526" y2="306"/>
+        <circle cx="526" cy="306" r="3.5" fill="#0f766e"/>
+        <text class="d-label-sm" x="482" y="330">크래프톤</text>
+      </g>
+      <g>
+        <rect x="550" y="298" width="24" height="16" fill="#eef7f5" stroke="#0f766e" stroke-width="1.5" rx="2"/>
+        <line class="d-line-d" x1="574" y1="306" x2="598" y2="306"/>
+        <circle cx="598" cy="306" r="3.5" fill="#0f766e"/>
+        <text class="d-label-sm" x="576" y="330">리비안</text>
+      </g>
+    </svg>
+    <figcaption>
+      네모 = 청약 접수 12분 · 점선 = 배정 대기 12분 · 동그라미 = 상장·거래 시작.
+      <strong>모든 시각이 11:05로부터 12분의 배수</strong>다 — 720초 그리드의 직접 결과
+      (<a href="../lessons/0036-tick-clock-720s-grid.html">0036</a>).
+    </figcaption>
+  </figure>
+
+  <table>
+    <thead><tr><th>phase</th><th>실제 시각</th><th>거래</th><th>채팅</th><th>리더보드</th><th>가능한 것</th></tr></thead>
+    <tbody>
+      <tr><td><code>BRIEFING</code></td><td class="num">11:00~11:05</td><td class="no">✗</td><td>송·수신</td><td>열람</td><td>열람, 채팅</td></tr>
+      <tr><td><code>TRADING</code></td><td class="num">11:05~16:40</td><td class="ok">✓</td><td>송·수신</td><td>열람</td><td>전 기능 — 시장가·예약·환전·청약·채팅</td></tr>
+      <tr><td><code>SETTLING</code></td><td class="num">16:40~17:00</td><td class="no">✗</td><td>송·수신</td><td>열람</td><td>열람, 채팅</td></tr>
+      <tr><td><code>REVIEW_ONLY</code></td><td class="num">17:00~익일 11:00</td><td class="no">✗</td><td><strong>읽기만</strong></td><td>열람</td><td>계좌·차트·랭킹·복기·뉴스 열람</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <strong><code>feeFree</code>와 <code>leaderboardBlackout</code>은 phase가 아니라 플래그다.</strong>
+    둘 다 거래가 계속되므로 phase로 쪼개면 "거래 가능한 phase가 3개"가 되어 모든 게이팅 표기가 복잡해진다.
+  </p>
+
+  <p class="warn">
+    <strong>일시정지는 없다.</strong> 12분 그리드가 IPO 8건·폐장·정산 시각을 전부 고정하므로 멈추면 그 전부가 흔들린다.
+    장애 대응은 <strong>세션 조기 종료</strong> — 계약상 <code>TRADING → SETTLING</code> 조기 전환 하나이고
+    새 엔드포인트도 새 phase도 만들지 않는다.
+  </p>
+
+  <h2 id="s2">§2 · 시즌 3일과 IPO 8건 편성</h2>
+
+  <p><strong>운영 내부 자료다.</strong> 일자별 재생 구간은 사용자에게 공개하지 않는다(기획서 3.1.2). 브리핑은 <strong>당일 시작 시점만</strong> 알린다(3.5.2).</p>
+
+  <table>
+    <thead><tr><th>일차</th><th>날짜</th><th>재생 구간</th><th>시장 국면 (비공개)</th></tr></thead>
+    <tbody>
+      <tr><td>1일차</td><td class="num">9/21</td><td class="num">2020.01 ~ 2022.03</td><td>코로나 폭락 · 유동성 랠리 · 코인 광풍</td></tr>
+      <tr><td>2일차</td><td class="num">9/22</td><td class="num">2022.04 ~ 2024.06</td><td>긴축 하락장 · AI 랠리 시작</td></tr>
+      <tr><td>3일차</td><td class="num">9/23</td><td class="num">2024.07 ~ 2026.08</td><td>AI 사이클 · 최종 정산</td></tr>
+    </tbody>
+  </table>
+
+  <h3>IPO 편성표 (기능명세서 기준 — 그리드 검산 통과)</h3>
+
+  <table>
+    <thead><tr><th>일차</th><th>종목</th><th>상장 게임 시각</th><th>공시·청약</th><th>마감·추첨</th><th>상장</th><th>그리드 검산</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>카카오게임즈</td><td class="num">2020.09</td><td class="num">12:17</td><td class="num">12:29</td><td class="num">12:41</td><td class="num ok">8개월 → 96분 ✓</td></tr>
+      <tr><td>1</td><td>코인베이스</td><td class="num">2021.04</td><td class="num">13:41</td><td class="num">13:53</td><td class="num">14:05</td><td class="num ok">15개월 → 180분 ✓</td></tr>
+      <tr><td>1</td><td>크래프톤</td><td class="num">2021.08</td><td class="num">14:29</td><td class="num">14:41</td><td class="num">14:53</td><td class="num ok">19개월 → 228분 ✓</td></tr>
+      <tr><td>1</td><td>리비안</td><td class="num">2021.11</td><td class="num">15:05</td><td class="num">15:17</td><td class="num">15:29</td><td class="num ok">22개월 → 264분 ✓</td></tr>
+      <tr><td>2</td><td>ARM</td><td class="num">2023.09</td><td class="num">14:05</td><td class="num">14:17</td><td class="num">14:29</td><td class="num ok">17개월 → 204분 ✓</td></tr>
+      <tr><td>2</td><td>두산로보틱스</td><td class="num">2023.10</td><td class="num">14:17</td><td class="num">14:29</td><td class="num">14:41</td><td class="num ok">18개월 → 216분 ✓</td></tr>
+      <tr><td>3</td><td>LG CNS</td><td class="num">2025.02</td><td class="num">12:05</td><td class="num">12:17</td><td class="num">12:29</td><td class="num ok">7개월 → 84분 ✓</td></tr>
+      <tr><td>3</td><td>코어위브</td><td class="num">2025.03</td><td class="num">12:17</td><td class="num">12:29</td><td class="num">12:41</td><td class="num ok">8개월 → 96분 ✓</td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm">검산: 각 일차 재생 시작 11:05 + (경과 개월 × 12분) = 상장 시각. 8건 전부 일치한다.</p>
+
+  <p class="warn">
+    <strong>⚠ 발견 — <code>종목.md</code>의 시각이 이 표와 다르고, 그리드 검산에 실패한다.</strong>
+    <code>종목.md</code>는 카카오게임즈 공시 <strong>12:05</strong> · 등장 <strong>12:25</strong>로 적었는데,
+    12:25는 11:05로부터 80분이라 <strong>12분의 배수가 아니다</strong>(6.67개월).
+    8건 전부가 같은 방식으로 어긋나며 일관되게 약 16~24분 이르다.
+    <br><br>
+    <strong>기능명세서 IPO 편성표가 맞고 <code>종목.md</code>가 낡은 값</strong>으로 보인다 —
+    전자만 720초 그리드를 만족하고, 공시가 "상장 2개월 전"이라는 기획서 8장 규칙도 전자에서만 성립한다
+    (<code>종목.md</code> 값으로는 3개월 전이 된다). <strong>구현 전에 <code>종목.md</code>를 갱신하거나
+    "편성 시각의 정본은 기능명세서"임을 명시해야 한다.</strong>
+    <br><br>
+    <span class="sm">이 모순은 <a href="../lessons/0036-tick-clock-720s-grid.html">0036</a>의 그리드 검산을
+    적용해서 찾았다. 개념이 실제로 쓰인 첫 사례다.</span>
+  </p>
+
+  <p><strong>IPO 규칙:</strong> 시즌당 8건 · <strong>무작위 추첨</strong>(전원 동일 확률) · 1인 1청약(종목당) ·
+  청약 단위 고정(국내 1,000만 원 = 시드의 10%, 나스닥은 상당 달러) · 증거금 100% 즉시 잠금 ·
+  당첨 예정 인원 = <code>round(청약자 × 30%)</code> 최소 1명 · 배정 수량 = <code>floor(증거금 ÷ 공모가)</code> ·
+  낙첨 증거금은 <strong>추첨 즉시</strong> 전액 반환.</p>
+
+  <h2 id="s3">§3 · 유니버스 28종</h2>
+
+  <p>3시장 모두 1일차부터 열린다. 거래 가능 종목은 <strong>20종에서 시작해 IPO를 따라 28종까지</strong> 늘어난다. 상장폐지는 없다.</p>
+
+  <table>
+    <thead><tr><th>#</th><th>시장</th><th>유형</th><th>종목 (티커)</th><th>등장 게임 시각</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>나스닥</td><td>ETF</td><td>Invesco QQQ (QQQ)</td><td class="num">2020.01</td></tr>
+      <tr><td>2</td><td>나스닥</td><td class="mid">인버스 3X</td><td>ProShares SQQQ (SQQQ)</td><td class="num">2020.01</td></tr>
+      <tr><td>3</td><td>나스닥</td><td>일반</td><td>엔비디아 (NVDA)</td><td class="num">2020.01</td></tr>
+      <tr><td>4</td><td>나스닥</td><td>일반</td><td>테슬라 (TSLA)</td><td class="num">2020.01</td></tr>
+      <tr><td>5</td><td>나스닥</td><td>일반</td><td>슈퍼마이크로 (SMCI)</td><td class="num">2020.01</td></tr>
+      <tr><td>6</td><td>나스닥</td><td>일반</td><td>줌 비디오 (ZM)</td><td class="num">2020.01</td></tr>
+      <tr><td>7</td><td>나스닥</td><td>일반</td><td>마이크로스트래티지 (MSTR)</td><td class="num">2020.01</td></tr>
+      <tr><td>8</td><td>나스닥</td><td>일반</td><td>모더나 (MRNA)</td><td class="num">2020.01</td></tr>
+      <tr><td>9</td><td>나스닥</td><td class="ok">IPO</td><td>코인베이스 (COIN)</td><td class="num">2021.04</td></tr>
+      <tr><td>10</td><td>나스닥</td><td class="ok">IPO</td><td>리비안 (RIVN)</td><td class="num">2021.11</td></tr>
+      <tr><td>11</td><td>나스닥</td><td class="ok">IPO</td><td>ARM (ARM)</td><td class="num">2023.09</td></tr>
+      <tr><td>12</td><td>나스닥</td><td class="ok">IPO</td><td>코어위브 (CRWV)</td><td class="num">2025.03</td></tr>
+      <tr><td>13</td><td>국내</td><td>ETF</td><td>KODEX 200 (069500)</td><td class="num">2020.01</td></tr>
+      <tr><td>14</td><td>국내</td><td class="mid">인버스 2X</td><td>KODEX 200선물인버스2X (252670)</td><td class="num">2020.01</td></tr>
+      <tr><td>15</td><td>국내</td><td>일반</td><td>삼성전자 (005930)</td><td class="num">2020.01</td></tr>
+      <tr><td>16</td><td>국내</td><td>일반</td><td>SK하이닉스 (000660)</td><td class="num">2020.01</td></tr>
+      <tr><td>17</td><td>국내</td><td>일반</td><td>에코프로 (086520)</td><td class="num">2020.01</td></tr>
+      <tr><td>18</td><td>국내</td><td>일반</td><td>한화에어로스페이스 (012450)</td><td class="num">2020.01</td></tr>
+      <tr><td>19</td><td>국내</td><td>일반</td><td>카카오 (035720)</td><td class="num">2020.01</td></tr>
+      <tr><td>20</td><td>국내</td><td>일반</td><td>HMM (011200)</td><td class="num">2020.01</td></tr>
+      <tr><td>21</td><td>국내</td><td class="ok">IPO</td><td>카카오게임즈 (293490)</td><td class="num">2020.09</td></tr>
+      <tr><td>22</td><td>국내</td><td class="ok">IPO</td><td>크래프톤 (259960)</td><td class="num">2021.08</td></tr>
+      <tr><td>23</td><td>국내</td><td class="ok">IPO</td><td>두산로보틱스 (454910)</td><td class="num">2023.10</td></tr>
+      <tr><td>24</td><td>국내</td><td class="ok">IPO</td><td>LG CNS (064400)</td><td class="num">2025.02</td></tr>
+      <tr><td>25</td><td>코인</td><td>기축</td><td>이더리움 (ETH)</td><td class="num">2020.01</td></tr>
+      <tr><td>26</td><td>코인</td><td>일반</td><td>체인링크 (LINK)</td><td class="num">2020.01</td></tr>
+      <tr><td>27</td><td>코인</td><td>일반</td><td>폴리곤 (MATIC)</td><td class="num">2020.01</td></tr>
+      <tr><td>28</td><td>코인</td><td>일반</td><td>디센트럴랜드 (MANA)</td><td class="num">2020.01</td></tr>
+    </tbody>
+  </table>
+
+  <h3>재생 구간 안의 분할 이력 — 처리 안 하면 게임이 붕괴한다</h3>
+
+  <table>
+    <thead><tr><th>종목</th><th>건수</th><th>내역</th><th>미처리 시</th></tr></thead>
+    <tbody>
+      <tr><td>엔비디아</td><td class="num">2</td><td class="num">2021-07 4:1 · 2024-06 10:1</td><td class="no">−75% · −90% 가짜 폭락</td></tr>
+      <tr><td>테슬라</td><td class="num">2</td><td class="num">2020-08 5:1 · 2022-08 3:1</td><td class="no">−80% · −67%</td></tr>
+      <tr><td>슈퍼마이크로</td><td class="num">1</td><td class="num">2024-10 10:1</td><td class="no">−90%</td></tr>
+      <tr><td>마이크로스트래티지</td><td class="num">1</td><td class="num">2024-08 10:1</td><td class="no">−90%</td></tr>
+      <tr><td>카카오</td><td class="num">1</td><td class="num">2021-04 5:1</td><td class="no">−80%</td></tr>
+      <tr><td><strong>SQQQ</strong></td><td class="num"><strong>4</strong></td><td class="num">2020-08-18 · 2022-01-13 · 2024-11-07 · 2025-11-20 — <strong>전부 1:5 역분할</strong></td><td class="no"><strong>누적 5⁴ = 625배.</strong> 들고만 있어도 62,400% 수익</td></tr>
+      <tr><td>KODEX 200선물인버스2X</td><td class="num">?</td><td class="mid">미조사</td><td class="mid">C-1이 1배 교체로 결정되면 대상이 바뀐다</td></tr>
+    </tbody>
+  </table>
+
+<pre><span class="c">// 해결: 적재 시점에 조정된 값을 저장한다. 런타임 이벤트가 아니다.</span>
+factor(symbol, d)    = Π { ratio_i : ex_date_i ≤ d }
+adj_close(symbol, d) = raw_close(symbol, d) × factor(symbol, d) ÷ factor(symbol, base)
+
+<span class="c">// ratio = 1주가 몇 주가 되는가.  4:1 분할 → 4,  1:5 역분할 → 0.2</span>
+<span class="c">// ex_date = 분할 후 첫 거래일. 그날 종가는 이미 분할된 값이라 ≤ 로 포함해야 이어진다</span>
+<span class="c">// 배당은 조정하지 않는다 — 조정하면 배당락이 화면에서 사라진다</span>
+<span class="c">// raw_close 를 함께 보관하므로 base(기준일)는 언제든 되돌릴 수 있다</span></pre>
+
+  <h2 id="s4">§4 · 기능 16장 ↔ 문서 ↔ 도메인</h2>
+
+  <table>
+    <thead><tr><th>차수</th><th>기획서 장</th><th>API 문서</th><th>API 도메인</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr><td>1차</td><td>4장 MKT — 시세 재생·차트</td><td><code>mkt.md</code></td><td><code>market</code></td><td class="ok">확정</td></tr>
+      <tr><td>1차</td><td>5장 UNV — 유니버스·탐색</td><td><code>unv.md</code></td><td><code>market</code>·<code>users</code></td><td class="ok">확정</td></tr>
+      <tr><td>1차</td><td>6장 ORD — 주문·체결</td><td><code>ord.md</code></td><td><code>orders</code>·<code>executions</code></td><td class="ok">확정</td></tr>
+      <tr><td>1차</td><td>7장 ACC — 계좌·포트폴리오</td><td><code>acc.md</code></td><td><code>accounts</code></td><td class="ok">확정</td></tr>
+      <tr><td>2차</td><td>3장 SEA — 시즌·게임 진행</td><td><code>sea.md</code></td><td><code>seasons</code>·<code>game</code></td><td>작성됨</td></tr>
+      <tr><td>2차</td><td>8장 IPO — 공모주 청약</td><td><code>ipo.md</code></td><td><code>ipo</code></td><td>작성됨</td></tr>
+      <tr><td>2차</td><td>9장 INFO — 종목 정보</td><td><code>info.md</code></td><td><code>market</code></td><td>작성됨</td></tr>
+      <tr><td>2차</td><td>10장 NWS — 뉴스 피드</td><td><code>nws.md</code></td><td><code>news</code></td><td class="mid">작성됨 · 후순위</td></tr>
+      <tr><td>2차</td><td>11장 RANK — 랭킹·시상</td><td><code>rank.md</code></td><td><code>rankings</code></td><td>작성됨</td></tr>
+      <tr><td>2차</td><td>12장 SOC — 소셜·군중심리</td><td><code>soc.md</code></td><td><code>chat</code>·<code>social</code></td><td>작성됨</td></tr>
+      <tr><td>2차</td><td>13장 RPT — 복기·리포트</td><td><code>rpt.md</code></td><td><code>reports</code></td><td>작성됨</td></tr>
+      <tr><td>3차</td><td>1장 AUTH — 인증·세션</td><td><code>auth.md</code></td><td>Spring Security</td><td class="ok">기구현 · 대조표</td></tr>
+      <tr><td>3차</td><td>1.1·2장 USER — 사용자</td><td><code>user.md</code></td><td><code>users</code></td><td class="ok">기구현 · 대조표</td></tr>
+      <tr><td>3차</td><td>16장 ADM — 관리자·운영</td><td><code>adm.md</code></td><td><code>admin</code></td><td class="mid">7개 기구현 · F-ADM 5건 미구현</td></tr>
+      <tr><td>—</td><td>14장 ONB — 온보딩</td><td class="no">없음</td><td>—</td><td class="no">골격 2줄. 계약 쓰면 그게 곧 기획 결정이 됨</td></tr>
+      <tr><td>—</td><td>15장 NOTI — 알림</td><td class="no">없음</td><td>—</td><td class="no">골격 2줄</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>순서 없이 참조하는 문서 5개:</strong> <code>_common.md</code>(전제) ·
+  <code>glossary.md</code>(용어) · <code>conflicts.md</code>(미결·시한) ·
+  <code>spec-revisions.md</code>(기획서 문장 개정) · <code>ws.md</code>(전송 계층) · <code>schema.sql</code>(스키마 초안).</p>
+
+  <h2 id="s5">§5 · 엔드포인트 전체</h2>
+
+  <p>권한 <span class="pub">초록 배경</span> = 미인증 접근 가능. <strong>비즈니스 API 중 공개는 딱 둘뿐이다.</strong></p>
+
+  <table>
+    <thead><tr><th>메서드</th><th>경로</th><th>권한</th><th>phase</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>game · seasons</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/game/clock</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>시계·phase의 <strong>단일 진실</strong></td></tr>
+      <tr class="pub"><td>GET</td><td><code>/api/v1/seasons/current</code></td><td><strong>공개</strong></td><td><code>ALWAYS</code></td><td>시즌 안내 + 참가 상태. 미인증은 <code>participation: null</code></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/seasons/current/briefing</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>당일 시작 시점만. <strong>종료 지점·종목명 없음</strong></td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>market — 시세·종목·정보</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/market/prices</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>28종 현재가 + 환율. 페이지 없음</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/market/instruments/{id}/closes</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>종가 시계열. <strong>페이지 없음</strong>(최대 약 1,700포인트)</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/market/instruments</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>유니버스 전체. <code>?category=</code></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/market/instruments/{id}</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>종목 메타 + <code>summary</code></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/market/instruments/{id}/info</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>정보 카드 3종. <code>cardType</code>으로 분기</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/market/signal-criteria</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>신호등 기준. <strong>종목 무관</strong></td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>orders · executions</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/orders/preview</code></td><td>사용자</td><td><code>TRADING</code></td><td>예상 금액·수수료·부족분·<code>shortfallExchange</code></td></tr>
+      <tr><td>POST</td><td><code>/api/v1/orders</code></td><td>사용자</td><td><code>TRADING</code></td><td>시장가·예약 <strong>통합 생성</strong>. 201</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/orders</code></td><td>사용자</td><td><code>ALWAYS</code></td><td><strong>미체결 예약만.</strong> 폐장 후 항상 빈 목록</td></tr>
+      <tr><td>PATCH</td><td><code>/api/v1/orders/{id}</code></td><td>사용자</td><td><code>TRADING</code></td><td>취소+재등록과 동일. 잠금 재계산</td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/orders/{id}</code></td><td>사용자</td><td><code>TRADING</code></td><td>204. <strong>남의 것은 404</strong>(존재 노출 방지)</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/executions</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>체결 내역. 페이지. <code>?instrumentId&amp;seasonDay</code></td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>accounts</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/accounts/me</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>계좌 요약. <code>/{id}</code>는 <strong>없다</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/accounts/me/positions</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>포지션. 페이지 없음. <code>quantity=0</code> 제외</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/accounts/me/exchanges/preview</code></td><td>사용자</td><td><code>TRADING</code></td><td>환율·수수료·수령액</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/accounts/me/exchanges</code></td><td>사용자</td><td><code>TRADING</code></td><td>환전 실행. <code>amount</code>는 <strong>보내는 통화</strong> 기준</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/accounts/me/exchanges</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>환전 이력. 페이지</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/accounts/me/absence-summary</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>부재 요약. <strong>스냅샷, 갱신 안 됨</strong></td></tr>
+      <tr><td>POST</td><td><code>/api/v1/accounts/me/absence-summary/ack</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>204. <code>max(기존, ackedTickSeq)</code></td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>ipo</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/ipo/offerings</code></td><td>사용자</td><td><code>ALWAYS</code></td><td><strong>공시된 것만.</strong> 각 항목에 <code>mySubscription</code></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/ipo/offerings/{id}</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>+ 공시 본문 · 경쟁률 · 내 청약</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/ipo/offerings/{id}/subscription</code></td><td>사용자</td><td><code>TRADING</code></td><td><strong>본문 없음. 멱등</strong>(재신청 200)</td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/ipo/offerings/{id}/subscription</code></td><td>사용자</td><td><code>TRADING</code></td><td>204. 안 한 것도 204(멱등)</td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>rankings</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/rankings</code></td><td>사용자</td><td><code>ALWAYS</code></td><td><code>?track=SEASON|DAILY</code>. 페이지. <strong>암전 중 빈 배열</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/rankings/me</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>두 트랙 한 번에. 암전 중 <code>rank</code>는 <code>null</code></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/rankings/awards</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>일일·최종 시상. 발표 전 <code>final: null</code></td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>news</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/news</code></td><td>사용자</td><td><code>ALWAYS</code></td><td><strong>커서 페이지</strong>(유일한 예외). <code>?channel&amp;instrumentId</code></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/news/ticker</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>헤드라인 롤링</td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>chat · social</strong></td></tr>
+      <tr class="pub"><td>GET</td><td><code>/api/v1/chat/messages</code></td><td><strong>공개</strong></td><td><code>ALWAYS</code></td><td>히스토리. <strong>커서 페이지</strong>. 기본 100건</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/chat/messages</code></td><td>사용자</td><td><code>OPERATING</code></td><td>전송. 쿨다운 위반은 <strong>429 + Retry-After</strong></td></tr>
+      <tr><td>POST</td><td><code>/api/v1/chat/messages/{id}/report</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>204. 멱등. <strong>신고 수 미노출</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/social/heatmap</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>익명 집계 4버킷. <strong>종목 단위 없음</strong></td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>reports</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/reports/daily</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>일차 목록. <strong>여기서 재생 구간이 처음 공개된다</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/reports/daily/{seasonDay}</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>차트+마커+요약. <strong>발표 전 409</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/reports/season</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>MDD·승률·회전율·벤치마크</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/reports/season/what-if</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>'만약에' 시뮬레이터</td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>users — 기구현</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/users/me</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>이메일·닉네임·권한·로그인 방법</td></tr>
+      <tr><td>PATCH</td><td><code>/api/v1/users/me</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>부분 수정 하나. 아바타도 여기로</td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/users/me</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>탈퇴. Kakao unlink 선행(실패 시 502)</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/users/me/watchlist</code></td><td>사용자</td><td><code>ALWAYS</code></td><td><code>{ instrumentIds: [] }</code></td></tr>
+      <tr><td>PUT</td><td><code>/api/v1/users/me/watchlist/{id}</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>추가. <strong>멱등</strong>(토글 아님)</td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/users/me/watchlist/{id}</code></td><td>사용자</td><td><code>ALWAYS</code></td><td>204</td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>auth — Spring Security, 컨트롤러 없음</strong></td></tr>
+      <tr class="pub"><td>GET</td><td><code>/oauth2/authorization/{google|kakao}</code></td><td><strong>공개</strong></td><td>—</td><td>로그인 시작</td></tr>
+      <tr class="pub"><td>GET</td><td><code>/login/oauth2/code/*</code></td><td><strong>공개</strong></td><td>—</td><td>콜백 → 세션 발급 → <strong>시즌 참가·계좌 생성</strong></td></tr>
+      <tr><td>POST</td><td><code>/api/auth/logout</code></td><td>사용자</td><td>—</td><td>세션 즉시 무효화. 204</td></tr>
+
+      <tr><td colspan="5" style="background:#f3f4f6"><strong>admin — 7개 기구현 (전부 <code>ROLE_ADMIN</code>)</strong></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/users</code> · <code>/users/{id}</code></td><td>관리자</td><td><code>ALWAYS</code></td><td>검색·상세. <strong>Test User 제외</strong></td></tr>
+      <tr><td>PATCH</td><td><code>/api/v1/admin/users/{id}/role</code></td><td>관리자</td><td><code>ALWAYS</code></td><td>권한 변경 → <strong>세션 즉시 무효화</strong></td></tr>
+      <tr><td>DELETE</td><td><code>/api/v1/admin/users/{id}/sessions</code></td><td>관리자</td><td><code>ALWAYS</code></td><td>세션 강제 만료</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/admin/audit-logs</code></td><td>관리자</td><td><code>ALWAYS</code></td><td>감사 로그</td></tr>
+      <tr><td>GET/PUT</td><td><code>/api/v1/admin/inquiries</code> · <code>/{id}/answer</code></td><td>관리자</td><td><code>ALWAYS</code></td><td>문의 검색·답변</td></tr>
+      <tr><td colspan="5" class="no">F-ADM-01 시즌 편성 · 02 재생 제어 · 03 데이터 검수 · 04 신고 처리 · 05 운영 모니터링 — <strong>전부 미구현</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h3>상태 코드 규약</h3>
+
+  <table>
+    <thead><tr><th>코드</th><th>쓰는 곳</th></tr></thead>
+    <tbody>
+      <tr><td><strong>400</strong></td><td><code>@Valid</code> 형식 검증 실패. <code>errors[]</code>에 <code>{field, rejectedValue, reason}</code></td></tr>
+      <tr><td><strong>401</strong></td><td>세션 만료·무효</td></tr>
+      <tr><td><strong>403</strong></td><td>권한 부족 · 채팅 이용 제한 중</td></tr>
+      <tr><td><strong>404</strong></td><td>남의 리소스. <strong>403을 주면 존재가 드러난다</strong></td></tr>
+      <tr><td><strong>409</strong></td><td>상태 충돌 — phase 위반 · 잔고 부족 · 휴장 종목 시장가 · <code>UPCOMING</code> 주문 · <code>EXCLUDED</code> 사용자 · 발표 전 리포트</td></tr>
+      <tr><td><strong>429</strong></td><td><strong>채팅 쿨다운만.</strong> <code>Retry-After</code>로 남은 초. 재시도 가능/불가능을 프론트가 구분해야 하므로 409로 뭉치지 않는다</td></tr>
+      <tr><td><strong>502</strong></td><td>외부 연동 실패 (Kakao unlink 등)</td></tr>
+      <tr><td><strong>503</strong></td><td>인프라 일시 장애 (Redis/DB)</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>비즈니스 에러 코드를 두지 않는다.</strong> 식별은 <strong>HTTP 상태 + <code>message</code></strong>다.
+  <strong>GET은 절대 상태를 바꾸지 않는다</strong> — 세션 쿠키가 <code>SameSite=Lax</code>라 교차 사이트 POST는 막히지만
+  top-level GET은 통과하므로, 변경을 일으키는 GET이 그대로 CSRF 통로가 된다.</p>
+
+  <h2 id="s6">§6 · WS 메시지 18종</h2>
+
+<pre>/topic/tick      매 틱 브로드캐스트     (4종)
+/topic/event     비주기 브로드캐스트   (7종)
+/topic/chat      채팅                  (2종)
+/user/queue/me   개인                  (5종)     <span class="c">// Spring이 세션별 라우팅</span>
+
+봉투: { "type": "market.prices", "tickSeq": 137, "gameDate": "2022-04-15", "payload": {} }</pre>
+
+  <table>
+    <thead><tr><th>destination</th><th><code>type</code></th><th>시점</th><th><code>payload</code></th></tr></thead>
+    <tbody>
+      <tr><td rowspan="4"><code>/topic/tick</code></td><td><code>market.prices</code></td><td>매 틱</td><td><code>GET /market/prices</code>와 <strong>같은 형태</strong></td></tr>
+      <tr><td><code>news.published</code></td><td>기사가 있을 때만</td><td>기사 배열</td></tr>
+      <tr><td><code>social.heatmap</code></td><td>매 틱</td><td>4버킷</td></tr>
+      <tr><td><code>ipo.competition</code></td><td>청약 창 열린 동안</td><td>경쟁률·확률</td></tr>
+      <tr><td rowspan="7"><code>/topic/event</code></td><td><code>game.phase</code></td><td>phase 전환</td><td><code>GET /game/clock</code>과 같은 형태</td></tr>
+      <tr><td><code>ipo.disclosed</code></td><td>공시 틱</td><td>공모 정보</td></tr>
+      <tr><td><code>ipo.announced</code></td><td>추첨 직후</td><td>"○○명 당첨"</td></tr>
+      <tr><td><code>ipo.listed</code></td><td>상장 틱</td><td>종목 등장</td></tr>
+      <tr><td><code>ranking.top10Changed</code></td><td>암전 중 변동</td><td class="no"><strong>빈 객체.</strong> 무엇이든 실으면 암전이 뚫린다</td></tr>
+      <tr><td><code>ranking.finalized</code></td><td>폐장 확정</td><td><code>seasonDay</code>, <code>finalized: true</code></td></tr>
+      <tr><td><code>ranking.awarded</code></td><td>정산 발표</td><td>시상 결과</td></tr>
+      <tr><td rowspan="2"><code>/topic/chat</code></td><td><code>chat.message</code></td><td>전송 즉시</td><td>메시지. <strong>게임 시계와 독립</strong></td></tr>
+      <tr><td><code>chat.deleted</code></td><td>관리자 삭제</td><td><code>messageId</code>만. <strong>사유 없음</strong></td></tr>
+      <tr><td rowspan="5"><code>/user/queue/me</code></td><td><code>account.valuation</code></td><td>매 틱</td><td><code>GET /accounts/me</code>와 같은 형태</td></tr>
+      <tr><td><code>ranking.me</code></td><td>매 틱</td><td>두 트랙 순위</td></tr>
+      <tr><td><code>order.filled</code></td><td>예약 체결</td><td>체결 항목</td></tr>
+      <tr><td><code>order.expired</code></td><td>폐장 자동 취소</td><td class="mid"><strong><code>tickSeq: null</code></strong> — 어떤 틱에도 속하지 않는다</td></tr>
+      <tr><td><code>ipo.result</code></td><td>추첨 직후</td><td>당첨·낙첨</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>브로드캐스트 13 · 개인 5.</strong> 안 미는 것도 결정이다 —
+  <strong>리더보드 전체</strong>(4,000행 × 35초)는 밀지 않고 <code>ranking.me</code>를 받으면 프론트가 REST로 재조회한다.
+  <strong>포지션</strong>도 밀지 않고 브로드캐스트 시세 + 보유 수량으로 프론트가 재계산한다.</p>
+
+  <h3>연결과 재접속 — 순서가 계약이다</h3>
+
+<pre>1. CONNECT           → CONNECTED      <span class="c">// 웹: 핸드셰이크 세션 쿠키 / 앱: X-Auth-Token 헤더</span>
+2. SUBSCRIBE × 4     <span class="c">// ← 여기까지 끝나야 버퍼링을 시작한다</span>
+3. 도착하는 메시지를 버퍼에 쌓기만 한다
+4. GET .../closes 등으로 히스토리 로드 → asOfTickSeq 기억
+5. 버퍼에서 tickSeq &gt; asOfTickSeq 인 것만 이어붙인다
+6. 이후 tickSeq 가 1씩 증가하는지 확인. 건너뛰면 4로 돌아간다</pre>
+
+  <p><strong>2번이 STOMP 때문에 생긴 단계다.</strong> <code>CONNECT</code>와 <code>SUBSCRIBE</code>가 따로이고
+  <strong>그 사이에 도착한 메시지는 어디에도 없다.</strong> 그래서 "연결한 뒤"가 아니라 <strong>"구독이 완료된 뒤"</strong> 버퍼링한다.</p>
+
+  <table>
+    <tbody>
+      <tr><th>경로</th><td><code>/ws</code></td></tr>
+      <tr><th>프로토콜</th><td>STOMP 1.2 over WebSocket. <strong>SockJS 미채택</strong></td></tr>
+      <tr><th>하트비트</th><td><code>10000,10000</code> — <strong>틱 간격(31~36초)보다 짧아야</strong> 죽은 연결과 "아직 틱이 안 옴"을 구분한다</td></tr>
+      <tr><th><code>SEND</code> 프레임</th><td class="no"><strong>쓰지 않는다.</strong> 서버에 <code>@MessageMapping</code>이 없다. 채팅 전송조차 REST</td></tr>
+      <tr><th><code>ERROR</code> 프레임</th><td>연결 수준만 — 인증 실패 · 알 수 없는 destination · 프레임 형식 오류. 전부 연결 종료</td></tr>
+      <tr><th>브로커</th><td>Spring 내장 simple broker. 외부 브로커 없음(ADR-0001이 단일 인스턴스 전제)</td></tr>
+      <tr><th>의존성</th><td class="no"><code>spring-boot-starter-websocket</code>이 <strong><code>build.gradle</code>에 아직 없다</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s7">§7 · 데이터 모델 — 테이블 25개</h2>
+
+  <p class="sm"><code>schema.sql</code>은 <strong>참고용 초안</strong>이다. Flyway 마이그레이션이 아니며 구현 시점에는 엔티티 클래스가 진실이다.
+  표기: snake_case · <code>BIGINT GENERATED BY DEFAULT AS IDENTITY</code> · <code>TIMESTAMPTZ</code> · 금액은 <code>NUMERIC</code>.
+  <strong>FK는 걸되 <code>ON DELETE CASCADE</code>는 쓰지 않는다</strong>(JPA 1차 캐시와 어긋난다).</p>
+
+  <table>
+    <thead><tr><th>영역</th><th>테이블</th><th>PK</th><th>핵심</th></tr></thead>
+    <tbody>
+      <tr><td colspan="4" style="background:#f3f4f6"><strong>기존 (V2~V6, 이미 배포됨)</strong></td></tr>
+      <tr><td rowspan="5">사용자</td><td><code>users</code></td><td><code>id</code></td><td><code>email</code> nullable · <code>nickname</code>·<code>email</code>에 <strong>UNIQUE 없음</strong> · <code>role</code></td></tr>
+      <tr><td><code>oauth_accounts</code></td><td><code>id</code></td><td>UNIQUE <code>(provider, provider_user_id)</code> — <strong>동일인 판정의 유일한 근거</strong></td></tr>
+      <tr><td><code>test_users</code></td><td><code>user_id</code></td><td>행의 존재가 곧 Test User. <strong>이 리포에서 유일한 CASCADE</strong></td></tr>
+      <tr><td><code>admin_audit_logs</code></td><td><code>id</code></td><td><strong>FK 없음</strong> — 추가 전용, 대상이 사라져도 남는다</td></tr>
+      <tr><td><code>inquiries</code></td><td><code>id</code></td><td>탈퇴 시 <strong>hard delete</strong>(본문이 개인정보). <code>answered_by</code>는 FK 없음</td></tr>
+      <tr><td>보강</td><td><code>users.avatar_id</code></td><td>—</td><td class="no"><strong>ALTER 필요.</strong> rank·soc·ipo가 이미 <code>avatarId</code>를 계약했다</td></tr>
+
+      <tr><td colspan="4" style="background:#f3f4f6"><strong>1. 시즌·시계</strong></td></tr>
+      <tr><td rowspan="4">시즌</td><td><code>seasons</code></td><td><code>id</code></td><td>편성값을 <strong>코드 상수로 두지 않기 위한 테이블</strong> — 시드·요율·추첨 비율</td></tr>
+      <tr><td><code>withdrawn_identities</code></td><td><code>id</code></td><td class="no"><strong>신설 필수.</strong> SHA-256 해시 + 시즌. <strong>재가입 시드 재수령 차단</strong></td></tr>
+      <tr><td><code>season_days</code></td><td><code>(season_id, season_day)</code></td><td><code>to_game_month</code>는 <strong>미래 정보</strong> — 정산 발표 후 처음 공개</td></tr>
+      <tr><td><code>game_ticks</code></td><td><code>tick_seq</code></td><td><strong><code>tickSeq</code> ↔ <code>gameDate</code> 변환의 단일 진실.</strong> <code>tick_at</code>은 절대 시각</td></tr>
+
+      <tr><td colspan="4" style="background:#f3f4f6"><strong>2. 종목·시세</strong></td></tr>
+      <tr><td rowspan="7">시세</td><td><code>instruments</code></td><td><code>id</code></td><td>28종. UNIQUE <code>symbol</code>. <code>price_scale</code>·<code>info_card</code>(JSONB)</td></tr>
+      <tr><td><code>instrument_splits</code></td><td><code>(instrument_id, ex_date)</code></td><td><strong>런타임에 참조하지 않는다.</strong> 적재 전처리의 입력이자 감사 근거</td></tr>
+      <tr><td><code>daily_closes</code></td><td><code>(instrument_id, game_date)</code></td><td><code>close_price</code>(조정가) + <strong><code>raw_close</code>(원본 보관)</strong>. <strong>휴장일은 행이 없다</strong></td></tr>
+      <tr><td><code>fx_rates</code></td><td><code>game_date</code></td><td>거래일당 1개 값. 같은 날 안에서는 환전 시점이 무관하다</td></tr>
+      <tr><td><code>instrument_metrics</code></td><td><code>(instrument, quarter, key)</code></td><td><code>disclosed_game_date</code> = <strong>분기 종료 + 45일</strong></td></tr>
+      <tr><td><code>signal_criteria</code></td><td><code>id</code></td><td>UNIQUE <code>(kind, level)</code>. 도움말에 그대로 공개</td></tr>
+      <tr><td><code>watchlists</code></td><td><code>(user_id, instrument_id)</code></td><td>계좌가 아니라 <strong>사용자</strong>에 붙는다 — 시즌과 무관한 취향</td></tr>
+
+      <tr><td colspan="4" style="background:#f3f4f6"><strong>3~5. 계좌·주문·IPO</strong></td></tr>
+      <tr><td rowspan="7">거래</td><td><code>accounts</code></td><td><code>id</code></td><td class="ok"><strong>UNIQUE <code>(user_id, season_id)</code></strong> — 없으면 동시 로그인에서 시드 2배. <code>last_acked_tick_seq</code>·<code>daily_base_valuation_krw</code></td></tr>
+      <tr><td><code>positions</code></td><td><code>(account_id, instrument_id)</code></td><td><code>quantity</code> + <strong><code>total_cost</code>만 저장.</strong> 평단가는 저장 안 함</td></tr>
+      <tr><td><code>orders</code></td><td><code>id</code></td><td><strong>예약만.</strong> 시장가는 여기 안 들어온다. <code>locked_amount</code> XOR <code>locked_quantity</code></td></tr>
+      <tr><td><code>executions</code></td><td><code>id</code></td><td>불변. <strong><code>applied_fee_rate</code>·<code>realized_pnl</code>을 저장</strong>(시점 의존이라 재계산 불가)</td></tr>
+      <tr><td><code>exchanges</code></td><td><code>id</code></td><td>체결과 합치지 않는다 — 필드가 전혀 겹치지 않는다</td></tr>
+      <tr><td><code>ipo_offerings</code></td><td><code>id</code></td><td>8건. 틱으로 일정 고정. UNIQUE <code>instrument_id</code></td></tr>
+      <tr><td><code>ipo_subscriptions</code></td><td><code>(offering_id, account_id)</code></td><td class="ok"><strong>PK가 곧 1인 1청약</strong> — 그래서 신청 API가 멱등이 된다</td></tr>
+
+      <tr><td colspan="4" style="background:#f3f4f6"><strong>6~7. 뉴스·소셜</strong></td></tr>
+      <tr><td rowspan="5">소셜</td><td><code>news</code></td><td><code>id</code></td><td><code>published_tick_seq</code>. 한 틱에 0건일 수도 여러 건일 수도</td></tr>
+      <tr><td><code>news_instruments</code></td><td><code>(news_id, instrument_id)</code></td><td>태그 0~N개. 없으면 매크로 뉴스. <strong>우선 노출이 이 조인으로 결정</strong></td></tr>
+      <tr><td><code>chat_messages</code></td><td><code>id</code></td><td class="mid"><strong><code>user_id</code>에 FK 없음</strong> — 탈퇴자 익명화가 조인 시점에 자동 처리됨. <code>deleted_at</code>으로 소프트 삭제(커서 보존)</td></tr>
+      <tr><td><code>chat_reports</code></td><td><code>(message_id, reporter_id)</code></td><td class="ok"><strong>PK가 곧 중복 신고 방지</strong></td></tr>
+      <tr><td><code>user_restrictions</code></td><td><code>id</code></td><td><code>restricted_until</code>까지 채팅 전송 403</td></tr>
+
+      <tr><td colspan="4" style="background:#f3f4f6"><strong>8. 정산·랭킹·리포트 — 실시간 순위는 저장하지 않는다</strong></td></tr>
+      <tr><td rowspan="4">정산</td><td><code>daily_settlements</code></td><td><code>(season_day, account_id)</code></td><td>폐장 스냅샷. 공개는 17:00</td></tr>
+      <tr><td><code>awards</code></td><td><code>id</code></td><td>칭호뿐. <strong><code>accounts</code>에 아무 필드가 생기지 않는다</strong></td></tr>
+      <tr><td><code>daily_reports</code></td><td><code>(season_day, account_id)</code></td><td>집계 스냅샷. <strong>열 때마다 재집계하지 않는다</strong>(요율이 시점 의존)</td></tr>
+      <tr><td><code>season_reports</code></td><td><code>account_id</code></td><td>MDD·승률·회전율. 계좌가 시즌에 종속되므로 PK 하나</td></tr>
+    </tbody>
+  </table>
+
+  <h3>탈퇴가 남기는 것과 지우는 것</h3>
+
+  <table>
+    <thead><tr><th>지워지는 것 (FK 있음)</th><th>남는 것 (FK 없는 기록)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>accounts</code> <code>watchlists</code> <code>user_restrictions</code> <code>inquiries</code> <code>oauth_accounts</code>
+        <br><span class="sm">↳ <code>accounts</code>를 지우면 <code>positions</code>·<code>orders</code>·<code>executions</code>·<code>exchanges</code>·<code>ipo_subscriptions</code>·<code>daily_settlements</code>·<code>awards</code>·<code>daily_reports</code>·<code>season_reports</code>가 전부 딸려 나간다</span></td>
+        <td><code>chat_messages.user_id</code> <code>chat_reports.reporter_id</code> <code>admin_audit_logs.*</code> <code>inquiries.answered_by</code>
+        <br><span class="sm">↳ 기획서 2.4.6이 탈퇴자 채팅을 "탈퇴한 사용자"로 <strong>익명화 보존</strong>하라고 요구한다</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>⚠ 정책 상충 (<code>user.md</code> F).</strong> 문의는 <strong>삭제</strong>, 채팅은 <strong>익명화 보존</strong>이다.
+    <code>UserService.delete()</code>에 이미 <code>inquiryService.deleteByUser</code>가 있어, 채팅 구현 시 무심코
+    <code>chatService.deleteByUser</code>를 추가할 위험이 있다. <strong>정답은 "아무것도 안 하는 것"</strong> —
+    닉네임을 조인하므로 사용자 행이 사라지면 자동으로 익명화된다.
+    <br>
+    <strong>그리고 <code>accounts</code>가 미결을 만든다:</strong> 1일차 "오늘의 투자자"가 3일차에 탈퇴하면
+    이미 발표된 시상이 사라지고 확정 순위표에 구멍이 난다. 지금 스키마는 "뺀다" 쪽이다
+    (<code>rank.md</code> 열린 질문 4).
+  </p>
+
+  <h2 id="s8">§8 · 영역 간 의존 그래프</h2>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 880 420" role="img" aria-label="영역 간 의존 관계">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/>
+        </marker>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+
+      <!-- L0 -->
+      <rect class="d-box-a" x="330" y="14" width="220" height="40"/>
+      <text class="d-label" x="352" y="32">game/clock · game_ticks</text>
+      <text class="d-label-sm" x="352" y="47">시계·phase·tickSeq — 모든 영역의 전제</text>
+
+      <!-- L1 -->
+      <rect class="d-box" x="60"  y="92" width="180" height="40"/>
+      <text class="d-label" x="80" y="110">market — 시세·환율</text>
+      <text class="d-label-sm" x="80" y="125">daily_closes · fx_rates</text>
+
+      <rect class="d-box" x="350" y="92" width="180" height="40"/>
+      <text class="d-label" x="370" y="110">unv — 종목·유니버스</text>
+      <text class="d-label-sm" x="370" y="125">instruments · watchlists</text>
+
+      <rect class="d-box" x="640" y="92" width="180" height="40"/>
+      <text class="d-label" x="660" y="110">user / auth</text>
+      <text class="d-label-sm" x="660" y="125">users · oauth_accounts</text>
+
+      <!-- L2 -->
+      <rect class="d-box-a" x="350" y="172" width="180" height="40"/>
+      <text class="d-label" x="370" y="190">acc — 계좌·두 지갑</text>
+      <text class="d-label-sm" x="370" y="205">accounts · positions</text>
+
+      <!-- L3 -->
+      <rect class="d-box" x="120" y="252" width="170" height="40"/>
+      <text class="d-label" x="140" y="270">ord — 주문·체결</text>
+      <text class="d-label-sm" x="140" y="285">orders · executions</text>
+
+      <rect class="d-box" x="600" y="252" width="170" height="40"/>
+      <text class="d-label" x="620" y="270">ipo — 청약</text>
+      <text class="d-label-sm" x="620" y="285">offerings · subscriptions</text>
+
+      <!-- L4 -->
+      <rect class="d-box-b" x="330" y="252" width="220" height="40"/>
+      <text class="d-label" x="350" y="270">rank + soc.heatmap</text>
+      <text class="d-label-sm" x="350" y="285">매 틱 전 계좌 순회 — 한 번만 돈다</text>
+
+      <!-- L5 -->
+      <rect class="d-box" x="330" y="332" width="220" height="40"/>
+      <text class="d-label" x="350" y="350">rpt — 복기·시즌 리포트</text>
+      <text class="d-label-sm" x="350" y="365">daily_reports · season_reports</text>
+
+      <!-- nws -->
+      <rect class="d-box-c" x="640" y="332" width="180" height="40"/>
+      <text class="d-label" x="660" y="350">nws — 뉴스</text>
+      <text class="d-label-sm" x="660" y="365">news · news_instruments</text>
+
+      <!-- edges from clock -->
+      <path class="d-line-d" d="M 380 54 L 180 88" marker-end="url(#a1)"/>
+      <path class="d-line-d" d="M 440 54 L 440 88" marker-end="url(#a1)"/>
+      <path class="d-line-d" d="M 500 54 L 700 88" marker-end="url(#a1)"/>
+
+      <!-- market/unv -> acc -->
+      <path class="d-line-a" d="M 240 118 C 300 130, 320 150, 350 178" marker-end="url(#a2)"/>
+      <path class="d-line-a" d="M 440 132 L 440 168" marker-end="url(#a2)"/>
+      <path class="d-line" d="M 700 132 C 640 145, 560 160, 532 182" marker-end="url(#a1)"/>
+
+      <!-- acc -> ord / ipo / rank -->
+      <path class="d-line-a" d="M 356 212 C 300 228, 250 236, 216 248" marker-end="url(#a2)"/>
+      <path class="d-line-a" d="M 524 212 C 580 228, 630 236, 672 248" marker-end="url(#a2)"/>
+      <path class="d-line-a" d="M 440 212 L 440 248" marker-end="url(#a2)"/>
+
+      <!-- ord/ipo -> rank feed -->
+      <path class="d-line-d" d="M 290 272 L 326 272" marker-end="url(#a1)"/>
+      <path class="d-line-d" d="M 600 272 L 556 272" marker-end="url(#a1)"/>
+
+      <!-- -> rpt -->
+      <path class="d-line" d="M 440 292 L 440 328" marker-end="url(#a1)"/>
+      <path class="d-line-d" d="M 180 292 C 180 340, 280 356, 326 354" marker-end="url(#a1)"/>
+
+      <!-- nws -> acc (우선노출) -->
+      <path class="d-line-d" d="M 640 352 C 560 356, 470 330, 460 296" marker-end="url(#a1)"/>
+      <text class="d-label-sm" x="556" y="326">우선 노출: 보유 &gt; 관심 &gt; 일반</text>
+    </svg>
+    <figcaption>
+      진한 선 = 강한 의존(잔고·잠금·평가). 점선 = 참조·파생.
+      <strong><code>acc</code>가 허브다</strong> — 주문·청약이 잠그는 대상이고, 랭킹·히트맵·복기가 읽는 원천이다.
+      <code>rank</code>와 <code>soc.heatmap</code>이 한 박스인 이유는 <strong>같은 순회에서 함께 뽑기</strong> 때문이다.
+    </figcaption>
+  </figure>
+
+  <p class="note">
+    <strong>매 틱 전 계좌 순회는 한 번만 돈다.</strong> 그 한 번에서 세 가지가 나온다 —
+    시즌·일간 순위(<code>rank.md</code>) · 카테고리별 자금 분포(<code>soc.md</code> 히트맵) ·
+    개인 평가액(<code>acc.md</code> <code>account.valuation</code>).
+    별도 주기를 두면 순회가 세 번 된다. <strong>그리고 이 사실이 "세 영역의 <code>tickSeq</code>가 같은 값이어야 한다"는 요구를 만든다.</strong>
+  </p>
+
+  <h2 id="s9">§9 · 게임 규칙 숫자 총정리</h2>
+
+  <table>
+    <thead><tr><th>항목</th><th>값</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td>시드</td><td class="num">100,000,000원</td><td>전액 원화 현금. 중간 합류자는 소급 인덱스 잔고</td></tr>
+      <tr><td>거래 수수료</td><td class="num">매수 0.15% + 매도 0.15%</td><td>왕복 0.3%. 체결 금액 기준</td></tr>
+      <tr><td>무료 타임</td><td class="num">12:00~12:10, 0%</td><td><strong>체결된</strong> 주문에 적용. 시장가·예약 모두</td></tr>
+      <tr><td>환전 수수료</td><td class="num">0.05%</td><td class="mid"><strong>무료 타임 대상 아님.</strong> 보내는 통화로 부과</td></tr>
+      <tr><td>예약 매수 잠금</td><td class="num">지정가 × 수량 × 1.0015</td><td class="ok"><strong>무료 타임에도 정상 요율.</strong> 체결 실패 경로를 없애기 위해</td></tr>
+      <tr><td>예약 유효기간</td><td class="num">당일 폐장(16:40)</td><td>미체결은 자동 취소 + 잠금 반환 + 알림</td></tr>
+      <tr><td>수량 단위</td><td class="num">1주 정수</td><td>0 이하·비정수는 400</td></tr>
+      <tr><td>IPO 건수</td><td class="num">8건 (1일차 4 · 2·3일차 각 2)</td><td>무작위 추첨, 전원 동일 확률</td></tr>
+      <tr><td>IPO 청약 단위</td><td class="num">국내 1,000만원 (시드의 10%)</td><td>나스닥은 상당 달러 고정액. 증거금 100%</td></tr>
+      <tr><td>IPO 당첨 인원</td><td class="num">round(청약자 × 30%), 최소 1</td><td>시즌 편성값. 전 종목 동일</td></tr>
+      <tr><td>IPO 배정 수량</td><td class="num">floor(증거금 ÷ 공모가)</td><td>잔액 반환. <strong>공모가가 평단이 된다</strong></td></tr>
+      <tr><td>청약 창</td><td class="num">12분 (상장 2개월 전 → 1개월 전)</td><td>마감 즉시 추첨</td></tr>
+      <tr><td>암전</td><td class="num">16:00~16:40</td><td>거래는 계속. <strong>서버가 빈 배열을 준다</strong></td></tr>
+      <tr><td>부재 기준</td><td class="num">50틱</td><td class="ok"><strong>시각이 아니다.</strong> 게임 50거래일 ≈ 실제 30분</td></tr>
+      <tr><td>채팅 쿨다운</td><td class="num">3초</td><td>위반은 429 + <code>Retry-After</code></td></tr>
+      <tr><td>채팅 길이</td><td class="num">200자</td><td>초과는 400</td></tr>
+      <tr><td>채팅 히스토리</td><td class="num">기본 100건</td><td>커서 페이지</td></tr>
+      <tr><td>페이지 기본</td><td class="num"><code>page=0</code>, <code>size=20</code></td><td>오프셋 기반. <strong>커서는 뉴스·채팅만</strong></td></tr>
+      <tr><td>재무 지표 공시 지연</td><td class="num">분기 종료 + 45일</td><td>이게 있어야 "실적 발표"가 사건이 된다</td></tr>
+      <tr><td>세션</td><td class="num">유휴 1일 sliding</td><td>절대 만료 없음. <strong>동시 세션 무제한</strong></td></tr>
+      <tr><td>차트 초기 로드</td><td class="num">최대 약 1,700포인트</td><td>약 60KB. 페이지네이션 없음</td></tr>
+      <tr><td>뉴스 총량</td><td class="num">약 400~600건</td><td>평시 2~3거래일 1건, 이벤트 구간 하루 1~3건</td></tr>
+    </tbody>
+  </table>
+
+  <h3>수익률 정의 — 두 곳에서 따로 계산하면 안 되는 값들</h3>
+
+<pre>총 평가액   = krwCash + usdCash × 당일환율 + 보유자산 원화평가액
+누적 수익률 = (총평가액 − 시작잔고) ÷ 시작잔고 × 100     <span class="c">// rank SEASON과 같은 값이어야 한다</span>
+일간 수익률 = (총평가액 − 당일개장평가액) ÷ 당일개장평가액 × 100  <span class="c">// rank DAILY와 같은 값</span>
+등락률      = (close − prevClose) ÷ prevClose × 100      <span class="c">// 휴장일은 null (0.00이 아니다)</span>
+평단가      = totalCost ÷ quantity                       <span class="c">// 파생. 저장하지 않는다</span>
+소급 인덱스 = 1억 × (합류시점 지수 ÷ 시즌시작 지수)        <span class="c">// 기준 지수는 QQQ 대리값 제안</span></pre>
+
+  <p class="warn">
+    <strong>같은 값을 두 곳에서 계산하면 화면이 어긋난다.</strong> 계좌의 <code>cumulativeReturn</code>과
+    리더보드 <code>SEASON</code>의 <code>returnRate</code>는 <strong>같은 값이어야</strong> 하고(기획서 11.1.2 명시),
+    <code>dailyReturn</code>도 마찬가지다. 공통 모듈로 뽑는 것이 계약이 아니라 <strong>정합성 요구</strong>다.
+  </p>
+
+  <h2 id="s10">§10 · 미결과 결정 시한</h2>
+
+  <table>
+    <thead><tr><th>#</th><th>미결</th><th>상태</th><th>결정 시한</th></tr></thead>
+    <tbody>
+      <tr><td>C-1<br>기획 6</td><td><strong>인버스 배수 vs "레버리지 없음"</strong><br>SQQQ 3배·KODEX 2X ↔ 기획서 6.5.3</td><td class="no"><strong>진짜 미결</strong><br>계약은 중립</td><td class="no"><strong>데이터 수집 착수 전</strong><br>종목이 바뀌면 <code>splits.csv</code>가 달라진다</td></tr>
+      <tr><td>C-3<br>기획 —</td><td><strong>MATIC → POL 전환</strong><br>2024-09-04, 3일차 구간 한가운데. 1:1이라 가격 영향 없음</td><td class="mid">미결<br>권고: 시즌 내내 "MATIC" 표기</td><td class="mid">데이터 수집 착수 전</td></tr>
+      <tr><td>C-4<br>기획 4·5</td><td><strong>액면분할·역분할 처리</strong></td><td class="ok"><strong>계약 층위는 닫혔다</strong><br><code>mkt.md</code>가 조정가 전제로 작성됨</td><td>기획서 4장에 절 신설(R-3) + <code>splits.csv</code> 실측</td></tr>
+      <tr><td>C-5</td><td>조정 <strong>기준일</strong></td><td class="ok">의도적 미정</td><td class="ok"><strong>시한 없음</strong> — <code>raw_close</code>를 보관하므로 언제든 되돌린다</td></tr>
+      <tr><td>C-2</td><td><code>nextCandleSeconds</code> ↔ 단일 가격 모델</td><td>방향 확정, 코드 미수정</td><td>프론트 착수 시</td></tr>
+      <tr><td>C-6</td><td>프론트 마켓 컴포넌트가 옛 기획서로 만들어짐<br><code>SEED_MONEY = 10_000_000</code> (v0.7은 1억, <strong>10배</strong>)</td><td>미연결 — 지금 깨지는 건 없다</td><td>프론트 연결 시</td></tr>
+      <tr><td>C-7</td><td>실시간 전송 방식</td><td class="ok"><strong>닫힘</strong> — STOMP 확정</td><td>ADR 작성만 남음</td></tr>
+      <tr><td>기획 1</td><td>세션 정책</td><td class="ok"><strong>닫힘</strong> — ADR-0001이 정본</td><td>기획서에서 미결 행 삭제(R-2)</td></tr>
+      <tr><td>기획 3</td><td><strong>코인 2020.01~04 데이터 공백</strong><br>재배포 가능 온체인 소스가 2020-05부터</td><td class="no">미결</td><td class="no">데이터 수집 착수 전</td></tr>
+      <tr><td>기획 7</td><td>소급 인덱스 <strong>기준 지수</strong> — IXIC vs QQQ 대리값</td><td class="mid">미결. QQQ 권고(R-4)</td><td class="mid">2차 착수 전</td></tr>
+      <tr><td>기획 8</td><td>중간 합류 <strong>마감 시점</strong></td><td class="mid">미결</td><td>제외하면 <code>participation.status</code>에 값 하나 증가</td></tr>
+      <tr><td>기획 2</td><td>닉네임 형식 · <strong>자동 생성</strong></td><td class="no">미결 + 코드 불일치</td><td class="no">시즌 시작 전</td></tr>
+      <tr><td>기획 9·10·11</td><td>배당 미지급 고지 · 국내 재무지표 소스(DART) · 뉴스 원천 소스</td><td class="mid">미조사</td><td>콘텐츠 제작 전</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>⚠ 발견 — <code>spec-revisions.md</code> R-3의 내부 모순.</strong>
+    R-3 마지막 줄은 <em>"조정가를 쓰면 인버스 역분할 실측(미결 5)도 불필요해진다"</em>고 하는데,
+    <code>mkt.md</code>는 <code>splits(symbol, ex_date, ratio)</code>를 <strong>적재 파이프라인의 필수 전제조건</strong>
+    (누락 시 fail-fast)이라 하고 <code>conflicts.md</code> C-4는 <em>"어느 쪽을 택하든 그 테이블은 똑같이 필요하다"</em>고 한다.
+    R-3 자신의 제안 문장 3항도 그렇다.
+    <br><br>
+    <strong>조정가 방식이 없애는 것은 데이터 수집이 아니라 런타임 계약 3건</strong>이다 —
+    분할 WS 메시지 · 계좌 조정 알림 · 체결 내역의 분할 전후 표기.
+    <code>factor = Π{ratio_i}</code>를 계산하려면 SQQQ 역분할 4건의 날짜·비율이 그대로 필요하다.
+  </p>
+
+  <h2 id="s11">§11 · 착수 전 선행 작업</h2>
+
+  <p>계약이 <strong>이미 전제하고 있는데 코드에 없는 것</strong> 셋. 우선순위 순이다.</p>
+
+  <table>
+    <thead><tr><th>#</th><th>항목</th><th>막는 것</th><th>크기</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="no"><strong>1</strong></td>
+        <td><strong>탈퇴 이력 보관</strong> (<code>user.md</code> G)<br><code>delete()</code>가 <code>oauth_accounts</code>를 hard delete</td>
+        <td class="no"><code>sea.md</code>의 <code>EXCLUDED</code>.<br><strong>탈퇴 후 재가입으로 시드 재수령 = 랭킹 리셋.</strong> 3일 시즌에서 치명적</td>
+        <td><code>withdrawn_identities</code> 테이블 1 + <code>delete()</code> 수정<br><span class="no">이미 삭제된 계정은 추적 불가 — <strong>시즌 시작 전이 마지막 기회</strong></span></td>
+      </tr>
+      <tr>
+        <td class="mid"><strong>2</strong></td>
+        <td><strong>아바타</strong> (<code>user.md</code> B)<br><code>users</code>에 컬럼이 없다</td>
+        <td><code>rank.md</code>·<code>soc.md</code>·<code>ipo.md</code>가 이미 <code>avatarId</code>를 응답에 담기로 계약했다</td>
+        <td>컬럼 1 + <code>UserResponse</code> 필드 1 + 가입 시 랜덤 배정</td>
+      </tr>
+      <tr>
+        <td class="mid"><strong>3</strong></td>
+        <td><strong>닉네임 자동 생성·검증</strong> (A·D·E)<br>IdP 값을 그대로 초기값으로 쓴다.<br><code>@Size(max=50)</code>만 걸려 있다</td>
+        <td><strong>실명이 리더보드·채팅에 노출된다.</strong><br><code>"카카오 사용자"</code> 폴백으로 동명이인이 줄줄이.<br>1자 닉네임·이모지 통과</td>
+        <td>생성기 + 검증 규칙 + 유니크 제약<br><span class="sm">난수 자릿수 미결 — 4자리는 4,000명에서 충돌 잦음</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="s12">§12 · 용어 사전</h2>
+
+  <table>
+    <thead><tr><th>기획서</th><th>코드·API</th><th>주의</th></tr></thead>
+    <tbody>
+      <tr><td>계좌</td><td><code>Account</code></td><td class="no"><strong>로그인 계정의 뜻으로 쓰지 않는다</strong> → 그쪽은 <code>User</code>·<code>OAuth Account</code></td></tr>
+      <tr><td>종가 틱</td><td><code>Tick</code></td><td class="no"><strong><code>Candle</code>을 쓰지 않는다</strong> — 단일 가격 모델과 충돌. UI 문구는 "일봉"·"종가"</td></tr>
+      <tr><td>종목</td><td><code>Instrument</code></td><td><code>Symbol</code>(티커 문자열)·<code>Asset</code>(보유 자산과 충돌) 기각</td></tr>
+      <tr><td>유니버스</td><td><code>Universe</code></td><td>시즌의 거래 가능 종목 집합</td></tr>
+      <tr><td>시장가 주문</td><td><code>orderType: MARKET</code></td><td>즉시 전량 체결. <strong>미체결 상태를 거치지 않는다</strong></td></tr>
+      <tr><td>예약 주문</td><td><code>orderType: LIMIT</code></td><td>기획서는 "예약"이지만 동작은 지정가. <code>Reservation</code> 기각</td></tr>
+      <tr><td>미체결 예약</td><td><code>Open Order</code></td><td>수정·취소 대상. 폐장에 소멸</td></tr>
+      <tr><td>체결</td><td><code>Execution</code></td><td>불변 기록. 복기·리포트의 원천</td></tr>
+      <tr><td>잠긴 금액·수량</td><td><code>locked</code></td><td>예약·청약이 점유해 다른 데 못 쓰는 몫</td></tr>
+      <tr><td>원화/달러 지갑</td><td><code>krwCash</code> / <code>usdCash</code></td><td><strong>별도 리소스가 아니라 계좌의 필드</strong></td></tr>
+      <tr><td>환전</td><td><code>Exchange</code></td><td><code>amount</code>는 항상 <strong>보내는 통화</strong> 기준</td></tr>
+      <tr><td>청약</td><td><code>Subscription</code></td><td>단수 리소스 — <code>{subscriptionId}</code>가 없다</td></tr>
+      <tr><td>소급 인덱스 잔고</td><td><code>Index-adjusted Starting Balance</code></td><td>중간 합류자의 시작 잔고</td></tr>
+      <tr><td>암전</td><td><code>leaderboardBlackout</code></td><td>phase가 아니라 <strong>플래그</strong></td></tr>
+      <tr><td>복기</td><td><code>Review</code> · <code>Daily Report</code></td><td></td></tr>
+      <tr><td>분할 조정 계수</td><td><code>adjustment factor</code></td><td><strong>적재 전처리. 런타임 개념이 아니다</strong></td></tr>
+      <tr><td>확인한 틱</td><td><code>lastAckedTickSeq</code></td><td>부재 판정 기준. <strong>마지막 접속 시각이 아니다</strong></td></tr>
+      <tr><td colspan="3" style="background:#f3f4f6"><strong>백엔드 <code>CONTEXT.md</code>가 이미 예약한 용어 — 이쪽이 상위다</strong></td></tr>
+      <tr><td>사용자</td><td><code>User</code></td><td>Member·회원·Account 회피</td></tr>
+      <tr><td>소셜 신원</td><td><code>OAuth Account</code></td><td><code>(provider, provider_user_id)</code>가 유일</td></tr>
+      <tr><td>로그인 방법</td><td><code>Provider</code></td><td>화면 문구는 <strong>"로그인 방법"</strong>으로 통일. "소셜 로그인"은 회피어</td></tr>
+      <tr><td>—</td><td><code>Provider User ID</code></td><td>Google은 <code>sub</code>, Kakao는 회원번호(앱별 pairwise). <strong>동일인 판정은 이 값으로만</strong></td></tr>
+      <tr><td>—</td><td><code>Test User</code></td><td>OAuth Account 없음. 관리자 검색 제외. <strong>계좌를 만들지 않는다</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s13">§13 · 문서 읽는 순서 · 다음 학습</h2>
+
+  <h3>처음 읽을 때</h3>
+
+  <ol>
+    <li><code>market-replay-api/_common.md</code> — <strong>반드시 먼저.</strong> 나머지 전부가 이걸 전제로 쓰였다</li>
+    <li><code>backend/docs/conventions/code.md</code> §6·§7 + <code>conventions/api.md</code> — <code>_common.md</code>가 응답 봉투·예외를 여기로 위임했다</li>
+    <li><code>backend/docs/CONTEXT.md</code> + <code>glossary.md</code> — 용어. 앞이 상위다</li>
+    <li>1차 4개: <code>mkt</code> → <code>unv</code> → <code>ord</code> → <code>acc</code> — <strong>서로 물려 있어 함께 읽어야 한다</strong></li>
+    <li><code>ws.md</code> — 전송 계층</li>
+    <li><code>schema.sql</code> — 계약이 계속 인용한다</li>
+    <li><code>conflicts.md</code> · <code>spec-revisions.md</code> — 무엇이 아직 안 정해졌나</li>
+    <li>2차·3차는 필요할 때</li>
+  </ol>
+
+  <p class="note">
+    <strong>이 22개 문서에는 수명이 있다.</strong> <code>README.md</code>가 스스로 명시한다 —
+    구현이 시작되면 스키마 진실은 <code>controller/api/XxxApi.java</code> + Swagger로 옮겨가고
+    이 문서는 "왜 이렇게 설계했는가"만 남는다. <strong>코드와 문서가 갈리면 코드가 진실이다.</strong>
+    그래서 오래 남는 가치는 <strong>결정 근거</strong> 쪽이고, 레슨이 그 밑의 개념을 다룬다.
+  </p>
+
+  <h3>개념 레슨 아크 — 11개</h3>
+
+  <table>
+    <thead><tr><th>트랙</th><th>레슨</th><th>이 지도의 어디를 설명하나</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="4"><strong>A 시간</strong></td><td class="ok"><a href="../lessons/0036-tick-clock-720s-grid.html">0036 720초 그리드</a> · <a href="./0018-tick-clock-cheatsheet.html">치트시트 0018</a></td><td class="ok">§1 타임라인 · §2 IPO 편성 검산 · §9 재생 페이스</td></tr>
+      <tr><td>0037 <code>tickSeq</code> 논리 시계</td><td>§6 봉투의 <code>tickSeq</code> · §8 매 틱 순회</td></tr>
+      <tr><td>0038 스냅샷 + 스트림 이어붙이기</td><td>§6 재접속 절차 · <code>asOfTickSeq</code></td></tr>
+      <tr><td>0039 확인 워터마크 (ack)</td><td>§9 부재 기준 50틱 · <code>lastAckedTickSeq</code></td></tr>
+      <tr><td rowspan="2"><strong>B 돈</strong></td><td>0040 저장 vs 파생</td><td>§7 <code>positions.total_cost</code> · <code>executions.applied_fee_rate</code> · §9 수익률 정의</td></tr>
+      <tr><td>0041 잠금과 실패 경로 제거</td><td>§9 예약 매수 잠금 1.0015 · §7 <code>orders.locked_*</code></td></tr>
+      <tr><td rowspan="3"><strong>C 계약</strong></td><td>0042 멱등성 6패턴</td><td>§5 멱등 표시된 것 전부 · §7 PK 설계</td></tr>
+      <tr><td>0043 서버가 유일한 권위</td><td>§5 phase 열 · 암전 빈 배열 · 미래 차단</td></tr>
+      <tr><td>0044 리소스 경계</td><td>§5 <code>orders</code> ≠ <code>executions</code> · §4 문서 분할</td></tr>
+      <tr><td rowspan="2"><strong>D 규모·데이터</strong></td><td>0045 팬아웃 경제학</td><td>§6 안 미는 것들 · §8 한 번만 도는 순회</td></tr>
+      <tr><td>0046 적재 시점 전처리</td><td>§3 분할 이력 · §10 C-4·C-5 · R-3 모순</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>이 지도와 레슨의 역할이 다르다.</strong> 지도는 <strong>Type B(이 프로젝트의 사실)</strong>를 찾아보게 해 주고,
+    레슨은 <strong>Type A(전이 가능한 원리)</strong>를 익히게 한다.
+    AI는 Type B를 문서 보고 정확히 쓰지만 Type A는 자기 확신을 갖고 틀리게 쓴다 — 그래서 표적이 나뉜다.
+  </p>
+
+  <p class="warn">
+    <strong>막히면 물어보자.</strong> 이 지도에서 더 파고들 만한 곳:
+    <strong>§2의 <code>종목.md</code> 시각 모순을 어떻게 닫을까</strong> ·
+    <strong>§7 테이블 하나하나의 컬럼 상세</strong> ·
+    <strong>§9 MDD·승률·회전율 산식</strong> ·
+    <strong>§10 미결 중 무엇을 먼저 닫을까</strong>.
+    영역 하나를 골라 "이거 전부 상세히"라고 하면 그 영역 전용 레퍼런스를 만든다.
+  </p>
+
+  <p class="sm">
+    출처: <code>S15P21A605/docs/projects/**/*.md</code> 22개 · <code>market-replay-api/schema.sql</code> ·
+    <code>backend/docs/{CONTEXT,ERD,conventions/*,adr/*,architecture/overview,decisions-later}.md</code> ·
+    <code>backend/build.gradle</code>
+  </p>
+
+</main>
+</body>
+</html>

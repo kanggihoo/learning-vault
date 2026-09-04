@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>가상 시계 치트시트 — 마켓 리플레이</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    main { max-width: 1000px; padding-top: 32px; }
+    h1 { font-size: 1.7rem; }
+    h2 { margin-top: 30px; padding-top: 14px; font-size: 1.15rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; margin: 10px 0; }
+    th, td { border: 1px solid #deded6; padding: 6px 9px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    pre { font-size: 0.82rem; padding: 14px; }
+    pre .c { color: #7f8ba6; }
+    pre .s { color: #c3e88d; }
+    pre .a { color: #82aaff; }
+    pre .k { color: #c792ea; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .num { font-variant-numeric: tabular-nums; }
+    ul { margin: 8px 0; padding-left: 22px; }
+    li { margin: 4px 0; }
+    .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; }
+    @media print { h2 { break-after: avoid; } table, pre { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm" style="color:#52606d;font-size:0.85rem;">레퍼런스 0018 · 레슨 <a href="../lessons/0036-tick-clock-720s-grid.html">0036</a>의 압축본</p>
+  <h1>가상 시계 치트시트</h1>
+
+  <h2>규칙 — 외울 것은 이 한 줄</h2>
+
+<pre><strong>게임 1개월 = 실제 720초 (12분). 고정.</strong>
+틱 간격은 규칙이 아니라 파생값이다 — 720 ÷ N, 31~36초 유동.</pre>
+
+  <h2>틱 시각 계산</h2>
+
+<pre><span class="ok">✓</span> tickAt(k) = 월시작실제시각 + round(720 × k ÷ N)      k = 1..N
+      N = 그 달의 거래일 수 = <strong>한국 · 미국 거래일의 합집합</strong>   (기획서 4.1.4)
+
+<span class="no">✗</span> tickAt(k) = tickAt(k-1) + 간격      <span class="c">// 지연 누적 (fixedDelay)</span>
+<span class="no">✗</span> tickAt(k) = 월시작 + 35초 × k       <span class="c">// 간격이 상수가 아님 (fixedRate)</span></pre>
+
+  <p><strong>왜 안 밀리나:</strong> <code>k = N</code>이면 값이 정확히 720. <strong>반올림 오차가 월 경계를 넘지 못한다.</strong></p>
+
+  <h2>스케줄링 3방식 판정표</h2>
+
+  <table>
+    <thead><tr><th>방식</th><th>다음 예정 시각</th><th>가변 간격</th><th>판정</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>@Scheduled(fixedDelay)</code></td>
+        <td>앞 실행 <strong>종료</strong> + 간격</td>
+        <td class="no">불가</td>
+        <td class="no">탈락 — 지연이 누적된다</td>
+      </tr>
+      <tr>
+        <td><code>@Scheduled(fixedRate)</code></td>
+        <td><code>initialDelay + k×period</code><br>(최초 시각에 <strong>앵커</strong>)</td>
+        <td class="no">불가</td>
+        <td class="no">탈락 — <strong>드리프트 때문이 아니다.</strong><br>period가 상수여야 하기 때문</td>
+      </tr>
+      <tr>
+        <td><code>TaskScheduler</code><br><code>+ Trigger</code> 또는 self-rearming</td>
+        <td>우리가 매번 계산해 돌려준다</td>
+        <td class="ok">가능</td>
+        <td class="ok"><strong>채택</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="two">
+    <div>
+      <p><strong>시그니처</strong></p>
+<pre><span class="c">// ① 다음 시각을 매번 계산</span>
+<span class="k">schedule</span>(<span class="a">Runnable</span>, <span class="a">Trigger</span>)
+  <span class="c">// Trigger.nextExecution(ctx)</span>
+  <span class="c">//   → Instant | null (null이면 끝)</span>
+
+<span class="c">// ② 매 틱 스스로 다시 예약</span>
+<span class="k">schedule</span>(<span class="a">Runnable</span>, <span class="a">Instant</span>)</pre>
+    </div>
+    <div>
+      <p><strong>산술 오차 크기 (22거래일 달)</strong></p>
+<pre>22 × 35초 = 770초
+        <span class="c">// 720초여야 하는데 +50초</span>
+27개월 × 50초 = <strong>22분 30초</strong>
+        <span class="c">// IPO 8건·폐장이 전부 밀린다</span></pre>
+    </div>
+  </div>
+
+  <h2>27개월 재생 종료 시각 — 방식별</h2>
+
+  <table>
+    <thead><tr><th>방식</th><th>월 길이</th><th>종료</th><th>결과</th></tr></thead>
+    <tbody>
+      <tr><td><strong>720초 그리드</strong></td><td class="num">720초</td><td class="num"><strong>16:29</strong></td><td class="ok">✓ 폐장 16:40까지 11분 버퍼</td></tr>
+      <tr><td>35초 · 20일</td><td class="num">700초</td><td class="num">16:20</td><td class="mid">9분 일찍 끝남</td></tr>
+      <tr><td>35초 · 21일</td><td class="num">735초</td><td class="num">16:35</td><td class="mid">버퍼 5분</td></tr>
+      <tr><td>35초 · 22일</td><td class="num">770초</td><td class="num">16:51</td><td class="no">⚠ 폐장 초과</td></tr>
+      <tr><td>35초 · 23일</td><td class="num">805초</td><td class="num">17:07</td><td class="no">⚠ 정산 발표 침범</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    실제 N은 <strong>합집합이라 22~23일 쪽</strong>이다 → 35초 고정은 <strong>거의 확실히 폐장을 넘는다.</strong>
+  </p>
+
+  <h2>기획서가 720초 그리드를 이미 증명하는 지점</h2>
+
+  <p>IPO 편성 시각 전부가 재생 시작 11:05로부터 <strong>12분의 배수</strong>다.</p>
+
+  <table>
+    <thead><tr><th>편성 시각</th><th>11:05로부터</th><th>÷ 12분</th><th>게임 시각</th></tr></thead>
+    <tbody>
+      <tr><td>12:17 공시</td><td class="num">72분</td><td class="num">6개월</td><td>2020.07 (상장 2개월 전)</td></tr>
+      <tr><td>12:29 마감</td><td class="num">84분</td><td class="num">7개월</td><td>2020.08 (상장 1개월 전)</td></tr>
+      <tr><td>12:41 상장</td><td class="num">96분</td><td class="num">8개월</td><td>2020.09 (카카오게임즈)</td></tr>
+      <tr><td>15:29 상장</td><td class="num">264분</td><td class="num">22개월</td><td>2021.11 (리비안)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>phase와 플래그</h2>
+
+  <table>
+    <thead><tr><th>phase</th><th>실제 시각</th><th>거래</th><th>채팅</th></tr></thead>
+    <tbody>
+      <tr><td><code>BRIEFING</code></td><td class="num">11:00~11:05</td><td class="no">✗</td><td>송·수신</td></tr>
+      <tr><td><code>TRADING</code></td><td class="num">11:05~16:40</td><td class="ok">✓</td><td>송·수신</td></tr>
+      <tr><td><code>SETTLING</code></td><td class="num">16:40~17:00</td><td class="no">✗</td><td>송·수신</td></tr>
+      <tr><td><code>REVIEW_ONLY</code></td><td class="num">17:00~익일 11:00</td><td class="no">✗</td><td><strong>읽기만</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <code>TRADING</code> 안의 두 구간은 <strong>phase가 아니라 플래그</strong>다 —
+    쪼개면 "거래 가능한 phase가 3개"가 되어 모든 게이팅 표기가 복잡해진다.
+  </p>
+
+  <table>
+    <thead><tr><th>플래그</th><th>실제 시각</th><th>효과</th></tr></thead>
+    <tbody>
+      <tr><td><code>feeFree</code></td><td class="num">12:00~12:10</td><td>거래 수수료 0%. <strong>환전 수수료는 대상 아님</strong></td></tr>
+      <tr><td><code>leaderboardBlackout</code></td><td class="num">16:00~16:40</td><td>리더보드 마스킹. 본인 계좌는 계속 열람</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>일시정지는 없다.</strong> 12분 그리드가 IPO 8건·폐장·정산을 고정하므로. 장애 대응은 <strong>세션 조기 종료</strong>(<code>TRADING</code> → <code>SETTLING</code> 조기 전환)다.</p>
+
+  <h2>게이팅 표기</h2>
+
+  <table>
+    <thead><tr><th>표기</th><th>허용 phase</th></tr></thead>
+    <tbody>
+      <tr><td><code>ALWAYS</code></td><td>전부</td></tr>
+      <tr><td><code>OPERATING</code></td><td><code>BRIEFING</code> · <code>TRADING</code> · <code>SETTLING</code> (11:00~17:00)</td></tr>
+      <tr><td><code>TRADING</code></td><td><code>TRADING</code>만</td></tr>
+    </tbody>
+  </table>
+
+  <p>위반 시 <strong>409 + 한국어 <code>message</code></strong>. 판정 기준은 <strong>서버 수신 시각, 유예 없음.</strong></p>
+  <p><strong>예외 — 무료 타임 경계.</strong> 12:09:59에 눌러 12:10:00에 도착한 주문은 위반이 아니다. 409 없이 체결시키고 <strong>응답의 <code>appliedFeeRate</code>가 진실</strong>이 된다.</p>
+
+  <h2><code>GET /api/v1/game/clock</code> — 시계의 단일 진실</h2>
+
+<pre>{
+  <span class="s">"phase"</span>: <span class="s">"TRADING"</span>,
+  <span class="s">"phaseEndsAt"</span>: <span class="s">"2026-09-21T07:40:00Z"</span>,   <span class="c">// 절대 시각</span>
+  <span class="s">"serverTime"</span>:  <span class="s">"2026-09-21T05:31:33Z"</span>,   <span class="c">// 오프셋 계산용</span>
+  <span class="s">"gameDate"</span>:  <span class="s">"2022-04-15"</span>,
+  <span class="s">"gameMonth"</span>: <span class="s">"2022-04"</span>,
+  <span class="s">"tickSeq"</span>: <span class="num">137</span>,                        <span class="c">// 동기화의 기준</span>
+  <span class="s">"nextTickAt"</span>: <span class="s">"2026-09-21T05:32:07Z"</span>,
+  <span class="s">"feeFree"</span>: <span class="k">false</span>,
+  <span class="s">"leaderboardBlackout"</span>: <span class="k">false</span>,
+  <span class="s">"seasonDay"</span>: <span class="num">2</span>
+}</pre>
+
+  <ul>
+    <li><strong>미인증에 열지 않는다.</strong> <code>gameDate</code>가 게임 상태다. 로그인 전 카운트다운은 <code>GET /seasons/current</code>의 <code>nextOpenAt</code>이 담당.</li>
+    <li><strong>남은 초를 보내지 않는다.</strong> 절대 시각 + <code>serverTime</code>. 이유는 아래.</li>
+    <li>기획서가 요구하는 카운트다운 3개(3.4.1 · 3.6.1 · 6.7.2)가 전부 <code>phaseEndsAt</code>으로 그려진다.</li>
+  </ul>
+
+  <h2>클라이언트 오프셋 — 두 줄</h2>
+
+<pre>오프셋   = serverTime − 로컬시계               <span class="c">// 한 번 구해 보관</span>
+남은시간 = phaseEndsAt − (로컬시계 + 오프셋)    <span class="c">// 매 렌더링 다시 계산</span></pre>
+
+  <h2>백그라운드 탭 스로틀 (근거 수치)</h2>
+
+  <table>
+    <thead><tr><th>브라우저</th><th>비활성 탭에서</th></tr></thead>
+    <tbody>
+      <tr><td>Chrome · <em>Throttling</em></td><td>타이머 <strong>초당 1회</strong> 확인</td></tr>
+      <tr><td>Chrome · <em>Intensive throttling</em> (88+)</td><td><strong>분당 1회.</strong> 비가시 5분↑ + 무음 30초↑ + 체인 5단↑ + WebRTC 비활성</td></tr>
+      <tr><td>Firefox Desktop</td><td>최소 타임아웃 <strong>1초</strong></td></tr>
+      <tr><td>Firefox for Android</td><td>최소 <strong>15분</strong>. 탭을 <strong>언로드</strong>할 수도 있다</td></tr>
+    </tbody>
+  </table>
+
+  <h2>운영 — 틱 지연이 지표가 되는 이유</h2>
+
+  <p>
+    <code>tickAt(k)</code>가 절대 시각이므로 <strong>예정 − 실제 발행</strong>이 그대로 지연 지표가 된다
+    (<code>adm.md</code> F-ADM-05). 간격 기반이었다면 밀린 것이 새 기준이 되어 지연이 안 잡힌다.
+  </p>
+
+  <p class="warn">
+    <strong>스케줄러 기본 스레드는 1개.</strong> <code>scheduleAtFixedRate</code>는 겹쳐 실행하지 않으므로
+    (<em>"may start late, but will not concurrently execute"</em>) 틱 처리가 31초를 넘기면 다음 틱이 늦게 나간다.
+    한 틱에서 하는 일: 28종 가격·환율 → 예약 전건 판정 → <strong>전 계좌 순회</strong>(순위 + 히트맵 + 평가액을 <strong>같은 순회에서</strong>) → 개인 메시지 발행.
+  </p>
+
+  <h2>출처</h2>
+
+  <ul>
+    <li><a href="https://docs.spring.io/spring-framework/reference/integration/scheduling.html">Spring Framework Reference — Task Execution and Scheduling</a> — <code>fixedDelay</code>/<code>fixedRate</code> 정의, 기본 풀 1개</li>
+    <li><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ScheduledExecutorService.html">Java 21 — <code>ScheduledExecutorService</code></a> — <code>scheduleAtFixedRate</code>가 앵커된다는 원문</li>
+    <li><a href="https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/scheduling/TaskScheduler.html">Spring — <code>TaskScheduler</code></a> — <code>Trigger</code> · <code>Instant</code> 시그니처</li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout#timeouts_in_inactive_tabs">MDN — Timeouts in inactive tabs</a> — 스로틀 수치</li>
+    <li>프로젝트: <code>market-replay-api/_common.md</code> §7 · §8 · <code>spec-revisions.md</code> R-1</li>
+  </ul>
+
+</main>
+</body>
+</html>

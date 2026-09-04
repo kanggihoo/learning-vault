@@ -155,6 +155,36 @@
 - [Spring Framework: WebSocket Security](https://docs.spring.io/spring-security/reference/servlet/integrations/websocket.html)
   Spring Security WebSocket 연동 문서. Use for: 핸드셰이크에서 Principal이 확정되는 경로, 메시지 단위 인가 설정 확인.
 
+## Market Replay Backend Knowledge
+
+### 스케줄링·시간 (레슨 0036)
+
+- [Spring Framework Reference: Task Execution and Scheduling](https://docs.spring.io/spring-framework/reference/integration/scheduling.html)
+  Spring 스케줄링 공식 레퍼런스. Use for: `fixedDelay`/`fixedRate` 정의, 스케줄러 기본 풀이 스레드 1개라는 사실,
+  `TaskScheduler`/`Trigger` 추상화. **레슨 0036의 1차 출처.**
+- [Java 21: ScheduledExecutorService](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/ScheduledExecutorService.html)
+  JDK 스케줄러 javadoc. Use for: `scheduleAtFixedRate`가 `initialDelay + k*period`로 **최초 시각에 앵커된다**는 원문,
+  겹쳐 실행하지 않는다는 규정("may start late, but will not concurrently execute"). 드리프트 논거를 검증할 때 여기를 본다.
+- [Spring: TaskScheduler](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/scheduling/TaskScheduler.html)
+  Use for: 가변 간격을 표현하는 두 시그니처 — `schedule(Runnable, Trigger)`와 `schedule(Runnable, Instant)`.
+- [Spring: @Scheduled javadoc](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/scheduling/annotation/Scheduled.html)
+  Use for: 애노테이션 속성 전체, 가상 스레드에서 fixed-delay가 단일 스케줄러 스레드에서 도는 이유.
+- [MDN: setTimeout — Timeouts in inactive tabs](https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout#timeouts_in_inactive_tabs)
+  Use for: 백그라운드 탭 스로틀의 **정확한 조건과 수치** — Chrome의 Throttling(초당 1회)/Intensive throttling(분당 1회,
+  Chrome 88+, 비가시 5분↑·무음 30초↑·체인 5단↑·WebRTC 비활성), Firefox Desktop 1초, Firefox Android 15분·탭 언로드.
+  서버가 "남은 초"를 보내지 않는 이유의 근거. **WebSocket 예외는 이 문서에 없다** — 있다고 쓴 2차 자료를 믿지 말 것.
+- [MDN: Page Visibility API](https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API)
+  Use for: 탭 재활성화 시점을 잡는 방법. `acc.md`의 부재 요약 호출 시점 판단에 쓰인다.
+
+### 프로젝트 문서 (사내 · 1차 진실)
+
+- `S15P21A605/docs/projects/마켓리플레이_기능명세서_v0.7_통합.md` — 게임 규칙의 정본. 미결 논점 11건 포함.
+- `S15P21A605/docs/projects/market-replay-api/_common.md` — **먼저 읽는 문서.** 경로·인증·응답 봉투·금액 표현·게임 시계·phase·미래 차단·실시간 메시지.
+- `market-replay-api/glossary.md` — 기획서 한국어 ↔ 코드·API 영어. 기각한 후보와 이유.
+- `market-replay-api/conflicts.md` — 전제가 흔들리는 지점. 항목마다 **결정 시한**이 있다.
+- `market-replay-api/spec-revisions.md` — 결정은 났는데 기획서 문장이 그대로인 것. R-1이 720초 그리드다.
+- **구현이 시작되면 코드가 진실이다** — 엔드포인트 스키마는 Swagger(`springdoc-openapi`)로 옮겨간다.
+
 ## Wisdom (Communities)
 
 - [Stack Overflow: git tag](https://stackoverflow.com/questions/tagged/git)
@@ -178,3 +208,8 @@
   Spring WebSocket/STOMP 질문 태그. Use for: "구독은 되는데 메시지가 안 온다" 류의 실제 사례와 설정 함정 확인.
 - [Stack Overflow: stomp tag](https://stackoverflow.com/questions/tagged/stomp)
   STOMP 프로토콜 전반 질문 태그. Use for: 프레임/하트비트/ack 관련 클라이언트-서버 불일치 사례 확인.
+
+- [Stack Overflow: spring-scheduled tag](https://stackoverflow.com/questions/tagged/spring-scheduled)
+  `@Scheduled` 관련 질문 태그. Use for: 스레드 풀 고갈, 겹침 실행, cron vs fixedRate 선택 사례 확인.
+- [Spring Community Forum (spring.io)](https://spring.io/community)
+  Spring 공식 커뮤니티 채널 목록. Use for: 스케줄링·WebSocket 설계 질문을 올릴 곳 찾기.

@@ -232,3 +232,29 @@ This index points to saved learning material in this Learning Vault.
 - [0026 - 코드 레벨로 범위 확장 (코드 금지 제약 해제)](./learning-records/0026-code-level-scope-expansion.md)
 - [0027 - 브로커 교체를 미션 범위로 편입](./learning-records/0027-broker-relay-scope-change.md)
 - [0028 - destination 규약과 조용한 실패](./learning-records/0028-destination-convention-and-silent-failure.md)
+
+## Market Replay Backend (S15P21A605)
+
+과거 80개월 시세를 3일 시즌으로 재생하는 모의투자 게임. 백엔드 전체 담당.
+코드는 AI가 쓰므로 목표는 **AI의 설계 판단을 리뷰할 수 있는 개념**이다.
+아크: **A 시간**(0036~0039) → **B 돈**(0040~0041) → **C 계약**(0042~0044) → **D 규모·데이터**(0045~0046).
+
+### 전체 지도 (먼저 이것)
+
+- [0019 - 마켓 리플레이 프로젝트 지도](./reference/0019-market-replay-project-map.html)
+  — 기능 16장 · 엔드포인트 60개 · WS 18종 · 테이블 25개를 한 장에. 통독용이 아니라 찾아보는 문서
+
+### 트랙 A · 시간 (가상 시계와 틱)
+
+**Lessons**
+
+- [0036 - 가상 시계: 720초 그리드와 절대시각 스케줄링](./lessons/0036-tick-clock-720s-grid.html)
+
+**References**
+
+- [0018 - 가상 시계 치트시트](./reference/0018-tick-clock-cheatsheet.html)
+
+**Learning Records**
+
+- [0029 - 마켓 리플레이 백엔드 학습 범위 확정](./learning-records/0029-market-replay-backend-scope-baseline.md)
+- [0030 - 두 종류의 이해와 지도 구멍](./learning-records/0030-two-types-of-understanding-and-the-map-gap.md)
