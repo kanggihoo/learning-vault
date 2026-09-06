@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>멱등성 — 분산 설계의 공용 부품</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .drill { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 16px 12px; margin: 14px 0; }
+    .drill p.q { font-weight: 700; margin-bottom: 6px; }
+    .quote { border-left: 4px solid #9aa5b1; padding: 8px 14px; margin: 12px 0; color: #3e4c59; font-size: 0.94rem; }
+    .quote cite { display: block; margin-top: 6px; font-size: 0.85rem; color: #6b7280; font-style: normal; }
+    pre { font-size: 0.86rem; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">아키텍처 설계 · 6/N · 레슨 0042 · <a href="./0040-patterns-never-come-alone.html">0040</a>이 남긴 질문</p>
+  <h1>멱등성 — 분산 설계의 공용 부품</h1>
+
+  <p class="lead">
+    <a href="./0040-patterns-never-come-alone.html">0040 §3</a>의 그림에서 <strong>Idempotent Consumer가 세 체인 모두</strong>에 나왔다.
+    재시도 체인에도, 큐 체인에도, Saga 체인에도. 이 레슨은 그 이유를 끝까지 판다 —
+    그리고 실제로 결정해야 하는 것들을 하나씩 닫는다. <strong>멱등 키를 무엇으로 잡나. 동시 중복은 어떻게 막나.
+    보상이 실패하면 어떻게 하나.</strong>
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    ① exactly-once가 왜 불가능하고 무엇이 그 자리를 대신하는지 설명할 수 있다.
+    ② 멱등 키로 <strong>써도 되는 것과 절대 쓰면 안 되는 것</strong>을 가른다.
+    ③ 체크-후-처리 사이의 <strong>실패 창</strong>과 <strong>동시 경쟁</strong>을 각각 다른 방법으로 막는다.
+    ④ 시맨틱 락·보상 실패·오케스트레이터 위치 — Saga의 남은 결정 셋을 닫는다.
+  </p>
+
+  <h2>§1 · exactly-once는 없다. effectively-once가 있다</h2>
+
+  <div class="quote">
+    분산 시스템 전체에 걸친 <strong>exactly-once 전달은 현실적으로 보장할 수 없다.</strong>
+    exactly-once를 표방하는 브로커조차 자기가 직접 통제하는 동작만 보장할 뿐,
+    소비자가 다른 시스템에서 일으키는 <strong>외부 부수효과는 보장할 수 없다.</strong>
+    (…) 지속 가능한 해법은 중복 전달을 없애는 게 아니라 <strong>소비자가 중복을 견디게 만드는 것</strong>이다.
+    at-least-once 전달과 중복을 무시하는 소비자를 결합하면 <strong>effectively exactly-once 처리</strong>가 된다.
+    <cite>— Azure Architecture Center, <em>Idempotent Consumer</em></cite>
+  </div>
+
+  <p>중복은 세 지점에서 생긴다. 셋 다 "장애"가 아니라 <strong>정상 동작</strong>이라는 게 핵심이다.</p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 244" role="img" aria-label="중복 메시지가 생기는 세 가지 경로">
+    <defs>
+      <marker id="i1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+    </defs>
+
+    <rect class="d-box-c" x="15" y="12" width="270" height="30"/>
+    <text class="d-title" x="150" y="32" text-anchor="middle">① 생산자 재시도</text>
+    <rect class="d-box" x="15" y="56" width="270" height="34"/>
+    <text class="d-label-sm" x="150" y="77" text-anchor="middle">생산자가 메시지를 보낸다</text>
+    <path class="d-line" d="M150,90 L150,100" marker-end="url(#i1)"/>
+    <rect class="d-box-b" x="15" y="102" width="270" height="34"/>
+    <text class="d-label-sm" x="150" y="123" text-anchor="middle" style="fill:#b91c1c">ack가 유실된다</text>
+    <path class="d-line" d="M150,136 L150,146" marker-end="url(#i1)"/>
+    <rect class="d-box" x="15" y="148" width="270" height="34"/>
+    <text class="d-label-sm" x="150" y="169" text-anchor="middle">생산자가 다시 보낸다</text>
+    <rect class="d-box-a" x="15" y="196" width="270" height="34"/>
+    <text class="d-label-sm" x="150" y="217" text-anchor="middle">브로커에 사본이 두 개</text>
+
+    <rect class="d-box-c" x="310" y="12" width="270" height="30"/>
+    <text class="d-title" x="445" y="32" text-anchor="middle">② ack 유실 후 재전달</text>
+    <rect class="d-box" x="310" y="56" width="270" height="34"/>
+    <text class="d-label-sm" x="445" y="77" text-anchor="middle">소비자가 처리를 끝낸다</text>
+    <path class="d-line" d="M445,90 L445,100" marker-end="url(#i1)"/>
+    <rect class="d-box-b" x="310" y="102" width="270" height="34"/>
+    <text class="d-label-sm" x="445" y="123" text-anchor="middle" style="fill:#b91c1c">ack가 전달되지 못한다</text>
+    <path class="d-line" d="M445,136 L445,146" marker-end="url(#i1)"/>
+    <rect class="d-box" x="310" y="148" width="270" height="34"/>
+    <text class="d-label-sm" x="445" y="169" text-anchor="middle">브로커가 다시 전달한다</text>
+    <rect class="d-box-a" x="310" y="196" width="270" height="34"/>
+    <text class="d-label-sm" x="445" y="217" text-anchor="middle">같은 처리가 두 번</text>
+
+    <rect class="d-box-c" x="605" y="12" width="270" height="30"/>
+    <text class="d-title" x="740" y="32" text-anchor="middle">③ 처리 중 크래시</text>
+    <rect class="d-box" x="605" y="56" width="270" height="34"/>
+    <text class="d-label-sm" x="740" y="77" text-anchor="middle">DB 쓰기가 커밋된다</text>
+    <path class="d-line" d="M740,90 L740,100" marker-end="url(#i1)"/>
+    <rect class="d-box-b" x="605" y="102" width="270" height="34"/>
+    <text class="d-label-sm" x="740" y="123" text-anchor="middle" style="fill:#b91c1c">ack 직전에 죽는다</text>
+    <path class="d-line" d="M740,136 L740,146" marker-end="url(#i1)"/>
+    <rect class="d-box" x="605" y="148" width="270" height="34"/>
+    <text class="d-label-sm" x="740" y="169" text-anchor="middle">다른 인스턴스가 받는다</text>
+    <rect class="d-box-a" x="605" y="196" width="270" height="34"/>
+    <text class="d-label-sm" x="740" y="217" text-anchor="middle">같은 쓰기가 두 번</text>
+  </svg>
+  <figcaption>
+    셋 다 <strong>ack를 잃는 순간</strong>이 원인이다. 그리고 "보냈는지 아닌지 모른다"는 상태에서
+    안전한 선택은 <strong>다시 보내는 것</strong>뿐이다 — 이건 버그가 아니라 at-least-once의 정의다.
+    <a href="../reference/0008-redis-streams-consumer-group-cheatsheet.html">Redis Streams의 PEL·XAUTOCLAIM</a>이
+    정확히 ②·③을 다루는 장치였다.
+  </figcaption>
+  </figure>
+
+  <h2>§2 · 먼저 물을 것 — 자연 멱등으로 만들 수 있나?</h2>
+
+  <div class="quote">
+    <strong>자연 멱등을 먼저 설계하고</strong>, 자연 멱등으로 만들 수 없는 연산에만 중복 제거 기법을 더하라.
+    <cite>— Azure Architecture Center, <em>Idempotent Consumer</em></cite>
+  </div>
+
+  <p>
+    멱등 키와 중복 제거 저장소는 <strong>비용이 있는 장치</strong>다. 연산 자체를 멱등하게 만들 수 있으면 그게 먼저다.
+    기준은 하나 — <strong>상대 변경인가, 절대 상태인가.</strong>
+  </p>
+
+  <table>
+    <thead><tr><th style="width:30%">멱등하지 않은 표현</th><th style="width:34%">자연 멱등으로 바꾼 표현</th><th>왜 되나</th></tr></thead>
+    <tbody>
+      <tr><td><code>재고 -= 1</code></td><td><code>재고 = 42</code> (절대값 설정)</td><td>몇 번 해도 42다</td></tr>
+      <tr><td><code>INSERT 주문</code></td><td><code>UPSERT</code> (주문 ID를 PK로)</td><td>두 번째는 같은 행을 덮어쓴다</td></tr>
+      <tr><td><code>POST /orders</code></td><td><code>PUT /orders/{id}</code></td><td>대상이 식별되어 있다</td></tr>
+      <tr><td>"상태를 다음 단계로 진행"</td><td>"상태를 <code>SHIPPED</code>로 설정"</td><td>현재 상태에 의존하지 않는다</td></tr>
+      <tr><td>이벤트에 "10개 줄었음"</td><td>이벤트에 "이제 42개임"<br><span class="sm">event-carried state transfer</span></td><td>소비자가 upsert로 적용할 수 있다</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>절대 상태로 바꾸면 새 문제가 생긴다 — 순서.</strong>
+    "42개"와 "40개" 이벤트가 뒤바뀌어 도착하면 틀린 값이 남는다.
+    그래서 절대 상태 이벤트에는 <strong>버전이나 시퀀스</strong>를 실어 오래된 것을 거부해야 한다.
+    <span class="mid">중복 제거는 순서를 보장하지 않는다 — 이 둘은 다른 문제다.</span>
+  </p>
+
+  <h2>§3 · 멱등 키를 무엇으로 잡나</h2>
+
+  <table>
+    <thead><tr><th style="width:24%">후보</th><th style="width:14%">판정</th><th>이유</th></tr></thead>
+    <tbody>
+      <tr><td>생산자가 부여한 <strong>메시지 ID</strong></td><td class="ok">좋다</td><td>재전달돼도 값이 그대로다. Service Bus의 <code>MessageId</code>, CloudEvents의 <code>source</code>+<code>id</code>.</td></tr>
+      <tr><td><strong>비즈니스 키</strong><br><span class="sm">주문번호, 결제요청번호</span></td><td class="ok">좋다</td><td>논리적 연산을 유일하게 식별한다. 재처리 판정이 도메인 의미와 일치한다.</td></tr>
+      <tr><td><strong>클라이언트 생성 UUID</strong><br><span class="sm">Stripe의 <code>Idempotency-Key</code></span></td><td class="ok">좋다</td><td>클라이언트가 만들고 재시도 때 그대로 재사용한다. Stripe 권장은 <strong>V4 UUID</strong>, 최대 255자.</td></tr>
+      <tr><td><strong>상관관계 ID</strong> (correlationId)</td><td class="no">안 된다</td><td><strong>여러 메시지가 공유한다</strong> — 요청과 응답이 같은 값을 갖는다. 첫 메시지가 나머지를 전부 막는다.</td></tr>
+      <tr><td>전송 계층 <strong>배달 ID</strong></td><td class="no">안 된다</td><td>브로커가 재전달할 때 <strong>새로 만든다.</strong> 중복마다 값이 달라 탐지가 안 된다.</td></tr>
+      <tr><td><strong>수신 타임스탬프</strong></td><td class="no">안 된다</td><td>매번 달라진다. 같은 이유.</td></tr>
+      <tr><td>이메일 등 <strong>개인정보</strong></td><td class="no">안 된다</td><td>Stripe가 명시적으로 금지한다. 키는 로그·저장소에 오래 남는다.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>가장 자주 놓치는 함정: 구독자가 여러 개일 때.</strong>
+    pub/sub에서 소비자 A·B·C가 <em>각자</em> 같은 메시지를 처리하는 게 정상이다.
+    그런데 셋이 <strong>중복 제거 저장소를 공유</strong>하면서 메시지 ID만으로 키를 잡으면,
+    <strong>A가 처리한 순간 B·C가 중복으로 판정되어 아무 일도 안 한다.</strong>
+    <br>해법: 키를 <strong>(소비자 신원 + 메시지 ID) 복합키</strong>로 잡는다.
+    <span class="mid">"알림이 안 갔어요" 류 버그의 단골 원인이다.</span>
+  </p>
+
+  <p class="sm">
+    Stripe가 정한 규칙들도 참고할 만하다 — <strong>결과(상태 코드와 본문)를 저장했다가 그대로 돌려준다</strong>
+    (500 에러였어도 500을 돌려준다). 키는 <strong>최소 24시간</strong> 보관 후 정리한다.
+    그리고 <strong>같은 키로 다른 파라미터가 오면 에러를 낸다</strong> — 실수로 키를 재사용하는 걸 막기 위해서다.
+    <code>GET</code>·<code>DELETE</code>에는 멱등 키를 보내지 않는다. 이미 정의상 멱등이기 때문이다.
+  </p>
+
+  <h2>§4 · 두 가지 다른 실패 — 창(window)과 경쟁(race)</h2>
+
+  <h3>실패 ① 체크와 처리 사이의 창 → inbox 패턴</h3>
+
+  <p>
+    "키가 있나 확인 → 처리 → 키 기록" 순으로 짜면 <strong>처리와 기록 사이에 죽는 창</strong>이 생긴다.
+    부수효과는 남았는데 키는 없으므로, 재전달되면 다시 처리한다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 212" role="img" aria-label="두 단계로 나누면 크래시 창이 생기고, 한 트랜잭션으로 묶으면 사라진다">
+    <defs>
+      <marker id="j1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+      <marker id="j2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+      </marker>
+    </defs>
+
+    <text class="d-title" x="30" y="20" style="fill:#b91c1c">위험 — 처리와 기록이 두 단계로 나뉘어 있다</text>
+    <rect class="d-box" x="30" y="30" width="150" height="42"/>
+    <text class="d-label-sm" x="105" y="56" text-anchor="middle">메시지 수신</text>
+    <path class="d-line" d="M180,51 L206,51" marker-end="url(#j1)"/>
+    <rect class="d-box" x="210" y="30" width="170" height="42"/>
+    <text class="d-label-sm" x="295" y="56" text-anchor="middle">비즈니스 처리 커밋</text>
+    <path class="d-line-d" style="stroke:#b91c1c" d="M380,51 L436,51" marker-end="url(#j2)"/>
+    <text class="d-label-sm" x="408" y="42" text-anchor="middle" style="fill:#b91c1c">크래시 창</text>
+    <rect class="d-box" x="440" y="30" width="150" height="42"/>
+    <text class="d-label-sm" x="515" y="56" text-anchor="middle">키 기록</text>
+    <path class="d-line" d="M590,51 L626,51" marker-end="url(#j1)"/>
+    <rect class="d-box" x="630" y="30" width="100" height="42"/>
+    <text class="d-label-sm" x="680" y="56" text-anchor="middle">ack</text>
+    <text class="d-label-sm" x="30" y="94" style="fill:#b91c1c">→ 여기서 죽으면 키가 없다. 재전달 시 같은 처리를 다시 한다.</text>
+
+    <text class="d-title" x="30" y="132">안전 — 하나의 트랜잭션으로 묶는다</text>
+    <rect class="d-box" x="30" y="142" width="150" height="42"/>
+    <text class="d-label-sm" x="105" y="168" text-anchor="middle">메시지 수신</text>
+    <path class="d-line" d="M180,163 L206,163" marker-end="url(#j1)"/>
+    <rect class="d-box-a" x="210" y="142" width="380" height="42"/>
+    <text class="d-label-sm" x="400" y="162" text-anchor="middle">키 기록 + 비즈니스 처리</text>
+    <text class="d-label-sm" x="400" y="178" text-anchor="middle">— 같은 트랜잭션, 전부 커밋되거나 전부 롤백</text>
+    <path class="d-line" d="M590,163 L626,163" marker-end="url(#j1)"/>
+    <rect class="d-box" x="630" y="142" width="100" height="42"/>
+    <text class="d-label-sm" x="680" y="168" text-anchor="middle">ack</text>
+    <text class="d-label-sm" x="750" y="168">= inbox 패턴</text>
+  </svg>
+  <figcaption>
+    이건 <a href="../reference/0007-transactional-outbox-cheatsheet.html">Outbox 패턴</a>의 <strong>거울상</strong>이다 —
+    발행 측에서 "DB 커밋과 메시지 발행"을 한 트랜잭션에 묶는 게 outbox,
+    수신 측에서 "중복 제거 마커와 비즈니스 처리"를 한 트랜잭션에 묶는 게 <strong>inbox</strong>.
+    같은 문제(두 개의 쓰기를 원자적으로)를 양쪽에서 푼 것이다.
+  </figcaption>
+  </figure>
+
+  <h3>실패 ② 동시에 도착한 중복 → 유니크 제약</h3>
+
+  <p>
+    경쟁 소비자가 <strong>같은 메시지의 사본을 동시에</strong> 받으면, 둘 다 "키가 없다"를 통과한 뒤 둘 다 처리한다.
+    트랜잭션으로 묶어도 이건 안 막힌다 — <strong>두 트랜잭션이 각각 정상 커밋</strong>되기 때문이다.
+  </p>
+
+  <div class="quote">
+    <strong>애플리케이션 로직이 아니라 데이터 저장소에서 정합성을 강제하라.</strong>
+    중복 제거 키에 <strong>유니크 제약</strong>을 건다. 두 트랜잭션이 모두 키 삽입을 시도하지만 하나만 성공한다.
+    다른 하나는 제약 위반으로 실패하고 그 메시지를 중복으로 처리한다. <strong>DB가 유일한 심판이 된다.</strong>
+    <cite>— Azure Architecture Center, <em>Idempotent Consumer</em></cite>
+  </div>
+
+  <p class="warn">
+    <strong>캐시로 중복 제거를 하는 경우 특히 주의.</strong> "조회 → 없으면 저장"은 두 개의 연산이라 창이 있다.
+    반드시 <strong>원자적 조건부 쓰기</strong>를 쓴다 — Redis라면 <code>SET key value NX</code>,
+    RDB라면 유니크 인덱스에 <code>INSERT</code>. <strong>존재 확인과 선점이 한 번에 일어나야 한다.</strong>
+  </p>
+
+  <h3>외부 호출은 트랜잭션에 못 들어간다 → 2단계 기록</h3>
+  <ol>
+    <li>외부 호출 <strong>전에</strong> 키를 <code>IN_PROGRESS</code> 상태로 기록한다.</li>
+    <li>외부 호출을 수행한다.</li>
+    <li>결과와 함께 <code>COMPLETED</code>로 갱신한다.</li>
+  </ol>
+  <p class="sm">
+    재전달 시 <code>COMPLETED</code>면 건너뛰고, <code>IN_PROGRESS</code>면
+    "이전 시도가 부분적으로 성공했을 수 있음"을 뜻한다 — 그때는 외부 시스템에 <strong>조회해서 확인</strong>하는 경로가 필요하다.
+    <span class="mid">결제 연동에서 "승인 조회 API"가 왜 항상 있는지가 여기서 설명된다.</span>
+  </p>
+
+  <h3>키를 언제 지우나</h3>
+  <p>
+    <strong>브로커가 재전달할 수 있는 기간보다 길게</strong> 보관한다.
+    최대 재시도 횟수 × 락(가시성) 타임아웃 + 메시지 TTL을 계산해서, 그보다 긴 TTL을 준다.
+    <strong class="mid">그리고 DLQ에서 운영자가 수동으로 재투입하는 경우</strong>를 잊지 않는다 —
+    정상 재전달 창이 한참 지난 뒤에 올 수 있다.
+  </p>
+
+  <h2>§5 · Saga의 남은 결정 셋</h2>
+
+  <h3>① 시맨틱 락 — 그리고 세 가지 함정</h3>
+  <p>
+    <a href="./0040-patterns-never-come-alone.html">0040</a>에서 본 격리성 대응책. 진행 중인 자원에
+    <code>PENDING</code> 같은 표시를 걸어 다른 saga가 손대지 못하게 한다. DB의 락을 <strong>애플리케이션에서 흉내</strong>내는 것이라, DB가 대신 해 주던 것들이 전부 숙제로 돌아온다.
+  </p>
+  <table>
+    <thead><tr><th style="width:30%">함정</th><th>무슨 일</th><th style="width:28%">대응</th></tr></thead>
+    <tbody>
+      <tr><td><strong>락을 푸는 주체가 죽는다</strong></td><td>영원히 <code>PENDING</code>인 좀비 자원이 남는다. DB 락과 달리 <strong>세션이 끊겨도 자동으로 안 풀린다.</strong></td><td>락에 <strong>만료 시각</strong>을 준다(리스). Azure도 "타임아웃이 있는 단기 락"을 권한다.</td></tr>
+      <tr><td><strong>읽는 쪽이 무시한다</strong></td><td>조회 쿼리가 <code>PENDING</code>을 "없는 것"으로 보면 더티 리드가 그대로 남는다. <strong>락은 쓰는 쪽만이 아니라 읽는 쪽도 지켜야 의미가 있다.</strong></td><td>읽기 경로마다 <code>PENDING</code> 처리 규칙을 정한다 — 숨길지, 보여줄지, 기다릴지.</td></tr>
+      <tr><td><strong>비즈니스 상태와 섞인다</strong></td><td><code>status</code> 하나에 <code>PENDING</code>·<code>CONFIRMED</code>·<code>CANCELLED</code>가 뒤엉켜 상태 머신이 폭발한다.</td><td>락 상태를 <strong>별도 필드</strong>로 분리한다. 비즈니스 상태와 진행 상태는 다른 축이다.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>② 보상이 실패하면</h3>
+  <div class="quote">
+    <strong>보상 트랜잭션은 항상 작동하지는 않는다.</strong> 보상 트랜잭션 자체가 실패했을 때 반복할 수 있도록
+    각 단계를 <strong>멱등한 명령</strong>으로 정의하라. (…) 때로는 <strong>수동 개입만이 유일한 복구 방법</strong>이다.
+    그런 경우 시스템은 실패 이유를 담은 <strong>상세한 알림을 발생시켜야</strong> 한다.
+    <cite>— Azure Architecture Center, <em>Compensating Transaction</em></cite>
+  </div>
+  <table>
+    <thead><tr><th style="width:32%">오해</th><th>실제</th></tr></thead>
+    <tbody>
+      <tr><td>보상은 원래 상태로 되돌린다</td><td><span class="no">아니다.</span> 성공했던 작업을 <strong>보상</strong>할 뿐이다. 항공권 취소가 전액 환불이 아닌 것처럼, 비즈니스 규칙이 적용된다.</td></tr>
+      <tr><td>보상은 정확히 역순이다</td><td><span class="no">아니다.</span> 일부는 병렬로 가능하고, <strong>불일치에 민감한 저장소를 먼저</strong> 되돌리는 게 나을 수 있다.</td></tr>
+      <tr><td>실패하면 바로 보상한다</td><td><span class="no">아니다.</span> 순서는 <strong>재시도 → 대체 경로 → 그래도 안 되면 보상</strong>이다. 보상은 최후 수단이다.</td></tr>
+      <tr><td>보상 여부는 시스템이 정한다</td><td>고영향·모호한 경우는 <strong>사람이 결정</strong>한다. Azure 예시: 호텔 예약이 실패했다고 항공권을 자동 취소하지 말고, <strong>다른 호텔을 제안</strong>하고 취소는 고객이 고르게 한다.</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">
+    그리고 <strong>보상 진행 상황을 기록</strong>해야 실패 지점부터 재개할 수 있다.
+    보상이 끝내 실패하면 DLQ로 보내고 <strong>상관관계 ID를 포함한 알림</strong>을 띄운다 — 사람이 볼 수 있어야 한다.
+  </p>
+
+  <h3>③ 오케스트레이터를 어디에 두나</h3>
+  <table>
+    <thead><tr><th style="width:26%">위치</th><th style="width:34%">언제</th><th>대가</th></tr></thead>
+    <tbody>
+      <tr><td><strong>개시 서비스 안에</strong><br><span class="sm">주문 서비스가 saga도 조율</span></td><td>saga가 하나뿐이고 참여자가 2~3개일 때</td><td>주문 서비스가 다른 도메인의 흐름을 알게 된다 — <strong>결합이 슬금슬금 는다</strong></td></tr>
+      <tr><td><strong>별도 오케스트레이터 서비스</strong></td><td>saga가 여럿이거나 참여자가 많을 때</td><td>새 배포 단위 + 새 실패점. 대신 흐름이 한곳에 모인다</td></tr>
+      <tr><td><strong>워크플로 엔진</strong><br><span class="sm">Temporal, Camunda 등</span></td><td>장기 실행 + 재개·타임아웃·보상이 복잡할 때</td><td>플랫폼 의존. 대신 상태 보관·재개·가시성을 직접 안 짜도 된다</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">
+    판단 기준 하나: <strong>"이 흐름이 실패했을 때 누구를 깨울 것인가."</strong>
+    답이 명확한 팀이 있으면 그 팀 쪽에 두고, 없으면 별도 서비스로 소유자를 만든다.
+    조율 로직에 주인이 없으면 <a href="./0041-boundaries-bounded-context-and-conways-law.html">콘웨이의 법칙</a>대로 아무도 안 고친다.
+  </p>
+
+  <h2>§6 · 진단 연습</h2>
+
+  <div class="drill">
+    <p class="q">① "메시지의 <code>correlationId</code>로 중복을 걸러냅니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>키가 틀렸다.</strong> 상관관계 ID는 <em>관련된 여러 메시지</em>를 묶는 값이다 —
+      요청과 응답, 한 saga의 모든 단계가 같은 값을 갖는다.</p>
+      <p>결과: <strong>saga의 2단계가 1단계의 키에 막혀 실행되지 않는다.</strong>
+      게다가 이 버그는 재전달이 실제로 일어나야 드러나므로, 테스트에서는 멀쩡하다.</p>
+      <p class="sm">고칠 것: 메시지별 고유 ID나 비즈니스 키로 바꾼다. 상관관계 ID는 <strong>추적용으로만</strong> 쓴다.</p>
+    </details>
+
+    <p class="q">② "처리 전에 <code>SELECT</code>로 키가 있는지 확인하고, 없으면 처리한 뒤 <code>INSERT</code>합니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>두 개의 구멍이 동시에 있다.</strong></p>
+      <p>ⓐ <strong>창</strong>: 처리와 <code>INSERT</code> 사이에 죽으면 키가 없어 재처리된다.
+      → 처리와 키 기록을 <strong>같은 트랜잭션</strong>으로(inbox).</p>
+      <p>ⓑ <strong>경쟁</strong>: 두 소비자가 동시에 <code>SELECT</code>를 통과하면 둘 다 처리한다.
+      → 키 컬럼에 <strong>유니크 제약</strong>을 걸고, <code>INSERT</code> 실패를 중복 판정으로 쓴다.</p>
+      <p class="sm">ⓐ만 고치면 ⓑ가 남고, ⓑ만 고치면 ⓐ가 남는다. <strong>둘은 다른 실패라 각각 막아야 한다.</strong></p>
+    </details>
+
+    <p class="q">③ "주문 취소 시 결제 취소 API를 호출합니다. 실패하면 로그를 남기고 넘어갑니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>보상 실패를 삼켰다.</strong> 결과: 주문은 취소됐는데 결제는 살아 있는
+      <strong>돈이 어긋난 상태</strong>가 조용히 남는다. 로그는 아무도 안 본다.</p>
+      <p>필요한 것 셋: ⓐ 보상 단계를 <strong>멱등</strong>하게 만들어 재시도 가능하게,
+      ⓑ 재시도 소진 시 <strong>DLQ + 알림</strong>(상관관계 ID 포함), ⓒ 불일치를 주기적으로 찾는 <strong>정합성 검사</strong>.</p>
+      <p class="sm">ⓒ가 <a href="./0038-tactics-detect-recover-prevent.html">0038</a>의 감지 전술이다 —
+      보상 체계에도 "복구"만 있고 "감지"가 없으면 같은 실패다.</p>
+    </details>
+  </div>
+
+  <h2>§7 · 확인 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> 멱등 키로 쓰면 안 되는 것은?</p>
+    <button type="button" data-target="f1" data-answer="correct">상관관계 ID — 여러 메시지가 공유한다</button>
+    <button type="button" data-target="f1" data-answer="wrong" data-hint="오답. 생산자가 한 번 정하면 재전달돼도 안 바뀌므로 좋은 키다.">메시지 ID — 생산자가 한 번만 정한다</button>
+    <button type="button" data-target="f1" data-answer="wrong" data-hint="오답. 논리적 연산을 유일하게 식별하므로 좋은 키다.">주문 번호 — 비즈니스가 정한 키이다</button>
+    <button type="button" data-target="f1" data-answer="wrong" data-hint="오답. Stripe가 권장하는 방식이다. 재시도 때 같은 값을 재사용한다.">V4 UUID — 클라이언트가 만들어 낸다</button>
+    <p class="answer" id="f1"></p>
+
+    <p><strong>Q2.</strong> 두 소비자가 동시에 같은 메시지를 받았을 때 확실한 방어는?</p>
+    <button type="button" data-target="f2" data-answer="correct">중복 키에 유니크 제약을 건다</button>
+    <button type="button" data-target="f2" data-answer="wrong" data-hint="오답. 조회와 저장 사이에 창이 있어 둘 다 통과할 수 있다.">처리 전에 존재 여부를 조회한다</button>
+    <button type="button" data-target="f2" data-answer="wrong" data-hint="오답. 처리량을 버리는 데다 재전달에 의한 중복은 그대로 남는다.">소비자 수를 하나로 줄여 놓는다</button>
+    <button type="button" data-target="f2" data-answer="wrong" data-hint="오답. 재시도 횟수는 동시 도착 문제와 관계가 없다.">재시도 횟수를 세 번으로 막는다</button>
+    <p class="answer" id="f2"></p>
+
+    <p><strong>Q3.</strong> 보상 트랜잭션에 대해 맞는 것은?</p>
+    <button type="button" data-target="f3" data-answer="correct">그 자체가 실패할 수 있어 멱등해야 한다</button>
+    <button type="button" data-target="f3" data-answer="wrong" data-hint="오답. 병렬 실행도 가능하고 민감한 저장소를 먼저 되돌리기도 한다.">반드시 정확히 역순으로 실행돼야 한다</button>
+    <button type="button" data-target="f3" data-answer="wrong" data-hint="오답. 원상복구가 아니라 성공한 작업을 보상할 뿐이다(취소 수수료).">시스템을 원래 상태로 완전히 되돌린다</button>
+    <button type="button" data-target="f3" data-answer="wrong" data-hint="오답. 자동 롤백이 없다는 것이 애초에 saga를 쓰는 이유다.">실패하면 자동으로 롤백이 걸리게 된다</button>
+    <p class="answer" id="f3"></p>
+  </section>
+
+  <h2>§8 · 이 레슨이 주는 문장</h2>
+
+  <table>
+    <thead><tr><th style="width:26%">상황</th><th>쓰는 문장</th></tr></thead>
+    <tbody>
+      <tr><td>중복 제거 구현 리뷰</td><td>"<strong>멱등 키가 무엇입니까?</strong> 그리고 재전달됐을 때 그 값이 안 바뀌는 게 확실한가요?"</td></tr>
+      <tr><td>같은 코드 리뷰</td><td>"키 기록과 비즈니스 처리가 <strong>같은 트랜잭션</strong>인가요? 그리고 키 컬럼에 <strong>유니크 제약</strong>이 있나요?"</td></tr>
+      <tr><td>pub/sub 중복 제거</td><td>"구독자가 여럿인데 키가 메시지 ID뿐입니다. <strong>소비자 신원을 복합키에 넣어야</strong> 합니다."</td></tr>
+      <tr><td>Saga 보상 리뷰</td><td>"<strong>보상이 실패하면</strong> 어떻게 됩니까? 알림이 뜨나요, 아니면 조용히 어긋난 채로 남나요?"</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>먼저 읽을 1차 출처:</strong></p>
+  <ul>
+    <li><a href="https://learn.microsoft.com/en-us/azure/architecture/patterns/idempotent-consumer">Azure — Idempotent Consumer</a>
+        — §1~§4 전부의 원문. 키 선택, inbox, 유니크 제약, 2단계 기록, 보관 기간까지 다 있다. <strong>하나만 읽는다면 이것.</strong></li>
+    <li><a href="https://docs.stripe.com/api/idempotent_requests">Stripe — Idempotent requests</a>
+        — 실제 서비스가 정한 규칙(V4 UUID, 255자, 24시간, 파라미터 불일치 시 에러). <strong>API를 설계할 때 그대로 베낄 만하다.</strong></li>
+    <li><a href="https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction">Azure — Compensating Transaction</a>
+        — §5 ②의 원문. 보상이 원상복구가 아니라는 것, 사람 개입, 전진 우선.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="./0040-patterns-never-come-alone.html">0040 — 패턴 조합</a> ·
+    <a href="./0038-tactics-detect-recover-prevent.html">0038 — 전술</a> ·
+    <a href="../reference/0007-transactional-outbox-cheatsheet.html">0007 — Outbox(이 레슨의 거울상)</a> ·
+    <a href="../reference/0008-redis-streams-consumer-group-cheatsheet.html">0008 — Redis Streams</a>.
+  </p>
+
+  <p class="note">
+    <strong>다음:</strong> <a href="./0043-choosing-the-numbers.html">0043 — 숫자를 정하는 법</a>.
+    타임아웃 몇 초, 재시도 몇 번, 레이트 리밋을 어느 계층에 —
+    <strong>AI가 가장 자신 있게 임의로 채우는 칸들</strong>이다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -103,3 +103,32 @@ pre {
     padding: 20px;
   }
 }
+
+/* Reveal blocks — 자가 채점·모범답안용. JS 없이 native <details>. */
+details.reveal {
+  margin: 10px 0;
+  border: 1px solid #deded6;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 14px;
+}
+
+details.reveal > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+details.reveal[open] > summary {
+  border-bottom: 1px solid #ecece6;
+  margin-bottom: 10px;
+}
+
+details.reveal > *:last-child {
+  margin-bottom: 12px;
+}
+
+@media print {
+  details.reveal:not([open]) > *:not(summary) { display: block; }
+}

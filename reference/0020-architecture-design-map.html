@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>아키텍처 설계 지도 — driver부터 pattern까지</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    main { max-width: 1080px; padding-top: 28px; }
+    h1 { font-size: 1.85rem; }
+    h2 { margin-top: 34px; padding-top: 15px; font-size: 1.2rem; }
+    h3 { margin-top: 22px; font-size: 1.02rem; color: #0f766e; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.87rem; margin: 10px 0; }
+    th, td { border: 1px solid #deded6; padding: 5px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    ul { margin: 8px 0; padding-left: 22px; }
+    li { margin: 3px 0; }
+    .toc { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 14px 18px; }
+    .toc ol { margin: 0; padding-left: 22px; columns: 2; column-gap: 28px; }
+    .toc li { margin: 2px 0; font-size: 0.92rem; }
+    .lead { font-size: 1.06rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .kv { background: #f3f4f6; border-radius: 4px; padding: 1px 5px; font-size: 0.85em; }
+    @media print { h2 { break-after: avoid; } table, figure { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="sm">레퍼런스 0020 · 계속 돌아오는 문서 · 통독용이 아니라 <strong>찾아보는 용도</strong></p>
+  <h1>아키텍처 설계 지도</h1>
+
+  <p class="lead">
+    흩어져 들리는 다섯 단어 — <strong>driver · 품질속성 · 전술 · 스타일 · 패턴</strong> — 은 사실
+    <strong>하나의 파이프라인</strong>이다. 각각이 어디에 있고 무엇을 다음 단계로 넘기는지가 이 문서의 전부다.
+    개별 레슨은 이 지도의 한 칸씩을 판다.
+  </p>
+
+  <div class="toc">
+    <ol>
+      <li><a href="#s0">30초 요약 — 하나의 파이프라인</a></li>
+      <li><a href="#s1">Architecture Driver — 설계를 강제하는 5종</a></li>
+      <li><a href="#s2">Quality Attribute — 어휘와 시나리오</a></li>
+      <li><a href="#s3">Tactic — 품질별 전술 카탈로그</a></li>
+      <li><a href="#s4">Style — 전체 골격 비교</a></li>
+      <li><a href="#s5">Pattern — 문제별 패턴 카탈로그</a></li>
+      <li><a href="#s6">전술 vs 패턴 vs 스타일 — 핵심 구분</a></li>
+      <li><a href="#s7">트레이드오프 — 공짜 품질은 없다</a></li>
+      <li><a href="#s8">설계·평가 프로세스 — ADD, ATAM</a></li>
+      <li><a href="#s9">기록과 소통 — ADR, C4</a></li>
+      <li><a href="#s10">출처 지도 — 무엇을 어디서 확인하나</a></li>
+    </ol>
+  </div>
+
+  <p class="sm" style="margin-top:14px">
+    <strong>이 지도를 파는 레슨 아크 (완결):</strong>
+    <a href="../lessons/0037-architecture-drivers-and-quality-attribute-scenarios.html">0037 driver·품질속성</a> ·
+    <a href="../lessons/0038-tactics-detect-recover-prevent.html">0038 전술</a> ·
+    <a href="../lessons/0039-architecture-styles-constraints-and-the-microservice-premium.html">0039 스타일</a> ·
+    <a href="../lessons/0040-patterns-never-come-alone.html">0040 패턴</a> ·
+    <a href="../lessons/0041-boundaries-bounded-context-and-conways-law.html">0041 경계</a> ·
+    <a href="../lessons/0042-idempotency-the-shared-part.html">0042 멱등성</a> ·
+    <a href="../lessons/0043-choosing-the-numbers.html">0043 숫자</a> ·
+    <a href="../lessons/0044-evaluate-enforce-record.html">0044 검증·기록</a>
+    &nbsp;|&nbsp; 리뷰 중에는 <a href="0021-architecture-review-questions.html"><strong>질문 카드 0021</strong></a>.
+  </p>
+
+  <h2 id="s0">§0 · 30초 요약 — 하나의 파이프라인</h2>
+
+  <p>
+    <strong>아키텍처는 "구조를 고르는 일"이 아니라 "무엇이 구조를 강제하는지 찾아 거기에 답하는 일"이다.</strong>
+    그래서 순서가 있다. 스타일부터 고르면 (예: "일단 MSA로 가죠") 이 파이프라인을 거꾸로 탄 것이고,
+    그게 대부분의 나쁜 설계가 생기는 방식이다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 940 585" role="img" aria-label="비즈니스 목표에서 driver, 품질속성 시나리오, 설계 개념, 아키텍처, 평가·기록으로 이어지는 파이프라인">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+      <marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#b45309"/>
+      </marker>
+    </defs>
+
+    <rect class="d-box-c" x="290" y="10" width="360" height="38"/>
+    <text class="d-label" x="470" y="34" text-anchor="middle">비즈니스 목표 · 이해관계자 관심사</text>
+    <path class="d-line" d="M470,48 L470,66" marker-end="url(#ah)"/>
+
+    <rect class="d-box-b" x="70" y="68" width="830" height="118"/>
+    <text class="d-title" x="84" y="90">① ARCHITECTURE DRIVER — 설계를 강제하는 입력 5종</text>
+    <rect class="d-box" x="84" y="100" width="154" height="72"/>
+    <text class="d-label" x="161" y="128" text-anchor="middle">설계 목적</text>
+    <text class="d-label-sm" x="161" y="146" text-anchor="middle">Design purpose</text>
+    <text class="d-label-sm" x="161" y="162" text-anchor="middle">왜 지금 설계하나</text>
+    <rect class="d-box-a" x="246" y="100" width="154" height="72"/>
+    <text class="d-label" x="323" y="128" text-anchor="middle">품질 속성</text>
+    <text class="d-label-sm" x="323" y="146" text-anchor="middle">Quality attributes</text>
+    <text class="d-label-sm" x="323" y="162" text-anchor="middle">가장 큰 형성력</text>
+    <rect class="d-box" x="408" y="100" width="154" height="72"/>
+    <text class="d-label" x="485" y="128" text-anchor="middle">주요 기능</text>
+    <text class="d-label-sm" x="485" y="146" text-anchor="middle">Primary functionality</text>
+    <text class="d-label-sm" x="485" y="162" text-anchor="middle">전체가 아니라 약 10%</text>
+    <rect class="d-box" x="570" y="100" width="154" height="72"/>
+    <text class="d-label" x="647" y="128" text-anchor="middle">아키텍처 관심사</text>
+    <text class="d-label-sm" x="647" y="146" text-anchor="middle">Concerns</text>
+    <text class="d-label-sm" x="647" y="162" text-anchor="middle">로깅·인증·예외 등</text>
+    <rect class="d-box" x="732" y="100" width="154" height="72"/>
+    <text class="d-label" x="809" y="128" text-anchor="middle">제약</text>
+    <text class="d-label-sm" x="809" y="146" text-anchor="middle">Constraints</text>
+    <text class="d-label-sm" x="809" y="162" text-anchor="middle">못 바꾸는 것</text>
+
+    <path class="d-line-a" d="M323,186 L323,204" marker-end="url(#ah)"/>
+    <rect class="d-box-a" x="70" y="206" width="830" height="66"/>
+    <text class="d-title" x="84" y="228">② 품질 속성 시나리오 — 형용사를 측정 가능한 문장으로 (6부)</text>
+    <text class="d-label-mono" x="484" y="256" text-anchor="middle">자극원 → 자극 → 대상 → 환경 → 응답 → 응답 측정</text>
+
+    <path class="d-line" d="M470,272 L470,296" marker-end="url(#ah)"/>
+    <text class="d-label-sm" x="484" y="288">달성 수단을 고른다</text>
+
+    <rect class="d-box-c" x="70" y="298" width="830" height="118"/>
+    <text class="d-title" x="84" y="320">③ DESIGN CONCEPT — 달성 수단 (여기서 처음으로 "구조"가 나온다)</text>
+    <rect class="d-box" x="84" y="330" width="193" height="72"/>
+    <text class="d-label" x="180" y="356" text-anchor="middle">전술 Tactic</text>
+    <text class="d-label-sm" x="180" y="374" text-anchor="middle">품질 하나를 겨냥한</text>
+    <text class="d-label-sm" x="180" y="390" text-anchor="middle">단일 설계 결정</text>
+    <rect class="d-box" x="287" y="330" width="193" height="72"/>
+    <text class="d-label" x="383" y="356" text-anchor="middle">패턴 Pattern</text>
+    <text class="d-label-sm" x="383" y="374" text-anchor="middle">반복 문제의</text>
+    <text class="d-label-sm" x="383" y="390" text-anchor="middle">국소 구조 해법</text>
+    <rect class="d-box" x="490" y="330" width="193" height="72"/>
+    <text class="d-label" x="586" y="356" text-anchor="middle">스타일 Style</text>
+    <text class="d-label-sm" x="586" y="374" text-anchor="middle">시스템 전체 골격</text>
+    <text class="d-label-sm" x="586" y="390" text-anchor="middle">요소·관계의 제약</text>
+    <rect class="d-box" x="693" y="330" width="193" height="72"/>
+    <text class="d-label" x="789" y="356" text-anchor="middle">기성 컴포넌트</text>
+    <text class="d-label-sm" x="789" y="374" text-anchor="middle">프레임워크·미들웨어</text>
+    <text class="d-label-sm" x="789" y="390" text-anchor="middle">참조 아키텍처</text>
+
+    <path class="d-line" d="M470,416 L470,440" marker-end="url(#ah)"/>
+    <rect class="d-box-a" x="70" y="442" width="830" height="44"/>
+    <text class="d-title" x="470" y="469" text-anchor="middle">④ 아키텍처 = 요소(element) + 관계(relation) + 속성(property)</text>
+
+    <path class="d-line" d="M470,486 L470,508" marker-end="url(#ah)"/>
+    <rect class="d-box" x="70" y="510" width="405" height="48"/>
+    <text class="d-label" x="272" y="530" text-anchor="middle">⑤ 평가</text>
+    <text class="d-label-sm" x="272" y="548" text-anchor="middle">ATAM · utility tree · fitness function</text>
+    <rect class="d-box" x="495" y="510" width="405" height="48"/>
+    <text class="d-label" x="697" y="530" text-anchor="middle">⑥ 기록·소통</text>
+    <text class="d-label-sm" x="697" y="548" text-anchor="middle">ADR (왜) · C4 view (무엇)</text>
+
+    <path class="d-line-d" style="stroke:#b45309" d="M70,534 L40,534 L40,127 L68,127" marker-end="url(#ahb)"/>
+    <text class="d-label-sm" x="26" y="330" text-anchor="middle" transform="rotate(-90 26 330)">평가에서 나온 위험 → driver를 갱신하고 다시 돈다</text>
+  </svg>
+  <figcaption>
+    파이프라인은 한 번 흐르고 끝나지 않는다. ADD는 이 루프를 <strong>요소 단위로 재귀적으로</strong> 반복한다(§8).
+    화살표를 거꾸로 타는 것 — 스타일을 먼저 정하고 driver를 나중에 맞추는 것 — 이 가장 흔한 설계 실패다.
+  </figcaption>
+  </figure>
+
+  <h2 id="s1">§1 · Architecture Driver — 설계를 강제하는 5종</h2>
+
+  <p>
+    <strong>Architecture driver = 아키텍처 설계에 실질적 영향을 주는 요구·제약의 총칭.</strong>
+    "설계자가 마음대로 정할 수 없고, 정해지면 구조가 따라 결정되는 것"이 driver다.
+    Cervantes &amp; Kazman은 이를 다섯 범주로 나눈다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:15%">범주</th><th style="width:32%">무엇인가</th><th style="width:30%">예</th><th style="width:23%">놓치면 생기는 일</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>설계 목적</strong><br><span class="sm">Design purpose</span></td>
+        <td>왜 <em>지금</em> 설계하는가. 제안서용 개략 설계인지, 기술 검증 프로토타입인지, 실제 구축용인지.</td>
+        <td>"수주 전 공수 산정용" vs "3년 운영할 시스템 구축용"</td>
+        <td>깊이를 잘못 잡는다. 제안서에 서비스 분해도를, 실제 구축에 개략도를 그린다.</td>
+      </tr>
+      <tr>
+        <td><strong>품질 속성</strong><br><span class="sm">Quality attributes</span></td>
+        <td>측정·검증 가능한 시스템 속성. <strong>구조를 가장 크게 형성한다.</strong> 반드시 시나리오로 표현한다(§2).</td>
+        <td>"피크 시 p99 응답 300ms 이하", "단일 노드 장애 시 30초 내 복구"</td>
+        <td>구조를 정당화할 근거가 사라진다. "왜 큐를 뒀나"에 답을 못 한다.</td>
+      </tr>
+      <tr>
+        <td><strong>주요 기능</strong><br><span class="sm">Primary functionality</span></td>
+        <td>비즈니스에 결정적이거나 기술 난도가 높은 기능. <strong>전체 유스케이스의 약 10%.</strong></td>
+        <td>주문 체결, 결제 승인 — 회원 정보 수정은 여기 들어가지 않는다.</td>
+        <td>모든 기능을 동등하게 다루다 구조가 평평해지고 정작 어려운 곳을 늦게 만난다.</td>
+      </tr>
+      <tr>
+        <td><strong>아키텍처 관심사</strong><br><span class="sm">Architectural concerns</span></td>
+        <td>요구사항 문서에 안 적히지만 반드시 결정해야 하는 것. 구조·코드 조직·배포, 그리고 횡단 관심사.</td>
+        <td>예외 처리 방식, 로깅·추적, 인증, 캐싱, 설정 관리, 개발 환경 분리</td>
+        <td>각 팀이 제각기 정해서 시스템이 조각난다. AI에게 맡기면 특히 여기가 무작위가 된다.</td>
+      </tr>
+      <tr>
+        <td><strong>제약</strong><br><span class="sm">Constraints</span></td>
+        <td>설계자가 통제할 수 없는 결정. 기술 지정, 법·규제, 기존 시스템 연동, 팀 역량, 마감.</td>
+        <td>"사내 표준이 Spring Boot", "개인정보 국외 이전 불가", "발표까지 6주", "팀 5명 전원 Java만"</td>
+        <td>"좋은 설계"를 만들었는데 못 쓴다. 제약은 좁혀진 공간에서 최선(satisfice)을 찾게 한다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>면접에서 쓰는 문장.</strong> "이 시스템의 아키텍처 driver는 ○○였습니다"로 시작하면
+    구조 설명이 취향 발표가 아니라 <strong>근거 있는 결정</strong>으로 들린다.
+    자세히는 <a href="../lessons/0037-architecture-drivers-and-quality-attribute-scenarios.html">레슨 0037</a>.
+  </p>
+
+  <h2 id="s2">§2 · Quality Attribute — 어휘와 시나리오</h2>
+
+  <h3>2.1 시나리오 6부 — 형용사를 문장으로</h3>
+  <p>
+    "빨라야 한다"는 driver가 아니다. 검증할 수 없기 때문이다.
+    품질 속성은 <strong>여섯 조각</strong>으로 써야 측정·검증 가능해진다.
+  </p>
+  <table>
+    <thead><tr><th style="width:16%">조각</th><th style="width:34%">의미</th><th>예 (모의투자 주문)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>자극원</strong> Source</td><td>자극을 만든 주체</td><td>로그인한 사용자</td></tr>
+      <tr><td><strong>자극</strong> Stimulus</td><td>응답이 필요한 사건·조건</td><td>매수 주문을 제출한다</td></tr>
+      <tr><td><strong>대상</strong> Artifact</td><td>자극을 받는 시스템 부분</td><td>주문 처리 서비스</td></tr>
+      <tr><td><strong>환경</strong> Environment</td><td>자극이 발생하는 상황</td><td>동시 접속 500명의 피크 시간</td></tr>
+      <tr><td><strong>응답</strong> Response</td><td>그 결과 일어나는 활동</td><td>주문이 접수되고 접수 확인이 반환된다</td></tr>
+      <tr><td><strong>응답 측정</strong> Response measure</td><td>응답을 평가할 지표 — <strong>숫자</strong></td><td>p99 300ms 이내, 유실 0건</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">
+    출처의 표준 예시: <em>"사용자가 &lt;C&gt; 버튼을 누르면 게임은 500ms 이내에 시점 모드를 전환한다"</em>
+    — 자극원=사용자 / 자극=&lt;C&gt; 입력 / 대상=시스템 전체 / 환경=정상 운영 / 응답=모드 전환 / 응답 측정=&lt;500ms.
+  </p>
+
+  <h3>2.2 ISO/IEC 25010:2023 — 공용 어휘 9종</h3>
+  <p>
+    품질 속성 이름을 팀마다 다르게 부르면 논의가 안 된다. 국제 표준 어휘가 ISO/IEC 25010이고,
+    <strong>2023년 개정</strong>에서 항목이 8개 → 9개로 바뀌었다.
+  </p>
+  <table>
+    <thead><tr><th style="width:22%">특성</th><th>하위 특성</th></tr></thead>
+    <tbody>
+      <tr><td><strong>기능 적합성</strong><br>Functional Suitability</td><td>기능 완전성 · 기능 정확성 · 기능 타당성</td></tr>
+      <tr><td><strong>성능 효율성</strong><br>Performance Efficiency</td><td>시간 반응성(time behaviour) · 자원 사용률 · 수용력(capacity)</td></tr>
+      <tr><td><strong>호환성</strong><br>Compatibility</td><td>공존성 · 상호운용성</td></tr>
+      <tr><td><strong>상호작용 능력</strong><br>Interaction Capability <span class="mid">(구 Usability)</span></td><td>인지 용이성 · 학습 용이성 · 운용성 · 사용자 오류 방지 · 사용자 몰입 · 포용성 · 사용자 지원 · 자기 기술성</td></tr>
+      <tr><td><strong>신뢰성</strong><br>Reliability</td><td>무결함성 · <strong>결함 허용성</strong> · <strong>가용성</strong> · <strong>복구성</strong></td></tr>
+      <tr><td><strong>보안</strong><br>Security</td><td>기밀성 · 무결성 · 부인 방지 · 책임 추적성 · 인증성 · 저항성(resistance)</td></tr>
+      <tr><td><strong>유지보수성</strong><br>Maintainability</td><td>모듈성 · 재사용성 · 분석 용이성 · 변경 용이성</td></tr>
+      <tr><td><strong>유연성</strong><br>Flexibility <span class="mid">(구 Portability)</span></td><td>테스트 용이성 · 적응성 · <strong>확장성(scalability)</strong> · 설치 용이성 · 대체 가능성</td></tr>
+      <tr><td><strong>안전성</strong><br>Safety <span class="mid">(2023 신설)</span></td><td>운영 제약 · 위험 식별 · 페일 세이프 · 위험 경고 · 안전한 통합</td></tr>
+    </tbody>
+  </table>
+
+  <h3>2.3 실무 용어 ↔ 표준 어휘 대응</h3>
+  <p>현업에서 쓰는 말이 표준의 어디에 붙는지 알면, 뭉뚱그린 요구를 쪼갤 수 있다.</p>
+  <table>
+    <thead><tr><th style="width:22%">현업 용어</th><th style="width:38%">ISO 25010에서의 자리</th><th>주의</th></tr></thead>
+    <tbody>
+      <tr><td>가용성 Availability</td><td>신뢰성 &gt; 가용성</td><td>SLA의 <span class="kv">99.9%</span>는 여기. 복구성과 다른 지표다.</td></tr>
+      <tr><td>복원력 Resilience</td><td>신뢰성 &gt; 결함 허용성 + 복구성</td><td>표준 용어가 아니다. 두 개가 합쳐진 말이라 항상 쪼개서 물어야 한다.</td></tr>
+      <tr><td>확장성 Scalability</td><td><strong>유연성</strong> &gt; 확장성</td><td>성능과 다르다. "느리다"와 "더 못 늘린다"는 다른 문제.</td></tr>
+      <tr><td>지연시간 Latency</td><td>성능 효율성 &gt; 시간 반응성</td><td>평균이 아니라 p95·p99로 적는다.</td></tr>
+      <tr><td>처리량 Throughput</td><td>성능 효율성 &gt; 수용력</td><td>지연시간과 동시에 최적화되지 않는다.</td></tr>
+      <tr><td>관측 가능성 Observability</td><td><strong>ISO 25010에 없다</strong></td><td>Well-Architected의 운영 우수성(Operational Excellence) 쪽 어휘.</td></tr>
+      <tr><td>비용 Cost</td><td><strong>ISO 25010에 없다</strong></td><td>제품 품질이 아니라 제약·비즈니스 목표. Well-Architected의 비용 최적화 필러.</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">
+    클라우드 쪽에서는 ISO 대신 <strong>Well-Architected 필러</strong>를 쓴다 —
+    Azure 기준 신뢰성 · 보안 · 비용 최적화 · 운영 우수성 · 성능 효율성. 같은 것을 다른 축으로 자른 것이다.
+  </p>
+
+  <h2 id="s3">§3 · Tactic — 품질별 전술 카탈로그</h2>
+  <p>
+    <strong>전술(tactic) = 하나의 품질 속성 응답에 직접 영향을 주는 설계 결정 하나.</strong>
+    구조를 만들지 않고, 이름도 동사구다("결함을 감지한다", "수요를 제어한다").
+    아래는 Cervantes &amp; Kazman의 분류다. <strong>표를 위에서 아래로 읽으며 "우리는 이 칸이 비어 있나?"를 묻는 체크리스트</strong>로 쓴다.
+  </p>
+
+  <h3>가용성 Availability</h3>
+  <table>
+    <thead><tr><th style="width:20%">범주</th><th>전술</th></tr></thead>
+    <tbody>
+      <tr><td><strong>결함 감지</strong><br>Detect Faults</td><td>모니터 · 핑/에코 · 하트비트 · 타임스탬프 · 상태 모니터링 · 정합성 검사 · 투표 · 예외 감지 · 자가 진단</td></tr>
+      <tr><td><strong>결함 복구</strong><br>Recover from Faults</td><td><em>준비·수리:</em> 여분 예비(active/passive/spare) · 롤백 · 예외 처리 · 소프트웨어 업그레이드 · <strong>재시도</strong> · 결함 동작 무시 · <strong>우아한 성능 저하</strong> · 재구성<br><em>재투입:</em> 섀도 · 상태 재동기화 · 단계적 재시작 · 무중단 전달</td></tr>
+      <tr><td><strong>결함 예방</strong><br>Prevent Faults</td><td>서비스에서 제외 · <strong>트랜잭션</strong> · 예측 모델 · 예외 예방 · 역량 집합 확대</td></tr>
+    </tbody>
+  </table>
+
+  <h3>성능 Performance</h3>
+  <table>
+    <thead><tr><th style="width:20%">범주</th><th>전술</th></tr></thead>
+    <tbody>
+      <tr><td><strong>수요 제어</strong><br>Control Resource Demand</td><td>작업 요청 관리(<strong>레이트 리밋</strong>) · 이벤트 응답 제한 · 이벤트 우선순위화 · 계산 오버헤드 감소 · 실행 시간 상한 · 자원 사용 효율 향상</td></tr>
+      <tr><td><strong>자원 관리</strong><br>Manage Resources</td><td>자원 증설(스케일 업/아웃) · <strong>동시성 도입</strong> · 계산 결과 복제 유지 · <strong>데이터 복제 유지(=캐시·리드 레플리카)</strong> · 큐 크기 상한 · 자원 스케줄링</td></tr>
+    </tbody>
+  </table>
+
+  <h3>보안 Security</h3>
+  <table>
+    <thead><tr><th style="width:20%">범주</th><th>전술</th></tr></thead>
+    <tbody>
+      <tr><td><strong>공격 탐지</strong><br>Detect Attacks</td><td>침입 탐지 · 서비스 거부 탐지 · 메시지 무결성 검증 · 전달 이상 탐지</td></tr>
+      <tr><td><strong>공격 저항</strong><br>Resist Attacks</td><td>액터 식별 · <strong>액터 인증</strong> · <strong>액터 인가</strong> · 노출 제한 · <strong>데이터 암호화</strong> · 엔티티 분리 · 입력 검증 · 기본 설정 변경</td></tr>
+      <tr><td><strong>공격 대응</strong><br>React to Attacks</td><td>접근 권한 회수 · 로그인 시도 제한 · 관련자 통보</td></tr>
+      <tr><td><strong>공격 복구</strong><br>Recover from Attacks</td><td>감사 추적(audit trail) · 부인 방지</td></tr>
+    </tbody>
+  </table>
+
+  <h3>변경 용이성 Modifiability</h3>
+  <table>
+    <thead><tr><th style="width:20%">범주</th><th>전술</th></tr></thead>
+    <tbody>
+      <tr><td><strong>응집도 증가</strong><br>Increase Cohesion</td><td>모듈 분할 · 책임 재배치</td></tr>
+      <tr><td><strong>결합도 감소</strong><br>Reduce Coupling</td><td><strong>캡슐화</strong> · <strong>중개자 사용</strong> · 공통 서비스 추상화 · 의존 제한</td></tr>
+      <tr><td><strong>바인딩 지연</strong><br>Defer Binding</td><td><em>빌드 시:</em> 컴포넌트 교체 · 컴파일 타임 파라미터화 · AOP<br><em>배포·기동 시:</em> 설정 바인딩 · 리소스 파일<br><em>런타임:</em> 디스커버리 · 파라미터 해석 · 공유 저장소 · 다형성</td></tr>
+    </tbody>
+  </table>
+
+  <h3>통합 용이성 Integrability</h3>
+  <table>
+    <thead><tr><th style="width:20%">범주</th><th>전술</th></tr></thead>
+    <tbody>
+      <tr><td><strong>의존 제한</strong><br>Limit Dependencies</td><td>캡슐화 · 중개자 사용 · 통신 경로 제한 · <strong>표준 준수</strong> · 공통 서비스 추상화</td></tr>
+      <tr><td><strong>적응</strong><br>Adapt</td><td>디스커버리 · 인터페이스 조정 · 동작 설정화</td></tr>
+      <tr><td><strong>조율</strong><br>Coordinate</td><td><strong>오케스트레이션</strong> · <strong>코레오그래피</strong> · 자원 관리</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>이 표를 쓰는 법은 <a href="../lessons/0038-tactics-detect-recover-prevent.html">레슨 0038</a>에서 다룬다</strong> —
+    장애 타임라인 위에 감지·복구·예방을 놓고, 설계안에서 빈 칸을 찾는 진단 연습.
+  </p>
+
+  <p class="warn">
+    <strong>전술 이름을 외우는 게 목적이 아니다.</strong> 이 표의 쓸모는 하나다 —
+    설계안을 볼 때 <strong>"결함 감지 칸이 통째로 비어 있다"</strong>처럼 <em>빠진 범주</em>를 이름 붙여 지적할 수 있게 된다.
+    "장애 나면 어떡해요?"보다 "감지 전술이 없는데, 헬스 엔드포인트를 둘 건가요 하트비트로 갈 건가요?"가 훨씬 강한 리뷰다.
+  </p>
+
+  <h2 id="s4">§4 · Style — 전체 골격 비교</h2>
+  <p>
+    <strong>스타일 = 어떤 종류의 요소가 등장할 수 있고 그들 사이에 어떤 관계가 허용되는지에 대한 제약.</strong>
+    제약이 선택지를 좁히기 때문에 <strong>바람직한 속성이 "저절로" 나온다.</strong>
+    예: 마이크로서비스의 제약("서비스는 하나의 책임", "데이터는 사유")을 지키면 독립 배포와 장애 격리가 따라온다.
+    제약을 어기면서 이름만 쓰면 이점은 안 오고 비용만 온다.
+  </p>
+  <table>
+    <thead><tr><th style="width:14%">스타일</th><th style="width:24%">구조 제약</th><th style="width:18%">잘 사는 품질</th><th style="width:18%">희생하는 품질</th><th style="width:26%">언제 고르나</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>계층형</strong><br>Layered / N-tier</td>
+        <td>수평 계층으로 나누고, <strong>아래 계층만 호출</strong>한다</td>
+        <td>변경 용이성(계층 내) · 학습 용이성 · 테스트 용이성</td>
+        <td>성능(계층 통과 비용) · 배포 민첩성</td>
+        <td>전통적 업무 도메인, 변경 빈도 낮음. <strong>기본값으로 시작하기 좋다.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>클라이언트-서버</strong></td>
+        <td>요청자와 제공자가 분리, 서버가 공유 자원을 보유</td>
+        <td>중앙 통제 · 보안 · 확장성(서버 측)</td>
+        <td>서버가 단일 실패 지점이 되기 쉬움</td>
+        <td>거의 모든 웹 시스템의 밑바탕. 단독으로 고르기보다 전제에 가깝다.</td>
+      </tr>
+      <tr>
+        <td><strong>파이프-필터</strong><br>Pipes and Filters</td>
+        <td>필터는 <strong>상태를 공유하지 않고</strong> 스트림을 변환, 파이프로만 연결</td>
+        <td>재사용성 · 조합성 · 병렬 처리</td>
+        <td>대화형 응답 · 전역 오류 처리 · 상태 필요한 작업</td>
+        <td>ETL, 미디어 변환, 로그 처리. Kafka Streams·Spring Batch가 이 모양.</td>
+      </tr>
+      <tr>
+        <td><strong>마이크로커널</strong><br>Microkernel / Plug-in</td>
+        <td>최소 코어 + 플러그인. 코어는 플러그인을 <strong>모른다</strong></td>
+        <td>확장성(기능) · 배포 용이성 · 격리</td>
+        <td>플러그인 계약 설계가 어렵고, 전역 최적화가 힘듦</td>
+        <td>IDE, 브라우저 확장, 규칙 엔진, 결제 수단이 계속 늘어나는 시스템.</td>
+      </tr>
+      <tr>
+        <td><strong>이벤트 기반</strong><br>Event-Driven</td>
+        <td>생산자와 소비자가 <strong>서로를 모르고</strong> 브로커를 통해서만 만난다</td>
+        <td>확장성 · 장애 격리 · 실시간 반응성 · 확장 용이성</td>
+        <td>전달 보장 · 순서 · <strong>최종 일관성</strong> · 디버깅 난이도</td>
+        <td>IoT, 실시간·스트리밍, 한 사건에 반응할 곳이 계속 늘어나는 시스템.</td>
+      </tr>
+      <tr>
+        <td><strong>웹-큐-워커</strong></td>
+        <td>웹 프런트 + 큐 + 백그라운드 워커</td>
+        <td>부하 평탄화 · 독립 스케일 · 단순함</td>
+        <td>양쪽 모두 모놀리식으로 비대해지기 쉬움</td>
+        <td>도메인은 단순한데 무거운 처리가 섞인 시스템. <strong>MSA 이전의 정답인 경우가 많다.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>마이크로서비스</strong></td>
+        <td>기능 단위로 수직 분해, 서비스마다 <strong>자기 DB</strong>, API로만 통신</td>
+        <td>독립 배포 · 팀 자율성 · 장애 격리 · 릴리스 속도</td>
+        <td>운영 복잡도 · 분산 일관성 · 통신 지연 · <strong>조직 성숙도 요구</strong></td>
+        <td>복잡한 도메인 + 잦은 변경 + 여러 팀. <strong>이 셋이 다 없으면 비용만 낸다.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>모듈러 모놀리스</strong></td>
+        <td>하나의 배포 단위 안에서 <strong>모듈 경계를 강제</strong>(모듈 간 직접 참조 금지)</td>
+        <td>변경 용이성 · 단순한 운영 · 나중에 쪼갤 수 있음</td>
+        <td>독립 배포·독립 스케일은 못 함</td>
+        <td>MSA의 이점은 원하지만 조직·운영이 아직 안 될 때. <strong>2020년대의 기본 권장.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>스페이스 기반</strong><br>Space-Based</td>
+        <td>공유 인메모리 그리드로 DB 병목을 제거, 처리 단위를 복제</td>
+        <td>극단적 확장성 · 탄력성</td>
+        <td>복잡도 · 비용 · 데이터 정합성</td>
+        <td>예측 불가한 급증 트래픽(티켓팅·경매). 흔히 쓸 일은 없다.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">
+    <strong>스타일을 실제로 고르고 거절하는 법은 <a href="../lessons/0039-architecture-styles-constraints-and-the-microservice-premium.html">레슨 0039</a></strong> —
+    제약이 이점을 만든다는 원리, 분산 모놀리스 진단표, 마이크로서비스 프리미엄 체크리스트.
+  </p>
+
+  <p class="sm">
+    이름이 겹치는 문제: Mark Richards 계열은 이들을 "아키텍처 스타일", Microsoft는 "architecture styles",
+    옛 문헌·시험은 "아키텍처 패턴"이라 부른다. <strong>같은 것을 가리킨다.</strong> §6에서 구분 기준을 정리한다.
+  </p>
+
+  <h2 id="s5">§5 · Pattern — 문제별 패턴 카탈로그</h2>
+  <p>
+    패턴은 <strong>"반복되는 문제 → 검증된 국소 해법 + 그 대가"</strong>의 묶음이다.
+    고르는 순서는 <strong>기술이 아니라 문제</strong>다. 아래는 문제별로 묶은 것이고,
+    각 패턴이 어떤 품질 속성을 겨냥하는지 함께 적었다.
+  </p>
+  <table>
+    <thead><tr><th style="width:16%">문제 군</th><th style="width:26%">패턴</th><th style="width:30%">해결하는 것</th><th style="width:28%">대가</th></tr></thead>
+    <tbody>
+      <tr>
+        <td rowspan="2"><strong>진입·통신</strong><br><span class="sm">결합·노출</span></td>
+        <td><strong>API Gateway</strong> / Gateway Routing · Aggregation · Offloading</td>
+        <td>단일 진입점. 라우팅·집계·인증·TLS 종료·레이트 리밋을 한곳으로 뺀다.</td>
+        <td>단일 실패 지점 · 병목 · 게이트웨이가 비대해지면 새 모놀리스</td>
+      </tr>
+      <tr>
+        <td><strong>BFF</strong> · Sidecar · Ambassador · <strong>Anti-Corruption Layer</strong></td>
+        <td>클라이언트별 전용 백엔드 / 횡단 기능 분리 / 레거시 모델 격리</td>
+        <td>중복 · 배포 단위 증가 · 변환 계층 유지비</td>
+      </tr>
+      <tr>
+        <td rowspan="2"><strong>복원력</strong><br><span class="sm">가용성</span></td>
+        <td><strong>Retry</strong> + <strong>Circuit Breaker</strong></td>
+        <td>일시적 실패는 재시도, 지속적 실패는 <strong>재시도를 멈춘다.</strong> 반드시 짝으로.</td>
+        <td>재시도만 있으면 장애를 증폭시킨다(재시도 폭풍). 멱등성 전제 필요.</td>
+      </tr>
+      <tr>
+        <td><strong>Bulkhead</strong> · <strong>Throttling</strong>/Rate Limiting · <strong>Queue-Based Load Leveling</strong> · Health Endpoint Monitoring</td>
+        <td>자원 격리 / 유입 제어 / 부하 평탄화 / 상태 노출</td>
+        <td>자원 활용률 하락 · 큐 지연 · 최종 일관성</td>
+      </tr>
+      <tr>
+        <td rowspan="2"><strong>읽기 성능</strong><br><span class="sm">성능·확장성</span></td>
+        <td><strong>Cache-Aside</strong> · Materialized View · Index Table</td>
+        <td>느린 조회를 미리 만들어 둔 사본으로 대체한다.</td>
+        <td><strong>무효화(invalidation)</strong> · 스테일 데이터 · 캐시 스탬피드</td>
+      </tr>
+      <tr>
+        <td><strong>CQRS</strong> · Event Sourcing · Sharding</td>
+        <td>읽기·쓰기 모델 분리 / 상태 대신 사건 저장 / 데이터 수평 분할</td>
+        <td>복잡도 급증 · 최종 일관성 · 이벤트 스키마 진화 · 리샤딩 비용</td>
+      </tr>
+      <tr>
+        <td rowspan="2"><strong>분산 일관성</strong><br><span class="sm">신뢰성</span></td>
+        <td><strong>Saga</strong> (+ Compensating Transaction)</td>
+        <td>서비스를 넘는 트랜잭션을 로컬 트랜잭션 + 보상 단계의 열로 바꾼다.</td>
+        <td>격리성 없음 · 보상 로직이 도메인 지식 · 중간 상태 노출</td>
+      </tr>
+      <tr>
+        <td><strong>Transactional Outbox</strong> · <strong>Idempotent Consumer</strong> · Choreography vs Orchestration</td>
+        <td>DB 커밋과 메시지 발행의 원자성 / 중복 수신 무해화 / 조율 방식 선택</td>
+        <td>outbox 폴링·CDC 운영 / 멱등 키 저장소 / 코레오그래피는 흐름 추적이 어려움</td>
+      </tr>
+      <tr>
+        <td><strong>진화·배포</strong></td>
+        <td><strong>Strangler Fig</strong> · Deployment Stamps · Feature Toggle · Blue-Green/Canary</td>
+        <td>레거시 점진 교체 / 독립 복제 배포 / 코드 배포와 기능 공개 분리</td>
+        <td>이중 운영 기간 · 토글 부채 · 스탬프별 데이터 파편화</td>
+      </tr>
+      <tr>
+        <td><strong>보안</strong></td>
+        <td>Federated Identity · Gatekeeper · Valet Key</td>
+        <td>인증 위임(OAuth2/OIDC) / 검증 전용 호스트 / 제한된 직접 접근 토큰</td>
+        <td>IdP 의존 · 홉 추가 · 토큰 만료·범위 관리</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">
+    <strong>문제에서 패턴으로 가는 길과 조합 체인은 <a href="../lessons/0040-patterns-never-come-alone.html">레슨 0040</a></strong> —
+    같은 증상에 다른 패턴이 붙는 이유, 재시도 체인, Saga의 피벗 트랜잭션.
+  </p>
+
+  <p class="note">
+    <strong>패턴은 조합된다.</strong> Microsoft가 명시하는 대표 조합:
+    Retry + Circuit Breaker · Queue-Based Load Leveling + Competing Consumers ·
+    Gateway Routing + Aggregation + Offloading을 한 게이트웨이 뒤에 · <strong>Saga는 Compensating Transaction 위에 세운다</strong>.
+    <br>이미 배운 것과의 연결: <a href="0007-transactional-outbox-cheatsheet.html">Outbox</a> ·
+    <a href="0008-redis-streams-consumer-group-cheatsheet.html">Competing Consumers</a> ·
+    <a href="0011-kafka-core-concepts-cheatsheet.html">Pub/Sub</a>.
+  </p>
+
+  <h2 id="s6">§6 · 전술 vs 패턴 vs 스타일 — 핵심 구분</h2>
+  <p>
+    이 셋이 헷갈리는 이유는 <strong>같은 축 위의 세 눈금</strong>이기 때문이다. 축은 "얼마나 넓은 범위를 결정하는가"다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 940 290" role="img" aria-label="스타일 안에 패턴이 있고 패턴은 전술로 구성된다는 포함 관계">
+    <rect class="d-box-c" x="20" y="10" width="900" height="270"/>
+    <text class="d-title" x="36" y="34">아키텍처 스타일 — Microservices</text>
+    <text class="d-label-sm" x="36" y="52">전체 골격의 제약: 서비스는 하나의 책임 · 서로 독립 · 데이터는 사유</text>
+
+    <rect class="d-box-a" x="30" y="62" width="285" height="205"/>
+    <text class="d-title" x="172" y="84" text-anchor="middle">패턴 — API Gateway</text>
+    <text class="d-label-sm" x="172" y="100" text-anchor="middle">문제: 클라이언트가 N개 서비스를 안다</text>
+    <rect class="d-box" x="45" y="110" width="255" height="30"/>
+    <text class="d-label-sm" x="172" y="130" text-anchor="middle">전술 · 액터 인증</text>
+    <rect class="d-box" x="45" y="146" width="255" height="30"/>
+    <text class="d-label-sm" x="172" y="166" text-anchor="middle">전술 · 액터 인가</text>
+    <rect class="d-box" x="45" y="182" width="255" height="30"/>
+    <text class="d-label-sm" x="172" y="202" text-anchor="middle">전술 · 중개자 사용</text>
+    <rect class="d-box" x="45" y="218" width="255" height="30"/>
+    <text class="d-label-sm" x="172" y="238" text-anchor="middle">전술 · 작업 요청 관리(레이트 리밋)</text>
+
+    <rect class="d-box-a" x="327" y="62" width="285" height="205"/>
+    <text class="d-title" x="469" y="84" text-anchor="middle">패턴 — Circuit Breaker</text>
+    <text class="d-label-sm" x="469" y="100" text-anchor="middle">문제: 죽은 의존이 나까지 죽인다</text>
+    <rect class="d-box" x="342" y="110" width="255" height="30"/>
+    <text class="d-label-sm" x="469" y="130" text-anchor="middle">전술 · 예외 감지</text>
+    <rect class="d-box" x="342" y="146" width="255" height="30"/>
+    <text class="d-label-sm" x="469" y="166" text-anchor="middle">전술 · 재시도</text>
+    <rect class="d-box" x="342" y="182" width="255" height="30"/>
+    <text class="d-label-sm" x="469" y="202" text-anchor="middle">전술 · 우아한 성능 저하</text>
+    <rect class="d-box" x="342" y="218" width="255" height="30"/>
+    <text class="d-label-sm" x="469" y="238" text-anchor="middle">전술 · 서비스에서 제외</text>
+
+    <rect class="d-box-a" x="624" y="62" width="285" height="205"/>
+    <text class="d-title" x="766" y="84" text-anchor="middle">패턴 — Saga</text>
+    <text class="d-label-sm" x="766" y="100" text-anchor="middle">문제: 서비스를 넘는 트랜잭션</text>
+    <rect class="d-box" x="639" y="110" width="255" height="30"/>
+    <text class="d-label-sm" x="766" y="130" text-anchor="middle">전술 · 트랜잭션(로컬)</text>
+    <rect class="d-box" x="639" y="146" width="255" height="30"/>
+    <text class="d-label-sm" x="766" y="166" text-anchor="middle">전술 · 롤백(보상)</text>
+    <rect class="d-box" x="639" y="182" width="255" height="30"/>
+    <text class="d-label-sm" x="766" y="202" text-anchor="middle">전술 · 오케스트레이션 / 코레오그래피</text>
+    <rect class="d-box" x="639" y="218" width="255" height="30"/>
+    <text class="d-label-sm" x="766" y="238" text-anchor="middle">전술 · 중개자 사용</text>
+  </svg>
+  <figcaption>
+    포함 관계로 읽는다: <strong>스타일이 패턴을 담고, 패턴은 전술로 만들어진다.</strong>
+    같은 전술(중개자 사용)이 여러 패턴에 재등장하는 것이 정상이다.
+  </figcaption>
+  </figure>
+
+  <table>
+    <thead><tr><th style="width:16%"></th><th style="width:28%">전술 Tactic</th><th style="width:28%">패턴 Pattern</th><th style="width:28%">스타일 Style</th></tr></thead>
+    <tbody>
+      <tr><td><strong>결정 범위</strong></td><td>설계 결정 하나</td><td>몇 개 요소로 된 국소 구조</td><td>시스템 전체 골격</td></tr>
+      <tr><td><strong>겨냥 대상</strong></td><td>품질 속성 <strong>하나</strong>의 응답</td><td>반복되는 <strong>문제</strong> 하나</td><td>품질 속성 <strong>묶음</strong></td></tr>
+      <tr><td><strong>구조를 만드나</strong></td><td><span class="no">아니오</span> — 무엇을 할지만 말한다</td><td><span class="ok">예</span> — 작게</td><td><span class="ok">예</span> — 전면적으로</td></tr>
+      <tr><td><strong>이름의 품사</strong></td><td>동사구 ("하트비트를 보낸다")</td><td>명사 ("Circuit Breaker")</td><td>명사 ("Layered")</td></tr>
+      <tr><td><strong>구성 관계</strong></td><td>패턴의 재료</td><td>전술의 조합, 스타일 안에 산다</td><td>패턴들을 담는 그릇</td></tr>
+      <tr><td><strong>한 시스템에 몇 개</strong></td><td>수십 개</td><td>여러 개</td><td>보통 1~2개 (+ 하위 도메인별로 다를 수 있음)</td></tr>
+      <tr><td><strong>바꾸는 비용</strong></td><td>낮음</td><td>중간</td><td><span class="no">매우 높음</span> — 그래서 먼저 정하고 늦게 바꾼다</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    판별 기준을 CQRS 사례에 적용해 보는 것은
+    <a href="../lessons/0039-architecture-styles-constraints-and-the-microservice-premium.html#">레슨 0039 §3</a>에 있다.
+  </p>
+
+  <p class="warn">
+    <strong>실무 주의.</strong> 문헌마다 경계가 흔들린다. CQRS는 Microsoft 카탈로그에선 패턴이고 Richards 책에선 스타일로 나온다.
+    <strong>이름 논쟁은 무의미하고, 판별 기준만 붙들면 된다 — "이 결정이 시스템 전체의 요소·관계 규칙을 바꾸는가?"</strong>
+    바꾸면 스타일급, 국소면 패턴, 구조가 안 생기면 전술.
+  </p>
+
+  <h2 id="s7">§7 · 트레이드오프 — 공짜 품질은 없다</h2>
+  <p>
+    <strong>모든 전술·패턴·스타일은 어떤 품질을 올리면서 다른 품질을 내린다.</strong>
+    설계 리뷰의 실질은 "좋은가"가 아니라 "무엇을 내주고 무엇을 얻었나"를 말하게 만드는 것이다.
+  </p>
+  <table>
+    <thead><tr><th style="width:20%">용어</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><strong>민감점</strong><br>Sensitivity point</td><td>바꾸면 <strong>한 품질 속성</strong>의 응답이 크게 달라지는 결정. 예: 워커 스레드 풀 크기 → 처리량.</td></tr>
+      <tr><td><strong>절충점</strong><br>Tradeoff point</td><td><strong>둘 이상</strong>의 품질에 반대 방향으로 작용하는 민감점. 예: 캐시 TTL → 성능↑ / 데이터 신선도↓.</td></tr>
+      <tr><td><strong>위험 / 비위험</strong><br>Risk / Non-risk</td><td>ATAM의 산출물. 문제 가능성이 있는 결정 / 근거가 확인된 좋은 결정.</td></tr>
+    </tbody>
+  </table>
+  <table>
+    <thead><tr><th style="width:30%">대표 상충쌍</th><th>어디서 나타나나</th></tr></thead>
+    <tbody>
+      <tr><td>성능 ↔ 변경 용이성</td><td>계층·추상화를 늘리면 바꾸기 쉬워지고 홉이 늘어 느려진다. 반대로 인라인·비정규화는 빠르고 굳는다.</td></tr>
+      <tr><td>가용성 ↔ 일관성</td><td><strong>CAP</strong>: 네트워크 분단 시 둘 중 하나를 포기해야 한다. <strong>PACELC</strong>: 분단이 없을 때(Else)도 <strong>지연시간 ↔ 일관성</strong>을 골라야 한다는 확장.</td></tr>
+      <tr><td>보안 ↔ 사용성·성능</td><td>MFA·재인증·암호화는 안전해지고 느려지고 번거로워진다.</td></tr>
+      <tr><td>확장성 ↔ 비용·복잡도</td><td>샤딩·복제·오토스케일은 늘어나고 운영이 무거워진다.</td></tr>
+      <tr><td>모듈성 ↔ 지연시간</td><td>서비스로 쪼개면 독립 배포를 얻고 프로세스 내 호출이 네트워크 호출이 된다.</td></tr>
+      <tr><td>테스트 용이성 ↔ 성능</td><td>주입·인터페이스·관측 지점은 테스트를 쉽게 하고 오버헤드를 만든다.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s8">§8 · 설계·평가 프로세스</h2>
+
+  <h3>ADD — Attribute-Driven Design (설계하는 법)</h3>
+  <p>
+    "품질 속성 요구를 근거로 아키텍처를 설계하는 단계적 방법." 핵심은 <strong>재귀</strong>다.
+    시스템 전체를 한 번에 설계하지 않고, 요소 하나를 골라 분해하고, 그 안에서 같은 루프를 다시 돈다.
+  </p>
+  <ol>
+    <li>입력이 충분한지 확인한다 (기능 요구 · 품질 속성 시나리오 · 제약).</li>
+    <li>분해할 요소를 하나 고른다.</li>
+    <li>그 요소의 <strong>후보 driver</strong>를 식별하고 <strong>우선순위</strong>를 매긴다.</li>
+    <li>driver에 답하는 <strong>설계 개념</strong>을 고른다 (전술 · 패턴 · 스타일 · 기성 컴포넌트).</li>
+    <li>요소를 만들고 책임을 배정한다.</li>
+    <li>요소 간 <strong>인터페이스</strong>를 정의한다.</li>
+    <li>요구를 검증하고, <strong>남은 요구를 하위 요소의 제약으로 바꾼다.</strong> → 2번으로.</li>
+  </ol>
+  <p class="sm">7번이 이 방법의 핵심 장치다. 상위에서 못 다 푼 품질 요구가 하위 요소의 <em>제약</em>이 되어 내려간다.</p>
+
+  <h3>유틸리티 트리 (무엇부터 볼지 정하는 법)</h3>
+  <p>
+    루트에 "효용", 그 아래 품질 속성, 그 아래 세부 관심사, 잎에 <strong>시나리오</strong>를 달고
+    각 시나리오에 <strong>(비즈니스 중요도, 기술 난도)</strong> 두 축으로 <span class="kv">H/M/L</span>을 매긴다.
+    <strong>(H, H)</strong>인 잎이 설계·평가에서 먼저 다룰 것이다. 실무에서 요구사항 우선순위를 정할 때 그대로 쓸 수 있다.
+  </p>
+
+  <p class="note">
+    <strong>§8·§9 전체를 실제로 쓰는 법은 <a href="../lessons/0044-evaluate-enforce-record.html">레슨 0044</a></strong> —
+    유틸리티 트리로 우선순위, 평가 4산출물, 적합성 함수, ADR 실물 예시, 그리고 <strong>전체 아크 진단 표</strong>.
+  </p>
+
+  <h3>ATAM — Architecture Tradeoff Analysis Method (평가하는 법)</h3>
+  <p>
+    평가팀 · 결정권자(아키텍트·PM) · 이해관계자 대표가 모여, 시나리오를 뽑아 우선순위를 매기고,
+    상위 시나리오에 대해 <strong>아키텍트가 "이 구조가 이 시나리오를 어떻게 만족시키는지" 설명</strong>한다.
+    산출물은 <strong>위험 · 비위험 · 민감점 · 절충점</strong> 네 가지다.
+  </p>
+  <p class="note">
+    <strong>혼자서도 쓸 수 있는 축소판.</strong> AI가 설계안을 내놓으면 이렇게 묻는다 —
+    ① 이 설계가 겨냥한 품질 속성 시나리오를 6부로 적어줘 ② 그 시나리오를 만족시키는 경로를 구조 위에서 짚어줘
+    ③ 이 결정의 절충점은 무엇이고 무엇을 내줬어? 세 질문이 ATAM의 뼈대다.
+  </p>
+
+  <h3>적합성 함수 Fitness Function (계속 지키는 법)</h3>
+  <p>
+    품질 속성을 <strong>자동으로 계속 검증하는 테스트</strong>로 바꾼 것.
+    "계층 규칙을 어긴 import가 있으면 빌드 실패", "p99가 300ms를 넘으면 배포 중단", "순환 의존이 생기면 CI 실패".
+    시나리오의 <em>응답 측정</em>이 있어야 쓸 수 있다 — §2가 여기서 회수된다.
+  </p>
+
+  <h2 id="s9">§9 · 기록과 소통</h2>
+
+  <h3>ADR — Architecture Decision Record ("왜"를 남긴다)</h3>
+  <p>결정 하나에 마크다운 한 장. Michael Nygard 템플릿이 사실상 표준이다.</p>
+  <table>
+    <thead><tr><th style="width:18%">필드</th><th>내용</th></tr></thead>
+    <tbody>
+      <tr><td>Title</td><td>결정을 서술하는 제목. 파일명에 번호와 함께 들어간다.</td></tr>
+      <tr><td>Status</td><td><span class="kv">proposed</span> · <span class="kv">accepted</span> · <span class="kv">rejected</span> · <span class="kv">deprecated</span> · <span class="kv">superseded</span></td></tr>
+      <tr><td>Context</td><td>어떤 driver·제약이 이 결정을 강요했는가. <strong>§1의 5종이 그대로 들어갈 자리.</strong></td></tr>
+      <tr><td>Decision</td><td>무엇을 하기로 했는가.</td></tr>
+      <tr><td>Consequences</td><td>좋은 것과 <strong>나쁜 것 둘 다</strong>. §7의 절충점이 여기 들어간다.</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">이 학습 저장소의 <code>learning-records/</code>가 바로 ADR의 학습판이다.</p>
+
+  <h3>C4 모델 ("무엇"을 그린다)</h3>
+  <p>
+    다이어그램을 <strong>줌 레벨</strong>로 나눈다. 한 장에 모든 걸 담으려다 아무도 못 읽는 그림이 되는 걸 막는 장치다.
+  </p>
+  <table>
+    <thead><tr><th style="width:16%">레벨</th><th style="width:26%">무엇을 보여주나</th><th>독자</th></tr></thead>
+    <tbody>
+      <tr><td>1. Context</td><td>시스템 하나와 사용자·외부 시스템</td><td>비개발자 포함 전원</td></tr>
+      <tr><td>2. Container</td><td>배포 단위 — 웹앱, API, DB, 큐, 워커</td><td>개발자·운영</td></tr>
+      <tr><td>3. Component</td><td>컨테이너 내부의 주요 구성 요소</td><td>해당 컨테이너 개발자</td></tr>
+      <tr><td>4. Code</td><td>클래스 다이어그램 수준 — <strong>대개 안 그린다</strong></td><td>거의 없음</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">보조: System Landscape · Dynamic(흐름) · Deployment(인프라 배치). 표기법·도구에 독립적이다.</p>
+
+  <h3>더 알아야 유용한 것</h3>
+  <ul>
+    <li><strong>결합도 &amp; 응집도</strong> — 거의 모든 변경 용이성 전술이 이 둘의 조작이다. 좋은 모듈 경계 = 높은 응집 + 낮은 결합.</li>
+    <li><strong>콘웨이의 법칙</strong> — <a href="../lessons/0041-boundaries-bounded-context-and-conways-law.html">레슨 0041 §3</a>. — 시스템 구조는 그것을 만든 조직의 소통 구조를 닮는다. 팀을 안 바꾸고 구조만 바꾸면 되돌아온다("역콘웨이 전략").</li>
+    <li><strong>도메인 주도 설계의 경계 컨텍스트</strong> — <a href="../lessons/0041-boundaries-bounded-context-and-conways-law.html">레슨 0041</a>. — 서비스를 어디서 자를지에 대한 사실상 유일한 실용 기준. "화면"이나 "테이블"이 아니라 <strong>모델의 의미가 바뀌는 곳</strong>에서 자른다.</li>
+    <li><strong>분산 컴퓨팅의 오류(fallacies)</strong> — 네트워크는 신뢰할 수 있다 / 지연은 0이다 / 대역폭은 무한하다 / 네트워크는 안전하다 / 토폴로지는 안 변한다 / 관리자는 한 명이다 / 버전 관리는 쉽다 / 관측은 나중에 붙여도 된다. <strong>분산 설계 리뷰의 체크리스트로 그대로 쓴다.</strong></li>
+    <li><strong>안티패턴</strong> — 저부하에선 멀쩡하다가 부하가 오르면 무너지는 설계. 패턴 카탈로그와 짝을 이루는 목록이 따로 있다.</li>
+  </ul>
+
+  <h2 id="s10">§10 · 출처 지도</h2>
+  <table>
+    <thead><tr><th style="width:26%">무엇을 확인할 때</th><th>어디를 여나</th></tr></thead>
+    <tbody>
+      <tr><td>Driver 5종 · 품질 속성 시나리오 6부</td><td><a href="https://www.informit.com/articles/article.aspx?p=2738304&amp;seqNum=4">Cervantes &amp; Kazman, <em>Designing Software Architectures</em> §2.4 Architectural Drivers</a></td></tr>
+      <tr><td>전술 카탈로그 (가용성·성능·보안·변경용이성·통합용이성)</td><td><a href="https://www.informit.com/articles/article.aspx?p=3197432">같은 책 3장 — Design Concepts</a></td></tr>
+      <tr><td>ADD 절차</td><td><a href="https://www.sei.cmu.edu/library/attribute-driven-design-method-collection/">SEI — Attribute-Driven Design Method Collection</a></td></tr>
+      <tr><td>품질 속성 표준 어휘</td><td><a href="https://www.iso.org/standard/78176.html">ISO/IEC 25010:2023</a> · <a href="https://quality.arc42.org/standards/iso-25010">arc42 quality model 요약</a></td></tr>
+      <tr><td>패턴 카탈로그 (문제·대가·조합)</td><td><a href="https://learn.microsoft.com/en-us/azure/architecture/patterns/">Azure — Cloud Design Patterns</a></td></tr>
+      <tr><td>스타일 선택과 제약</td><td><a href="https://learn.microsoft.com/en-us/azure/architecture/guide/architecture-styles/">Azure — Architecture Styles</a></td></tr>
+      <tr><td>마이크로서비스 패턴 언어</td><td><a href="https://microservices.io/patterns/">microservices.io — A pattern language for microservices</a></td></tr>
+      <tr><td>ADR 템플릿</td><td><a href="https://adr.github.io/">adr.github.io</a> · <a href="https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions">Nygard 원문 (2011)</a></td></tr>
+      <tr><td>다이어그램 레벨</td><td><a href="https://c4model.com/">c4model.com</a></td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>이 지도의 사용법.</strong> 통독하지 말 것. 레슨을 하나 끝낼 때마다 그 레슨이 이 지도의 어느 칸이었는지 확인하고,
+    설계 논의 중 막히면 §6(구분)과 §7(트레이드오프)로 먼저 돌아온다.
+    막히는 곳이 있으면 물어보면 된다 — 이 지도의 어느 칸이든 레슨으로 팔 수 있다.
+  </p>
+
+</main>
+</body>
+</html>

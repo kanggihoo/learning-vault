@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>패턴 — 혼자 오는 패턴은 없다</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .drill { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 16px 12px; margin: 14px 0; }
+    .drill p.q { font-weight: 700; margin-bottom: 6px; }
+    .quote { border-left: 4px solid #9aa5b1; padding: 8px 14px; margin: 12px 0; color: #3e4c59; font-size: 0.94rem; }
+    .quote cite { display: block; margin-top: 6px; font-size: 0.85rem; color: #6b7280; font-style: normal; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">아키텍처 설계 · 4/N · 레슨 0040 · 지도의 <a href="../reference/0020-architecture-design-map.html#s5">§5</a>를 판다</p>
+  <h1>패턴 — 혼자 오는 패턴은 없다</h1>
+
+  <p class="lead">
+    패턴 40개를 훑는 카탈로그 투어는 하지 않는다. 목록은 <a href="https://learn.microsoft.com/en-us/azure/architecture/patterns/">찾아보면 있고</a>,
+    외워도 쓸 줄 모른다. 실제로 필요한 기술은 두 개다 —
+    <strong>① 문제에서 패턴으로 가는 길</strong>, <strong>② 그 패턴이 데려오는 짝을 빠뜨리지 않기</strong>.
+    사고는 거의 전부 ②에서 난다. 재시도만 넣고 회로 차단을 안 넣는 식으로.
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    ① 같은 증상에 왜 서로 다른 패턴이 붙는지 <strong>원인 기준으로</strong> 가를 수 있다.
+    ② 대표 조합 체인 두 개를 <strong>끝까지</strong> 말할 수 있다 — 재시도 계열, Saga 계열.
+    ③ Saga의 <strong>피벗 트랜잭션</strong>을 짚어 "여기부터는 되돌릴 수 없다"를 설계에서 표시할 수 있다.
+  </p>
+
+  <h2>§1 · 패턴은 해법이 아니라 "문제 + 해법 + 대가"다</h2>
+
+  <div class="quote">
+    <strong>쓰고 싶은 기술이 아니라, 풀어야 할 문제를 기준으로 패턴을 고르라.</strong>
+    워크로드의 구체적 제약이나 위험에서 출발하라 — 부하에서 무너지는 서비스, 읽기 쿼리를 못 따라가는 데이터 저장소,
+    완전히 믿을 수 없는 의존성 같은 것. (…) <strong>각 패턴에는 트레이드오프가 있다.
+    어떻게 구현하는지가 아니라 왜 그 패턴을 고르는지에 집중하라.</strong>
+    <cite>— Microsoft Azure Architecture Center, <em>Cloud Design Patterns</em></cite>
+  </div>
+
+  <p>
+    그래서 패턴을 제대로 안다는 건 이름과 그림을 안다는 게 아니라 <strong>세 칸을 다 채울 수 있다</strong>는 뜻이다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:24%">패턴</th><th style="width:26%">문제 (언제)</th><th style="width:24%">해법 (무엇)</th><th>대가 (그래서 생기는 새 문제)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Cache-Aside</strong></td><td>같은 데이터를 반복 조회한다</td><td>필요할 때 캐시에 채워 넣고 거기서 읽는다</td><td><span class="no">무효화</span> — 언제 버릴지, 스테일을 얼마나 허용할지</td></tr>
+      <tr><td><strong>Circuit Breaker</strong></td><td>죽은 의존을 계속 두드린다</td><td>연속 실패를 감지해 호출을 차단한다</td><td>차단 중 <strong>무엇을 응답할지</strong>를 정해야 한다</td></tr>
+      <tr><td><strong>CQRS</strong></td><td>읽기·쓰기 요구가 충돌한다</td><td>모델을 둘로 나눈다</td><td>최종 일관성 + 두 모델 동기화 비용</td></tr>
+      <tr><td><strong>Saga</strong></td><td>서비스를 넘는 트랜잭션이 필요하다</td><td>로컬 트랜잭션 + 보상 단계의 열</td><td><span class="no">격리성 상실</span> — 중간 상태가 남에게 보인다</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>리뷰 문장.</strong> AI나 팀원이 "○○ 패턴을 쓰겠습니다"라고 하면 세 번째 칸을 묻는다 —
+    <em>"이 패턴을 넣으면 어떤 새 문제가 생기죠?"</em>
+    대가를 말하지 못하면 카탈로그에서 이름만 가져온 것이다. <strong>대가를 안 말하는 패턴 설명은 마케팅이다.</strong>
+  </p>
+
+  <h2>§2 · 같은 증상, 다른 패턴 — 무엇이 가르나</h2>
+
+  <p>
+    "조회가 느립니다"라는 증상 하나에 붙을 수 있는 패턴이 다섯 개다.
+    <strong>증상이 아니라 원인이 패턴을 고른다.</strong> 원인을 안 물으면 대개 캐시를 붙이고, 자주 틀린다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:34%">진짜 원인</th><th style="width:24%">패턴</th><th>이 패턴이 틀리는 경우</th></tr></thead>
+    <tbody>
+      <tr><td>같은 데이터를 반복해서 읽는다</td><td><strong>Cache-Aside</strong></td><td>매번 다른 데이터를 읽으면 캐시 적중률이 0이다 — 비용만 는다</td></tr>
+      <tr><td>조인·집계를 매 요청마다 다시 계산한다</td><td><strong>Materialized View</strong></td><td>원본이 초 단위로 바뀌면 갱신 비용이 조회 비용을 넘는다</td></tr>
+      <tr><td>특정 조건 검색이 풀스캔을 탄다</td><td><strong>Index Table</strong></td><td>쓰기가 훨씬 많으면 인덱스 유지비가 더 크다</td></tr>
+      <tr><td>읽기 부하가 쓰기 트랜잭션과 다툰다</td><td><strong>CQRS</strong></td><td>부하가 그 정도가 아니면 복잡도만 산다</td></tr>
+      <tr><td>데이터·트래픽이 한 노드 용량을 넘었다</td><td><strong>Sharding</strong></td><td>샤드 키를 잘못 고르면 핫스팟이 생겨 그대로다</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>그래서 첫 질문은 항상 같다 — "느린 게 정확히 어느 쿼리이고, 왜 느립니까?"</strong>
+    이건 <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037</a>에서 배운 것의 재등장이다.
+    응답 측정과 환경이 없으면 원인을 특정할 수 없고, 원인이 없으면 패턴은 추측이 된다.
+  </p>
+
+  <h2>§3 · 패턴은 혼자 오지 않는다</h2>
+
+  <p>
+    Microsoft가 카탈로그에 아예 명시해 둔 조합들이 있다.
+    <strong>재시도는 회로 차단과 짝짓고</strong>, <strong>부하 평탄화 큐는 경쟁 소비자와 묶고</strong>,
+    <strong>Saga는 보상 트랜잭션 위에 세운다.</strong>
+    "짝지어도 좋다"가 아니라 <strong>혼자 두면 구멍이 난다</strong>는 뜻이다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 252" role="img" aria-label="세 개의 대표 패턴이 각각 세 개의 짝 패턴을 불러오는 그림">
+    <defs>
+      <marker id="p1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+    </defs>
+
+    <rect class="d-box-a" x="15" y="26" width="270" height="40"/>
+    <text class="d-title" x="150" y="51" text-anchor="middle">Retry</text>
+    <path class="d-line" d="M25,66 L25,203"/>
+    <path class="d-line" d="M25,119 L43,119" marker-end="url(#p1)"/>
+    <path class="d-line" d="M25,165 L43,165" marker-end="url(#p1)"/>
+    <path class="d-line" d="M25,203 L43,203" marker-end="url(#p1)"/>
+    <rect class="d-box" x="45" y="100" width="240" height="38"/>
+    <text class="d-label-sm" x="165" y="116" text-anchor="middle">Idempotent Consumer</text>
+    <text class="d-label-sm" x="165" y="131" text-anchor="middle">중복 실행이 생기니까</text>
+    <rect class="d-box" x="45" y="146" width="240" height="38"/>
+    <text class="d-label-sm" x="165" y="162" text-anchor="middle">Circuit Breaker</text>
+    <text class="d-label-sm" x="165" y="177" text-anchor="middle">장애를 증폭시키니까</text>
+    <rect class="d-box" x="45" y="192" width="240" height="38"/>
+    <text class="d-label-sm" x="165" y="208" text-anchor="middle">Bulkhead</text>
+    <text class="d-label-sm" x="165" y="223" text-anchor="middle">스레드를 잡아먹으니까</text>
+
+    <rect class="d-box-a" x="310" y="26" width="270" height="40"/>
+    <text class="d-title" x="445" y="51" text-anchor="middle">Queue-Based Load Leveling</text>
+    <path class="d-line" d="M320,66 L320,203"/>
+    <path class="d-line" d="M320,119 L338,119" marker-end="url(#p1)"/>
+    <path class="d-line" d="M320,165 L338,165" marker-end="url(#p1)"/>
+    <path class="d-line" d="M320,203 L338,203" marker-end="url(#p1)"/>
+    <rect class="d-box" x="340" y="100" width="240" height="38"/>
+    <text class="d-label-sm" x="460" y="116" text-anchor="middle">Competing Consumers</text>
+    <text class="d-label-sm" x="460" y="131" text-anchor="middle">한 소비자로는 안 빠지니까</text>
+    <rect class="d-box" x="340" y="146" width="240" height="38"/>
+    <text class="d-label-sm" x="460" y="162" text-anchor="middle">Idempotent Consumer</text>
+    <text class="d-label-sm" x="460" y="177" text-anchor="middle">중복 전달이 생기니까</text>
+    <rect class="d-box" x="340" y="192" width="240" height="38"/>
+    <text class="d-label-sm" x="460" y="208" text-anchor="middle">Transactional Outbox</text>
+    <text class="d-label-sm" x="460" y="223" text-anchor="middle">발행이 원자적이지 않으니까</text>
+
+    <rect class="d-box-a" x="605" y="26" width="270" height="40"/>
+    <text class="d-title" x="740" y="51" text-anchor="middle">Saga</text>
+    <path class="d-line" d="M615,66 L615,203"/>
+    <path class="d-line" d="M615,119 L633,119" marker-end="url(#p1)"/>
+    <path class="d-line" d="M615,165 L633,165" marker-end="url(#p1)"/>
+    <path class="d-line" d="M615,203 L633,203" marker-end="url(#p1)"/>
+    <rect class="d-box" x="635" y="100" width="240" height="38"/>
+    <text class="d-label-sm" x="755" y="116" text-anchor="middle">Compensating Transaction</text>
+    <text class="d-label-sm" x="755" y="131" text-anchor="middle">자동 롤백이 없으니까</text>
+    <rect class="d-box" x="635" y="146" width="240" height="38"/>
+    <text class="d-label-sm" x="755" y="162" text-anchor="middle">Idempotent Consumer</text>
+    <text class="d-label-sm" x="755" y="177" text-anchor="middle">피벗 이후는 재시도하니까</text>
+    <rect class="d-box" x="635" y="192" width="240" height="38"/>
+    <text class="d-label-sm" x="755" y="208" text-anchor="middle">상관관계 ID · 분산 추적</text>
+    <text class="d-label-sm" x="755" y="223" text-anchor="middle">흐름을 볼 수 없으니까</text>
+  </svg>
+  <figcaption>
+    <strong>Idempotent Consumer가 세 체인 모두에 나온다.</strong> 우연이 아니다 —
+    분산 시스템에서 "한 번만 실행"을 보장하는 건 사실상 불가능하고,
+    <strong>멱등성이 그 자리를 대신하는 공용 부품</strong>이기 때문이다.
+    <a href="../reference/0007-transactional-outbox-cheatsheet.html">이미 배운 Outbox</a>가 두 번째 체인에 있는 것도 같은 이유다.
+  </figcaption>
+  </figure>
+
+  <h2>§4 · 체인 A — 재시도가 데려오는 것들</h2>
+
+  <p>
+    <a href="./0038-tactics-detect-recover-prevent.html">0038</a>에서 재시도의 대가를 봤다.
+    그 대가 하나하나가 <strong>다른 패턴의 이름</strong>을 갖고 있다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:22%">재시도가 만든 구멍</th><th style="width:26%">메우는 패턴</th><th>메우지 않으면</th></tr></thead>
+    <tbody>
+      <tr><td>같은 요청이 두 번 실행된다</td><td><strong>Idempotent Consumer</strong><br><span class="sm">멱등 키로 중복을 무해화</span></td><td>이중 결제, 재고 이중 차감</td></tr>
+      <tr><td>죽은 대상에 부하를 더 얹는다</td><td><strong>Circuit Breaker</strong></td><td>회복을 방해한다. 0038의 64배 증폭</td></tr>
+      <tr><td>대기 중인 호출이 스레드를 다 먹는다</td><td><strong>Bulkhead</strong><br><span class="sm">의존별로 자원 풀을 격리</span></td><td>느린 의존 하나가 <strong>전체 서비스</strong>를 멈춘다</td></tr>
+      <tr><td>클라이언트들이 동시에 재시도한다</td><td><strong>지수 백오프 + 지터</strong></td><td>재시도 물결이 자기들끼리 증폭</td></tr>
+    </tbody>
+  </table>
+
+  <h3>회로 차단기의 세 상태 — 그리고 잘 빠지는 칸</h3>
+
+  <p>
+    Circuit Breaker는 상태 기계다. <strong>Closed</strong>(정상 통과) →
+    실패가 임계를 넘으면 <strong>Open</strong>(호출 자체를 안 하고 즉시 실패) →
+    일정 시간 뒤 <strong>Half-Open</strong>(시험 호출 한 번) → 성공하면 Closed, 실패하면 다시 타이머.
+  </p>
+
+  <p class="warn">
+    <strong>설계에서 거의 항상 비는 칸: "Open 상태일 때 무엇을 응답하나."</strong>
+    Fowler가 명시한다 — 클라이언트는 차단 실패에 <em>반응해야</em> 하고,
+    그 방법은 <strong>작업을 큐에 넣거나 캐시된 데이터를 보여주는 것</strong>이다.
+    이걸 안 정하면 회로 차단은 "빠르게 실패하는 장치"일 뿐, 가용성을 하나도 안 올린다.
+    <br><span class="mid">리뷰 문장: "차단됐을 때 사용자는 무엇을 보나요?"</span>
+  </p>
+
+  <p class="sm">
+    덤으로 Fowler가 강조하는 것 하나 더 — <strong>상태 전이는 반드시 로그로 남긴다.</strong>
+    회로 차단기의 동작 이력 자체가 "더 깊은 문제"에 대한 조기 경보다.
+    <a href="./0038-tactics-detect-recover-prevent.html">0038</a>의 감지 전술이 여기서도 회수된다.
+  </p>
+
+  <h2>§5 · 체인 B — Saga가 보내는 세 장의 청구서</h2>
+
+  <p>
+    Saga는 "서비스마다 자기 DB"라는 마이크로서비스 제약(<a href="./0039-architecture-styles-constraints-and-the-microservice-premium.html">0039</a>)이
+    만든 문제의 답이다. 서비스를 넘는 하나의 트랜잭션을 <strong>로컬 트랜잭션의 열 + 실패 시 보상</strong>으로 바꾼다.
+    대가는 세 가지이고, 셋 다 각각 다른 패턴을 부른다.
+  </p>
+
+  <h3>청구서 ① 격리성(I)이 사라진다</h3>
+
+  <div class="quote">
+    자동 롤백이 없다 — 개발자가 앞선 단계를 <strong>명시적으로 되돌리는 보상 트랜잭션을 설계해야</strong> 한다.
+    그리고 격리성(ACID의 I)이 없다. (…) 격리성이 없다는 것은 여러 saga와 트랜잭션이 동시에 실행될 때
+    <strong>데이터 이상(anomaly)이 생길 위험</strong>이 있다는 뜻이다.
+    <cite>— Chris Richardson, <em>Pattern: Saga</em></cite>
+  </div>
+
+  <p>
+    Saga는 ACID 중 <strong>A·C·D는 지키고 I만 버린다.</strong> 그래서 중간 상태가 남에게 보인다.
+    Azure가 정리한 대표 이상 세 가지:
+  </p>
+  <table>
+    <thead><tr><th style="width:24%">이상</th><th style="width:38%">무슨 일</th><th>실제 예</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Lost update</strong></td><td>다른 saga의 변경을 모른 채 덮어쓴다</td><td>두 주문이 같은 재고를 각자 계산해 차감</td></tr>
+      <tr><td><strong>Dirty read</strong></td><td>아직 확정 안 된(보상될 수도 있는) 값을 읽는다</td><td>취소될 주문의 포인트 차감분을 잔액에 반영</td></tr>
+      <tr><td><strong>Fuzzy read</strong></td><td>같은 saga의 단계마다 다른 값을 읽는다</td><td>1단계에서 본 가격과 3단계 결제 금액이 다름</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">
+    대응책(countermeasure)은 격리를 <strong>애플리케이션에서 흉내 내는</strong> 기법들이다 —
+    <strong>시맨틱 락</strong>(진행 중 표시를 걸어 둠: <code>PENDING</code> 상태),
+    <strong>교환 가능한 갱신</strong>(순서가 달라도 결과가 같게: <code>-10</code>을 더하기),
+    <strong>비관적 뷰</strong>(더티 리드가 나는 단계를 피벗 뒤로 재배치),
+    <strong>값 재확인</strong>(갱신 전에 안 바뀌었는지 확인). DB가 해 주던 걸 손으로 하는 것이다.
+  </p>
+
+  <h3>청구서 ② 되돌릴 수 없는 지점이 생긴다 — 피벗 트랜잭션</h3>
+
+  <p>
+    Saga 단계는 세 종류다. 이 구분이 실무에서 가장 쓸모 있는데 가장 덜 알려져 있다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 236" role="img" aria-label="Saga 단계가 보상 가능·피벗·재시도 가능 세 구간으로 나뉘는 타임라인">
+    <defs>
+      <marker id="q1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+    </defs>
+
+    <path class="d-line" d="M34,34 L34,44 L362,44 L362,34"/>
+    <text class="d-label-sm" x="198" y="26" text-anchor="middle">보상 가능 (compensable) — 실패하면 역순으로 되돌린다</text>
+    <path class="d-line-a" d="M538,34 L538,44 L866,44 L866,34"/>
+    <text class="d-label-sm" x="702" y="26" text-anchor="middle">재시도 가능 (retryable) — 성공할 때까지 앞으로만 간다</text>
+
+    <rect class="d-box" x="34" y="58" width="160" height="52"/>
+    <text class="d-label-sm" x="114" y="80" text-anchor="middle">① 재고 예약</text>
+    <text class="d-label-sm" x="114" y="97" text-anchor="middle">되돌릴 수 있다</text>
+    <rect class="d-box" x="202" y="58" width="160" height="52"/>
+    <text class="d-label-sm" x="282" y="80" text-anchor="middle">② 포인트 차감</text>
+    <text class="d-label-sm" x="282" y="97" text-anchor="middle">되돌릴 수 있다</text>
+
+    <rect class="d-box-b" x="370" y="58" width="160" height="52" style="stroke:#b91c1c;stroke-width:2.5"/>
+    <text class="d-title" x="450" y="80" text-anchor="middle">③ 결제 승인</text>
+    <text class="d-label-sm" x="450" y="97" text-anchor="middle" style="fill:#b91c1c">피벗 — 돌아올 수 없는 점</text>
+
+    <rect class="d-box-a" x="538" y="58" width="160" height="52"/>
+    <text class="d-label-sm" x="618" y="80" text-anchor="middle">④ 주문 확정</text>
+    <text class="d-label-sm" x="618" y="97" text-anchor="middle">멱등해야 한다</text>
+    <rect class="d-box-a" x="706" y="58" width="160" height="52"/>
+    <text class="d-label-sm" x="786" y="80" text-anchor="middle">⑤ 배송 요청</text>
+    <text class="d-label-sm" x="786" y="97" text-anchor="middle">멱등해야 한다</text>
+
+    <path class="d-line-d" style="stroke:#b91c1c" d="M450,116 L450,214"/>
+
+    <path class="d-line" d="M330,140 L60,140" marker-end="url(#q1)"/>
+    <text class="d-label-sm" x="200" y="132" text-anchor="middle">여기서 실패하면</text>
+    <text class="d-label-sm" x="200" y="162" text-anchor="middle">앞 단계를 역순으로 보상하고</text>
+    <text class="d-label-sm" x="200" y="179" text-anchor="middle">전체를 없던 일로 만든다</text>
+
+    <path class="d-line-a" d="M570,140 L840,140" marker-end="url(#q1)"/>
+    <text class="d-label-sm" x="700" y="132" text-anchor="middle">여기서 실패하면</text>
+    <text class="d-label-sm" x="700" y="162" text-anchor="middle">보상이 불가능하므로</text>
+    <text class="d-label-sm" x="700" y="179" text-anchor="middle">성공할 때까지 재시도한다</text>
+
+    <text class="d-label" x="450" y="228" text-anchor="middle">피벗을 어디에 둘지가 Saga 설계의 핵심 결정이다</text>
+  </svg>
+  <figcaption>
+    <strong>피벗 트랜잭션</strong>은 되돌릴 수 없는(또는 되돌리지 않기로 한) 단계다.
+    피벗 <em>앞</em>은 전부 보상 가능해야 하고, 피벗 <em>뒤</em>는 전부 <strong>멱등하고 재시도 가능</strong>해야 한다.
+    그래서 §3 그림에서 Saga가 Idempotent Consumer를 부른다.
+  </figcaption>
+  </figure>
+
+  <p class="note">
+    <strong>이 그림이 주는 리뷰 질문 두 개.</strong>
+    <em>"이 saga의 피벗은 어느 단계입니까?"</em> — 답을 못 하면 설계가 아직 안 됐다.
+    <em>"피벗 뒤 단계 중에 실패하면 사람이 손으로 고쳐야 하는 게 있나요?"</em> — 있으면 그건 재시도 가능이 아니다.
+    <br>Azure가 경고하는 대로, <strong>보상 트랜잭션도 실패할 수 있다.</strong> 그 경우 시스템은 불일치 상태로 남는다 —
+    그래서 보상 실패는 반드시 알림이 붙어야 한다.
+  </p>
+
+  <h3>청구서 ③ 흐름을 볼 수 없다 — 조율 방식 선택</h3>
+
+  <table>
+    <thead><tr><th style="width:16%"></th><th style="width:42%">코레오그래피 (Choreography)</th><th>오케스트레이션 (Orchestration)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>구조</strong></td><td>각 서비스가 도메인 이벤트를 발행하고, 다른 서비스가 알아서 반응한다. 중앙 통제 없음.</td><td>오케스트레이터가 각 참여자에게 "이걸 하라"고 지시하고 상태를 보관한다.</td></tr>
+      <tr><td><strong>좋은 점</strong></td><td>단순한 흐름·적은 서비스에 적합. 추가 컴포넌트 없음. <strong>단일 실패점이 없다.</strong></td><td>복잡한 흐름·서비스 추가에 유리. <strong>순환 의존이 안 생긴다.</strong> 책임이 분명하다.</td></tr>
+      <tr><td><strong>대가</strong></td><td>단계가 늘면 흐름이 혼란스러워진다. <strong>어느 서비스가 무엇에 반응하는지 추적이 어렵고</strong>, 순환 의존 위험. 통합 테스트에 전부 띄워야 한다.</td><td>조율 로직을 직접 구현해야 하고, <strong>오케스트레이터가 새 실패점</strong>이 된다.</td></tr>
+      <tr><td><strong>기본 선택</strong></td><td colspan="2">단계 2~3개면 코레오그래피, <strong>그 이상이거나 보상 순서가 중요하면 오케스트레이션.</strong> 판단이 안 서면 오케스트레이션 — 흐름이 코드 한 곳에 있는 쪽이 리뷰와 디버깅에서 이긴다.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    어느 쪽을 고르든 <strong>상관관계 ID(correlation ID)</strong>는 필수다.
+    saga 하나에 ID를 붙여 모든 단계 로그에 실어야, "3번 주문이 지금 어디까지 갔나"에 답할 수 있다.
+    Azure도 <em>"saga의 워크플로를 모니터링·추적하는 것은 필수 과제"</em>라고 못 박는다.
+  </p>
+
+  <h2>§6 · 진단 연습</h2>
+
+  <div class="drill">
+    <p class="q">① "외부 API 호출에 재시도 3회와 회로 차단기를 붙였습니다. 차단되면 500을 반환합니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>짝은 맞췄는데 마지막 칸이 비었다.</strong> Retry + Circuit Breaker 조합은 정확하다.
+      문제는 <strong>Open 상태의 응답</strong>이 500이라는 것 — 이건 "빨리 실패하기"일 뿐 가용성을 올리지 않는다.</p>
+      <p>Fowler가 말한 선택지: <strong>작업을 큐에 넣거나</strong>(나중에 처리), <strong>캐시된 값을 보여주거나</strong>,
+      기능을 축소한 응답을 준다(우아한 성능 저하). 무엇을 고를지는 <strong>비즈니스 결정</strong>이다.</p>
+      <p class="sm">그리고 <strong>멱등성</strong>을 안 물었다. 재시도가 있으면 그 외부 API가 멱등이거나, 멱등 키를 우리가 실어 보내야 한다.</p>
+    </details>
+
+    <p class="q">② "주문 saga는 재고 예약 → 결제 승인 → 주문 확정 → 알림 순입니다. 실패하면 앞 단계를 전부 보상합니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>"전부 보상한다"가 틀렸다.</strong> 결제 승인은 대개 <strong>피벗</strong>이다 —
+      승인이 난 뒤 주문 확정이 실패했다고 결제를 취소하는 건 보상이 아니라 <em>새로운 사고</em>다
+      (카드사 취소는 즉시 반영되지 않고, 부분 실패가 남는다).</p>
+      <p>올바른 설계: 결제 승인까지가 보상 가능, <strong>그 뒤는 성공할 때까지 재시도</strong>.
+      따라서 주문 확정과 알림은 <strong>멱등해야</strong> 한다.</p>
+      <p class="sm">리뷰 문장: "결제 승인이 피벗이죠? 그럼 그 뒤 단계는 보상이 아니라 재시도로 가야 하고, 멱등 키가 필요합니다."</p>
+    </details>
+
+    <p class="q">③ "조회가 느려서 Redis 캐시를 붙였는데 여전히 느립니다. 캐시를 더 키울까요?"</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>원인을 안 물었다.</strong> §2 표의 첫 줄("같은 데이터를 반복해서 읽는다")이 성립하지 않으면
+      캐시는 크기와 무관하게 안 듣는다. 적중률(hit rate)을 먼저 본다.</p>
+      <p>적중률이 낮다면 원인이 다른 줄에 있다 — 매번 다른 조건의 검색이면 <strong>Index Table</strong>,
+      매번 무거운 집계면 <strong>Materialized View</strong>, 데이터가 한 노드를 넘었으면 <strong>Sharding</strong>.</p>
+      <p class="sm">"패턴을 더 세게" 대신 <strong>"원인을 다시"</strong>로 돌아가는 게 이 레슨의 핵심 반사신경이다.</p>
+    </details>
+  </div>
+
+  <h2>§7 · 확인 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> 재시도를 넣으면 반드시 함께 와야 하는 것은?</p>
+    <button type="button" data-target="d1" data-answer="correct">멱등성 — 중복 실행이 생기니까</button>
+    <button type="button" data-target="d1" data-answer="wrong" data-hint="오답. 데이터 크기 문제가 아니라 같은 요청이 두 번 실행되는 문제다.">샤딩 — 데이터가 커지게 되니까</button>
+    <button type="button" data-target="d1" data-answer="wrong" data-hint="오답. 조회 성능이 아니라 중복 실행이 재시도의 대가다.">캐시 — 조회가 느려지게 되니까</button>
+    <button type="button" data-target="d1" data-answer="wrong" data-hint="오답. 검색 성능은 재시도와 관계가 없다.">인덱스 — 검색이 느려지게 되니까</button>
+    <p class="answer" id="d1"></p>
+
+    <p><strong>Q2.</strong> Saga가 ACID 중 포기하는 것은?</p>
+    <button type="button" data-target="d2" data-answer="correct">격리성 — 중간 상태가 보인다</button>
+    <button type="button" data-target="d2" data-answer="wrong" data-hint="오답. 원자성은 보상 트랜잭션으로 흉내 내서 지킨다.">원자성 — 일부만 반영된다</button>
+    <button type="button" data-target="d2" data-answer="wrong" data-hint="오답. 각 로컬 트랜잭션은 정상 커밋되므로 지속성은 지킨다.">지속성 — 커밋이 날아간다</button>
+    <button type="button" data-target="d2" data-answer="wrong" data-hint="오답. 최종적으로는 유효한 상태에 도달하도록 설계한다.">일관성 — 제약이 깨진다</button>
+    <p class="answer" id="d2"></p>
+
+    <p><strong>Q3.</strong> 피벗 트랜잭션 <strong>이후</strong> 단계가 가져야 하는 성질은?</p>
+    <button type="button" data-target="d3" data-answer="correct">멱등하고 재시도 가능해야 한다</button>
+    <button type="button" data-target="d3" data-answer="wrong" data-hint="오답. 피벗 이후는 보상이 불가능한 구간이라 보상 트랜잭션을 못 쓴다.">보상 트랜잭션을 가져야만 한다</button>
+    <button type="button" data-target="d3" data-answer="wrong" data-hint="오답. 호출 방식은 피벗 전후와 무관한 별개 결정이다.">반드시 동기 호출로 이뤄야 한다</button>
+    <button type="button" data-target="d3" data-answer="wrong" data-hint="오답. DB 공유는 오히려 마이크로서비스 제약을 깨는 일이다.">모두 같은 DB를 공유해야만 한다</button>
+    <p class="answer" id="d3"></p>
+  </section>
+
+  <h2>§8 · 이 레슨이 주는 문장</h2>
+
+  <table>
+    <thead><tr><th style="width:26%">상황</th><th>쓰는 문장</th></tr></thead>
+    <tbody>
+      <tr><td>패턴 제안을 받았을 때</td><td>"이 패턴을 넣으면 <strong>어떤 새 문제가 생기죠?</strong> 그리고 그걸 메우는 짝 패턴은요?"</td></tr>
+      <tr><td>회로 차단기 리뷰</td><td>"<strong>차단됐을 때 사용자는 무엇을 보나요?</strong> 500이면 가용성은 그대로입니다."</td></tr>
+      <tr><td>Saga 리뷰</td><td>"이 saga의 <strong>피벗은 어느 단계입니까?</strong> 그 뒤 단계는 보상이 아니라 재시도여야 합니다."</td></tr>
+      <tr><td>성능 문제</td><td>"패턴을 더 세게 쓰기 전에 <strong>원인부터요.</strong> 캐시 적중률이 얼마입니까?"</td></tr>
+    </tbody>
+  </table>
+
+  <h2>§9 · 다음</h2>
+
+  <p>
+    이제 지도의 네 칸(driver · 품질 속성 · 전술 · 스타일 · 패턴)이 채워졌다.
+    남은 것은 <strong>이 결정들을 어떻게 검증하고 남기는가</strong>다 —
+    트레이드오프를 드러내는 <strong>평가</strong>(ATAM·유틸리티 트리),
+    결정을 자동으로 지키는 <strong>적합성 함수</strong>,
+    그리고 "왜"를 남기는 <strong>ADR</strong>과 "무엇"을 그리는 <strong>C4</strong>.
+    이게 실제로 AI에게 설계를 맡길 때 <strong>사람이 담당해야 하는 부분</strong>이라, 미션의 마지막 조각이다.
+  </p>
+
+  <p><strong>먼저 읽을 1차 출처:</strong></p>
+  <ul>
+    <li><a href="https://learn.microsoft.com/en-us/azure/architecture/patterns/saga">Azure — Saga 패턴</a>
+        — §5의 원문. <strong>보상 가능/피벗/재시도 가능</strong> 3분류와 데이터 이상·대응책 목록이 여기 있다. <strong>하나만 읽는다면 이것.</strong></li>
+    <li><a href="https://martinfowler.com/bliki/CircuitBreaker.html">Martin Fowler — CircuitBreaker</a>
+        — 세 상태와 전이, "차단 중엔 큐에 넣거나 캐시된 데이터를 보여주라"의 원문.</li>
+    <li><a href="https://microservices.io/patterns/data/saga.html">Chris Richardson — Pattern: Saga</a>
+        — "자동 롤백 없음 · 격리성 없음" 두 문제의 정본 서술.</li>
+    <li><a href="https://learn.microsoft.com/en-us/azure/architecture/patterns/">Azure — Cloud Design Patterns</a>
+        — 카탈로그 본체. <strong>외우지 말고 문제가 생겼을 때 연다.</strong></li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="../reference/0020-architecture-design-map.html#s5">지도 §5 — 패턴 카탈로그</a> ·
+    <a href="./0039-architecture-styles-constraints-and-the-microservice-premium.html">0039 — 스타일</a> ·
+    <a href="./0038-tactics-detect-recover-prevent.html">0038 — 전술</a> ·
+    <a href="../reference/0007-transactional-outbox-cheatsheet.html">0007 — Outbox</a> ·
+    <a href="../reference/0008-redis-streams-consumer-group-cheatsheet.html">0008 — Redis Streams</a>.
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> 이 레슨에서 파고들 만한 곳:
+    <strong>멱등 키를 실제로 무엇으로 잡나</strong>(클라이언트 생성 UUID vs 비즈니스 키) ·
+    <strong>보상 트랜잭션이 실패하면 어떻게 하나</strong> ·
+    <strong>시맨틱 락을 상태 필드로 구현할 때의 함정</strong> ·
+    <strong>Saga 오케스트레이터를 어디에 두나</strong>(별도 서비스 vs 주문 서비스 안).
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

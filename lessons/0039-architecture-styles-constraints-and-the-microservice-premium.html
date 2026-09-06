@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>아키텍처 스타일 — 제약이 이점을 만든다</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .drill { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 16px 12px; margin: 14px 0; }
+    .drill p.q { font-weight: 700; margin-bottom: 6px; }
+    .quote { border-left: 4px solid #9aa5b1; padding: 8px 14px; margin: 12px 0; color: #3e4c59; font-size: 0.94rem; }
+    .quote cite { display: block; margin-top: 6px; font-size: 0.85rem; color: #6b7280; font-style: normal; }
+    ul.check { list-style: none; padding-left: 0; }
+    ul.check li { margin: 6px 0; padding-left: 26px; position: relative; }
+    ul.check li::before { content: "☐"; position: absolute; left: 0; font-size: 1.1em; color: #0f766e; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">아키텍처 설계 · 3/N · 레슨 0039 · 지도의 <a href="../reference/0020-architecture-design-map.html#s4">§4</a>·<a href="../reference/0020-architecture-design-map.html#s6">§6</a>을 판다</p>
+  <h1>아키텍처 스타일 — 제약이 이점을 만든다</h1>
+
+  <p class="lead">
+    스타일 선택은 아키텍처 결정 중 <strong>되돌리기가 가장 비싼 것</strong>이다.
+    그런데 실제로는 가장 가볍게 내려진다 — "요즘 다 MSA 하잖아요."
+    이 레슨의 목표는 <strong>"MSA로 갈까요?"에 근거를 갖고 아니오라고 말할 수 있게 되는 것</strong>이다.
+    그 근거는 취향이 아니라 <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">driver</a>에서 나온다.
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    ① 스타일이 왜 "제약"인지, 제약을 어기면 무엇이 사라지는지 설명할 수 있다.
+    ② <strong>전술·패턴·스타일을 가르는 판별 기준 하나</strong>를 갖는다 — 문헌마다 이름이 흔들려도 안 흔들린다.
+    ③ 마이크로서비스 프리미엄을 낼 조건인지 <strong>체크리스트로</strong> 판정할 수 있다.
+  </p>
+
+  <h2>§1 · 스타일은 구조가 아니라 제약이다</h2>
+
+  <div class="quote">
+    아키텍처 스타일은 설계에 <strong>제약</strong>을 건다 — 등장할 수 있는 요소의 집합과, 그 요소들 사이에 허용되는 관계를 제한한다.
+    (…) 아키텍처가 어떤 스타일의 제약을 따를 때, <strong>특정한 바람직한 속성이 창발한다.</strong>
+    <cite>— Microsoft Azure Architecture Center, <em>Architecture Styles</em></cite>
+  </div>
+
+  <p>
+    이 문장이 스타일의 전부다. 스타일은 "이렇게 그려라"가 아니라 <strong>"이건 하지 마라"</strong>의 목록이고,
+    금지 목록을 지켰을 때 <strong>따로 만들지 않은 좋은 성질이 저절로 생긴다.</strong>
+    마이크로서비스로 보면 이렇다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 352" role="img" aria-label="마이크로서비스의 제약 세 가지가 이점 네 가지를 만들고, 제약 하나를 어기면 이점은 사라지고 비용만 남는 그림">
+    <defs>
+      <marker id="s1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+      </marker>
+      <marker id="s2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+      </marker>
+    </defs>
+
+    <text class="d-title" x="30" y="20">① 제약을 지키면 — 이점은 만드는 게 아니라 나온다</text>
+
+    <rect class="d-box" x="30" y="32" width="300" height="44"/>
+    <text class="d-label-sm" x="180" y="59" text-anchor="middle">서비스는 하나의 책임만 갖는다</text>
+    <rect class="d-box" x="30" y="82" width="300" height="44"/>
+    <text class="d-label-sm" x="180" y="109" text-anchor="middle">서비스는 서로 독립적이다</text>
+    <rect class="d-box" x="30" y="132" width="300" height="44"/>
+    <text class="d-label-sm" x="180" y="159" text-anchor="middle">데이터는 사유다 — 공유하지 않는다</text>
+
+    <path class="d-line-a" d="M340,104 L406,104" marker-end="url(#s1)"/>
+    <text class="d-label-sm" x="373" y="96" text-anchor="middle">지키면</text>
+
+    <rect class="d-box-a" x="418" y="32" width="210" height="32"/>
+    <text class="d-label-sm" x="523" y="52" text-anchor="middle">독립 배포</text>
+    <rect class="d-box-a" x="418" y="68" width="210" height="32"/>
+    <text class="d-label-sm" x="523" y="88" text-anchor="middle">장애 격리</text>
+    <rect class="d-box-a" x="418" y="104" width="210" height="32"/>
+    <text class="d-label-sm" x="523" y="124" text-anchor="middle">잦은 릴리스</text>
+    <rect class="d-box-a" x="418" y="140" width="210" height="32"/>
+    <text class="d-label-sm" x="523" y="160" text-anchor="middle">기술 선택의 자유</text>
+
+    <text class="d-label-sm" x="650" y="96">MSA를 고르는 이유는</text>
+    <text class="d-label-sm" x="650" y="114">이 네 개가 전부다.</text>
+
+    <path class="d-line-d" d="M30,204 L870,204"/>
+
+    <text class="d-title" x="30" y="232" style="fill:#b91c1c">② 제약 하나를 어기면</text>
+
+    <rect class="d-box-b" x="30" y="244" width="300" height="44" style="stroke:#b91c1c"/>
+    <text class="d-label-sm" x="180" y="271" text-anchor="middle">두 서비스가 DB를 공유한다</text>
+
+    <path class="d-line" style="stroke:#b91c1c" d="M340,266 L406,266" marker-end="url(#s2)"/>
+
+    <rect class="d-box-c" x="418" y="244" width="210" height="44"/>
+    <text class="d-label-sm" x="523" y="266" text-anchor="middle" style="fill:#b91c1c">이점 네 개 전부 소실</text>
+    <text class="d-label-sm" x="523" y="282" text-anchor="middle">함께 배포해야 하므로</text>
+
+    <rect class="d-box-b" x="648" y="244" width="222" height="44"/>
+    <text class="d-label-sm" x="759" y="266" text-anchor="middle">비용은 그대로 낸다</text>
+    <text class="d-label-sm" x="759" y="282" text-anchor="middle">네트워크 · 운영 · 최종 일관성</text>
+
+    <text class="d-label" x="450" y="322" text-anchor="middle">= 분산 모놀리스 — 모놀리스의 결합에 분산의 비용을 더한 것</text>
+  </svg>
+  <figcaption>
+    스타일의 이점은 <strong>제약의 대가</strong>다. 제약을 풀면서 이름만 유지하면 남는 건 비용뿐이다.
+    Azure 문서의 표현대로, "표면적으로만 스타일에 부합하고 이점은 못 얻는" 설계가 된다.
+  </figcaption>
+  </figure>
+
+  <h2>§2 · 분산 모놀리스 진단표</h2>
+
+  <p>
+    "우리 MSA인가요?"는 아키텍처 다이어그램으로 판정하지 않는다. <strong>배포와 데이터로 판정한다.</strong>
+    아래 중 하나라도 해당하면 제약이 이미 깨져 있다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:44%">증상</th><th style="width:26%">깨진 제약</th><th>사라진 이점</th></tr></thead>
+    <tbody>
+      <tr><td>두 서비스가 같은 테이블을 읽고 쓴다</td><td>데이터 사유</td><td>독립 배포 · 기술 자유</td></tr>
+      <tr><td>기능 하나 추가에 서비스 3개를 <strong>같이</strong> 배포한다</td><td>서비스 독립</td><td>독립 배포 · 잦은 릴리스</td></tr>
+      <tr><td>배포 <strong>순서</strong>를 맞춰야 한다</td><td>서비스 독립</td><td>독립 배포</td></tr>
+      <tr><td>사용자 요청 하나가 동기 호출 5단계를 탄다</td><td>서비스 독립</td><td><strong>장애 격리</strong> — 하나 죽으면 다 죽는다</td></tr>
+      <tr><td>공통 라이브러리 버전을 전 서비스가 맞춘다</td><td>서비스 독립</td><td>독립 배포 · 기술 자유</td></tr>
+      <tr><td>스키마를 바꾸려면 다른 팀 동의가 필요하다</td><td>데이터 사유</td><td>잦은 릴리스</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>네 번째 줄이 가장 흔하고 가장 아프다.</strong> 동기 호출 체인은 서비스를 나눠도 가용성을 <em>낮춘다</em> —
+    각 서비스가 99.9%여도 5단계를 직렬로 타면 곱해져서 99.5%가 된다(연 8.76시간 → 43.8시간).
+    <a href="./0038-tactics-detect-recover-prevent.html">0038</a>의 가용성 표로 바로 검산되는 지점이다.
+    <strong>쪼갰는데 더 잘 죽는다면 이 줄을 의심한다.</strong>
+  </p>
+
+  <h2>§3 · 전술 · 패턴 · 스타일 — 판별 기준 하나</h2>
+
+  <p>
+    책마다 분류가 다르다. CQRS는 Microsoft 카탈로그에선 <em>패턴</em>이고 Richards 책에선 <em>스타일</em>로 나온다.
+    이름 논쟁은 무의미하다. <strong>기준 하나만 붙들면 된다.</strong>
+  </p>
+
+  <p class="note" style="font-size:1.05rem">
+    <strong>이 결정이 시스템 <em>전체</em>의 요소·관계 규칙을 바꾸는가?</strong><br>
+    바꾼다 → <strong>스타일</strong> &nbsp;·&nbsp; 국소 구조만 만든다 → <strong>패턴</strong> &nbsp;·&nbsp; 구조가 안 생긴다 → <strong>전술</strong>
+  </p>
+
+  <p>이 기준으로 CQRS 논쟁이 풀린다. <strong>둘 다 맞다. 적용 범위가 다르기 때문이다.</strong></p>
+
+  <table>
+    <thead><tr><th style="width:22%">적용 범위</th><th style="width:38%">실제 모습</th><th>무엇인가</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>주문 조회 하나만</td>
+        <td>주문 읽기용 뷰 테이블을 따로 두고 조회는 거기서 한다. 나머지 도메인은 그대로.</td>
+        <td><strong>패턴</strong> — 국소 구조</td>
+      </tr>
+      <tr>
+        <td>시스템 전체</td>
+        <td>모든 요소가 커맨드 측 아니면 쿼리 측에 속하고, 둘은 다른 모델·다른 저장소·다른 배포 단위를 갖는다.</td>
+        <td><strong>스타일</strong> — 전체 골격</td>
+      </tr>
+      <tr>
+        <td>—</td>
+        <td>"읽기 부하를 줄이려고 데이터 복제본을 유지한다"</td>
+        <td><strong>전술</strong> — 구조 없음</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    전체 비교표와 포함 관계 다이어그램(스타일 ⊃ 패턴 ⊃ 전술)은
+    <a href="../reference/0020-architecture-design-map.html#s6">지도 §6</a>에 있다.
+  </p>
+
+  <h2>§4 · 실제로 고르게 되는 스타일 다섯</h2>
+
+  <p>
+    지도 §4에는 아홉 개가 있지만, 백엔드에서 실제 선택지로 올라오는 건 대개 이 다섯이다.
+    <strong>위에서 아래로 갈수록 얻는 것과 내주는 것이 동시에 커진다.</strong>
+  </p>
+
+  <table>
+    <thead><tr><th style="width:16%">스타일</th><th style="width:26%">핵심 제약</th><th style="width:24%">얻는 것</th><th>내주는 것</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>계층형</strong><br><span class="sm">Layered</span></td>
+        <td>아래 계층만 호출한다</td>
+        <td>이해·학습 쉬움, 계층 내 변경 용이</td>
+        <td>계층 통과 비용, 배포 민첩성. <strong>수평 변경이 여러 계층을 건드린다.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>웹-큐-워커</strong></td>
+        <td>무거운 일은 큐 너머로 보낸다</td>
+        <td>부하 평탄화, 프런트·워커 독립 스케일</td>
+        <td>최종 일관성. 양쪽 다 비대해질 수 있음.</td>
+      </tr>
+      <tr>
+        <td><strong>모듈러 모놀리스</strong></td>
+        <td>모듈 간 <strong>직접 참조 금지</strong>, 공개 인터페이스로만</td>
+        <td>변경 용이성 + 단순한 운영. <strong>나중에 쪼갤 수 있다.</strong></td>
+        <td>독립 배포·독립 스케일은 못 한다. 제약을 <strong>도구로 강제하지 않으면 무너진다.</strong></td>
+      </tr>
+      <tr>
+        <td><strong>마이크로서비스</strong></td>
+        <td>단일 책임 · 독립 · 데이터 사유</td>
+        <td>독립 배포, 장애 격리, 팀 자율성</td>
+        <td>운영 복잡도, 분산 일관성, 네트워크 지연, <strong>조직 성숙도</strong></td>
+      </tr>
+      <tr>
+        <td><strong>이벤트 기반</strong></td>
+        <td>생산자와 소비자는 <strong>서로를 모른다</strong></td>
+        <td>확장성, 장애 격리, 소비자 추가가 공짜</td>
+        <td>순서·전달 보장, 최종 일관성, <strong>흐름 추적의 어려움</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>모듈러 모놀리스 줄의 마지막 문장이 핵심이다.</strong> "모듈 경계를 잘 지키자"는 약속은 반드시 깨진다.
+    실제로 작동하려면 <strong>어긴 코드가 빌드에 실패해야 한다</strong> — 모듈 시스템, 패키지 접근 제한,
+    아키텍처 테스트(ArchUnit 류). 이게 <a href="../reference/0020-architecture-design-map.html#s8">지도 §8</a>의
+    <strong>적합성 함수(fitness function)</strong>가 실제로 쓰이는 대표 사례다.
+    <span class="mid">제약을 자동으로 강제하지 않는 스타일은 스타일이 아니라 희망이다.</span>
+  </p>
+
+  <h2>§5 · 마이크로서비스 프리미엄</h2>
+
+  <p>
+    Martin Fowler는 이 비용을 <strong>"프리미엄"</strong>이라고 부른다. 보험료처럼, <em>먼저 내고</em> 나중에 돌려받는다.
+    문제는 돌려받을 조건이 안 되는데 내는 경우다.
+  </p>
+
+  <div class="quote">
+    마이크로서비스는 그 자체로 복잡성을 도입한다. 이것이 프로젝트의 비용과 리스크에 <strong>프리미엄을 더한다.</strong>
+    (…) <strong>모놀리스로 관리하기에 너무 복잡한 시스템이 아니라면 마이크로서비스는 고려조차 하지 마라.</strong>
+    (…) 대부분의 소프트웨어 시스템은 하나의 모놀리식 애플리케이션으로 만들어져야 한다.
+    <cite>— Martin Fowler, <em>MicroservicePremium</em></cite>
+  </div>
+
+  <div class="quote">
+    성공한 마이크로서비스 사례는 거의 전부 <strong>너무 커진 모놀리스를 쪼개서</strong> 나왔다.
+    처음부터 마이크로서비스로 만들었다는 시스템 이야기는 거의 전부 <strong>심각한 문제에 빠졌다.</strong>
+    (…) 마이크로서비스는 <strong>서비스 사이에 좋고 안정적인 경계를 찾아냈을 때만</strong> 잘 작동한다.
+    <cite>— Martin Fowler, <em>MonolithFirst</em></cite>
+  </div>
+
+  <p>
+    두 번째 인용의 마지막 문장이 진짜 이유다. <strong>좋은 서비스 경계는 도메인을 겪어 봐야 안다.</strong>
+    프로젝트 시작 시점은 그 지식이 가장 없는 때이고, 잘못 그은 경계는 나중에 가장 비싸게 갚는다
+    (분산된 채로 함께 배포해야 하는 상태 = §2의 분산 모놀리스).
+  </p>
+
+  <h3>프리미엄을 낼 조건 — 체크리스트</h3>
+  <p>
+    Fowler가 말하는 <strong>전제 조건</strong>과 Azure가 말하는 <strong>적합 도메인</strong>을 합치면 이렇게 된다.
+    <strong>하나라도 아니오면, 프리미엄만 내고 이점은 못 받는다.</strong>
+  </p>
+
+  <ul class="check">
+    <li><strong>도메인이 모놀리스로 관리하기에 너무 복잡한가?</strong> — Fowler가 "가장 큰 요인은 순전한 크기"라고 지목한 것.</li>
+    <li><strong>서비스 경계를 이미 안는가?</strong> — 겪어서 알게 된 것이어야 한다. 조직도나 화면 구성으로 그은 경계는 아니다.</li>
+    <li><strong>변경이 잦고, 팀이 여럿인가?</strong> — 한 팀이면 독립 배포로 얻을 게 없다. 콘웨이의 법칙이 반대로 작동한다.</li>
+    <li><strong>서버를 몇 시간 안에 새로 띄울 수 있는가?</strong> — Fowler의 전제 ①: rapid provisioning.</li>
+    <li><strong>장애를 빠르게 감지할 기본 모니터링이 있는가?</strong> — 전제 ②. <a href="./0038-tactics-detect-recover-prevent.html">0038</a>의 감지 전술이 여기서 스타일의 <em>입장 조건</em>이 된다.</li>
+    <li><strong>배포 파이프라인이 몇 시간 내에 돈다면?</strong> — 전제 ③: rapid deployment.</li>
+  </ul>
+
+  <p class="warn">
+    <strong>거절할 때 쓰는 문장.</strong> "MSA 안 좋아해서요"가 아니라 —
+    <em>"프리미엄을 낼 조건 6개 중 4개가 아직 아닙니다. 특히 서비스 경계를 아직 모르고, 팀이 하나입니다.
+    모듈러 모놀리스로 경계를 먼저 찾고, 경계가 안정되면 가장자리부터 떼어내죠."</em>
+    <br>거절이 아니라 <strong>순서 제안</strong>이 되고, 반박당하지 않는다.
+  </p>
+
+  <h2>§6 · 진단 연습</h2>
+
+  <div class="drill">
+    <p class="q">① "서비스 8개로 나눴는데, 배포할 때마다 전부 같이 올립니다. 그게 안전해서요."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>제약 "서비스 독립"이 깨졌다.</strong> 함께 배포한다는 건 서로의 변경에 영향을 받는다는 뜻이고,
+      그러면 <em>독립 배포·잦은 릴리스</em>가 통째로 사라진다.</p>
+      <p>"그게 안전해서요"가 증상의 원인을 말해 준다 — <strong>따로 배포하면 깨진다는 걸 이미 알고 있다.</strong>
+      즉 서비스 간 계약이 안정적이지 않다 = 경계가 잘못 그어졌다.</p>
+      <p class="sm">지금 필요한 건 서비스를 더 쪼개는 게 아니라 <strong>합치는 것</strong>이다.
+      함께 배포해야만 하는 서비스들은 사실 하나의 서비스다.</p>
+    </details>
+
+    <p class="q">② "모듈러 모놀리스로 갑니다. 모듈 간에는 서로 직접 참조하지 않기로 팀에서 합의했습니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>제약이 강제되지 않는다.</strong> 합의는 마감 앞에서 깨진다 —
+      그리고 한 번 깨지면 아무도 되돌리지 않는다.</p>
+      <p>물어야 할 것: <em>"모듈 경계를 어긴 코드가 빌드에 실패하나요?"</em>
+      아니라면 이건 모듈러 모놀리스가 아니라 <strong>그냥 모놀리스이고, 6개월 뒤에 확인된다.</strong></p>
+      <p class="sm">필요한 것: 빌드 도구의 모듈 분리, 패키지 접근 제한, 또는 아키텍처 테스트. 적합성 함수(§4 참고).</p>
+    </details>
+
+    <p class="q">③ "이벤트 기반으로 갑니다. 주문 서비스가 이벤트를 쏘면 재고·알림·정산이 받아서 처리합니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>스타일 선택 자체는 타당하다</strong> — 소비자가 계속 늘어나는 모양이고, 그게 EDA가 잘하는 일이다.
+      제약("생산자는 소비자를 모른다")도 지켜지고 있다.</p>
+      <p>대신 <strong>내준 것을 말했는지</strong>가 문제다. 최종 일관성이 도입됐으므로
+      "주문 직후 재고 화면이 아직 안 줄어 있음"이 <em>버그가 아니라 설계</em>가 된다.
+      이걸 기획·프런트와 합의했는가? 안 했으면 장애 신고로 돌아온다.</p>
+      <p class="sm">그리고 <strong>흐름 추적</strong> — 주문 하나가 어디까지 갔는지 물었을 때 답할 방법이 있어야 한다.
+      EDA의 대가 중 실무에서 가장 자주 과소평가되는 항목이다.</p>
+    </details>
+  </div>
+
+  <h2>§7 · 확인 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> 마이크로서비스의 이점은 어디에서 나오는가?</p>
+    <button type="button" data-target="c1" data-answer="correct">제약을 지켰기 때문에 생긴다</button>
+    <button type="button" data-target="c1" data-answer="wrong" data-hint="오답. 개수는 결과일 뿐이고, 많이 쪼개도 제약이 깨지면 이점이 없다.">서비스 개수가 많아서 생긴다</button>
+    <button type="button" data-target="c1" data-answer="wrong" data-hint="오답. 컨테이너는 잘 맞는 도구일 뿐 이점의 원천이 아니다.">컨테이너를 사용해서 생긴다</button>
+    <button type="button" data-target="c1" data-answer="wrong" data-hint="오답. 서비스별 코드가 적어도 함께 배포하면 이점이 없다.">서비스 코드가 적어서 생긴다</button>
+    <p class="answer" id="c1"></p>
+
+    <p><strong>Q2.</strong> Fowler가 "모놀리스 먼저"를 권하는 핵심 근거는?</p>
+    <button type="button" data-target="c2" data-answer="correct">좋은 서비스 경계는 미리 모른다</button>
+    <button type="button" data-target="c2" data-answer="wrong" data-hint="오답. 성능이 아니라 경계를 알아내는 순서의 문제다.">모놀리스가 언제나 더 빠르다</button>
+    <button type="button" data-target="c2" data-answer="wrong" data-hint="오답. 그는 마이크로서비스를 부정하지 않고 순서를 말한다.">마이크로서비스는 한물간 것이다</button>
+    <button type="button" data-target="c2" data-answer="wrong" data-hint="오답. 배포 빈도는 오히려 마이크로서비스가 노리는 이점이다.">모놀리스가 배포를 자주 한다</button>
+    <p class="answer" id="c2"></p>
+
+    <p><strong>Q3.</strong> 같은 CQRS가 문헌마다 패턴/스타일로 갈리는 이유는?</p>
+    <button type="button" data-target="c3" data-answer="correct">적용 범위가 국소냐 전체냐가 달라</button>
+    <button type="button" data-target="c3" data-answer="wrong" data-hint="오답. 취향 차이가 아니라 적용 범위 차이다. 기준을 쓰면 둘 다 설명된다.">저자마다 선호하는 용어가 달라서</button>
+    <button type="button" data-target="c3" data-answer="wrong" data-hint="오답. 저장소 종류는 분류를 가르는 기준이 아니다.">쓰는 데이터베이스 종류가 달라서</button>
+    <button type="button" data-target="c3" data-answer="wrong" data-hint="오답. 이벤트 소싱은 함께 쓰일 뿐 분류 기준이 아니다.">이벤트 소싱을 같이 쓰는지 달라서</button>
+    <p class="answer" id="c3"></p>
+  </section>
+
+  <h2>§8 · 이 레슨이 주는 문장</h2>
+
+  <table>
+    <thead><tr><th style="width:26%">상황</th><th>쓰는 문장</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>AI가 MSA를 제안할 때</td>
+        <td>"마이크로서비스의 이점 네 개는 <strong>제약 세 개를 지킬 때만</strong> 나옵니다.
+            지금 설계에서 서비스들이 데이터를 어떻게 나눠 갖는지 먼저 보여 주세요."</td>
+      </tr>
+      <tr>
+        <td>MSA를 거절할 때</td>
+        <td>"프리미엄 조건 중 <strong>서비스 경계</strong>와 <strong>팀 수</strong>가 아직 아닙니다.
+            모듈러 모놀리스로 경계를 찾고, 안정되면 가장자리부터 떼어내죠."</td>
+      </tr>
+      <tr>
+        <td>기술면접</td>
+        <td>"팀이 5명이고 6주 마감이었습니다. 마이크로서비스 프리미엄을 낼 조건이 아니라고 판단해
+            모듈러 모놀리스로 갔고, 모듈 경계는 <strong>아키텍처 테스트로 강제</strong>했습니다.
+            <strong>독립 배포와 독립 스케일은 포기했습니다.</strong>"</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>§9 · 다음</h2>
+
+  <p>
+    스타일은 집이고, 그 안에 사는 것이 <strong>패턴</strong>이다. 다음 레슨은 패턴 —
+    다만 40개를 훑는 카탈로그 투어는 하지 않는다. 실제로 필요한 기술은
+    <strong>"이 문제에 어느 패턴을 붙일지"</strong>이고, 그건 <strong>문제에서 패턴으로 가는 길</strong>을
+    익히는 것이지 목록을 외우는 게 아니다. 그리고 <strong>패턴은 혼자 오지 않는다</strong> —
+    재시도는 회로 차단을 부르고, Saga는 보상 트랜잭션 위에 서고, 큐는 경쟁 소비자를 부른다.
+  </p>
+
+  <p><strong>먼저 읽을 1차 출처</strong> (전부 짧다):</p>
+  <ul>
+    <li><a href="https://martinfowler.com/bliki/MicroservicePremium.html">Martin Fowler — MicroservicePremium</a>
+        — §5 인용의 원문. <strong>하나만 읽는다면 이것.</strong> 3분이면 읽는다.</li>
+    <li><a href="https://martinfowler.com/bliki/MonolithFirst.html">Martin Fowler — MonolithFirst</a>
+        — "성공 사례는 거의 전부 모놀리스에서 쪼개져 나왔다"의 원문.</li>
+    <li><a href="https://martinfowler.com/bliki/MicroservicePrerequisites.html">Martin Fowler — MicroservicePrerequisites</a>
+        — 체크리스트 뒤쪽 세 항목의 출처.</li>
+    <li><a href="https://learn.microsoft.com/en-us/azure/architecture/guide/architecture-styles/">Azure — Architecture Styles</a>
+        — §1 인용("스타일은 제약이다")과 스타일별 적합 도메인 표.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="../reference/0020-architecture-design-map.html#s4">지도 §4 — 스타일 9종 비교</a> ·
+    <a href="../reference/0020-architecture-design-map.html#s6">지도 §6 — 세 층 구분</a> ·
+    <a href="./0038-tactics-detect-recover-prevent.html">0038 — 전술</a> ·
+    <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037 — Driver</a>.
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> 이 레슨에서 파고들 만한 곳:
+    <strong>서비스 경계를 실제로 어떻게 긋나</strong>(DDD 경계 컨텍스트) ·
+    <strong>모듈러 모놀리스에서 마이크로서비스로 실제로 떼어내는 절차</strong> ·
+    <strong>이벤트 기반에서 흐름 추적을 어떻게 하나</strong>(상관관계 ID·분산 추적) ·
+    <strong>콘웨이의 법칙과 역콘웨이 전략</strong>.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

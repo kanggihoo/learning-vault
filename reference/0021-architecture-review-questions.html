@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>아키텍처 리뷰 질문 카드</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    main { max-width: 1020px; padding-top: 26px; }
+    h1 { font-size: 1.8rem; }
+    h2 { margin-top: 28px; padding-top: 13px; font-size: 1.12rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.88rem; margin: 8px 0; }
+    th, td { border: 1px solid #deded6; padding: 6px 9px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    .lead { font-size: 1.04rem; color: #3e4c59; }
+    .sm { font-size: 0.84rem; color: #52606d; }
+    .q { font-weight: 600; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .ok { color: #047857; font-weight: 700; }
+    ol.steps { padding-left: 20px; }
+    ol.steps li { margin: 5px 0; }
+    .box { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 12px 18px; margin: 12px 0; }
+    @media print { h2 { break-after: avoid; } table { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="sm">레퍼런스 0021 · 설계 리뷰 중에 여는 문서 · <a href="0020-architecture-design-map.html">지도 0020</a>의 실행판</p>
+  <h1>아키텍처 리뷰 질문 카드</h1>
+
+  <p class="lead">
+    레슨 0037~0044에 흩어져 있는 <strong>"쓰는 문장"</strong>을 한 장에 모은 것이다.
+    전부 같은 원리로 만들어졌다 — <strong>판단을 주장하지 말고 빈칸을 가리킨다.</strong>
+    "이거 별로인데요"는 반박당하고, "응답 측정 칸이 비었는데요"는 반박당하지 않는다.
+  </p>
+
+  <div class="box">
+    <strong>AI 설계안을 받았을 때 먼저 던지는 세 질문</strong> (ATAM 축소판)
+    <ol class="steps">
+      <li>이 설계가 겨냥한 <strong>품질 속성 시나리오</strong>를 6부로 적어줘. <span class="sm">→ 응답 측정이 비면 근거가 없다</span></li>
+      <li>그 시나리오를 만족시키는 <strong>경로</strong>를 구조 위에서 짚어줘. <span class="sm">→ 못 짚으면 구조와 요구가 안 이어져 있다</span></li>
+      <li>이 결정의 <strong>절충점</strong>은 뭐고 무엇을 내줬어? <span class="sm">→ 답이 없으면 트레이드오프를 계산 안 했다</span></li>
+    </ol>
+  </div>
+
+  <h2>요구·목표 단계</h2>
+  <table>
+    <thead><tr><th style="width:30%">들리는 말</th><th style="width:46%">되묻는 문장</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>"빠르고 안정적이어야 합니다"</td><td class="q">환경과 응답 측정을 채워 주세요. 평상시입니까 피크입니까, 몇 ms 이내입니까?</td><td>0037 §3</td></tr>
+      <tr><td>"평균 응답 200ms 목표"</td><td class="q">평균 말고 p95·p99로 주세요. 평균은 꼬리를 숨깁니다.</td><td>0037 §5</td></tr>
+      <tr><td>"Redis 캐시를 두겠습니다"</td><td class="q">그건 해법이지 요구가 아닙니다. 뒤에 있는 응답 측정이 뭔가요?</td><td>0037 §5</td></tr>
+      <tr><td>"뭐부터 설계할까요"</td><td class="q">시나리오마다 (중요도, 난도)를 H/M/L로 매기죠. <strong>(H, H)</strong>부터 봅니다.</td><td>0044 §1</td></tr>
+      <tr><td>제약이 안 적혀 있다</td><td class="q">우리가 <strong>못 바꾸는 것</strong>이 뭔가요? 스택·규제·마감·팀 역량.</td><td>0037 §2</td></tr>
+    </tbody>
+  </table>
+
+  <h2>가용성·복원력</h2>
+  <table>
+    <thead><tr><th style="width:30%">들리는 말</th><th style="width:46%">되묻는 문장</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>"장애 나면 재시도합니다"</td><td class="q">복구는 있는데 <strong>감지</strong>가 없습니다. 지속 실패를 뭘로 판정하나요?</td><td>0038 §3</td></tr>
+      <tr><td>"Resilience4j 씁니다"</td><td class="q">도구 말고 전술로요. <strong>차단됐을 때 사용자는 무엇을 보나요?</strong> 500이면 가용성은 그대로입니다.</td><td>0038 §1 · 0040 §4</td></tr>
+      <tr><td>"재시도 3회 넣었습니다"</td><td class="q">이 경로에서 <strong>재시도하는 계층이 몇 개</strong>입니까? 하나만 남겨야 합니다. (3계층×4회 = 64배)</td><td>0043 §2</td></tr>
+      <tr><td>"타임아웃 3초로 했습니다"</td><td class="q">이 호출의 <strong>p99가 얼마</strong>입니까? 그리고 상위가 남긴 예산보다 짧습니까?</td><td>0043 §1</td></tr>
+      <tr><td>"99.99%를 목표로 합니다"</td><td class="q">연 <strong>52.6분</strong>입니다. 사람이 알림 받고 조치하는 경로는 여기서 탈락합니다.</td><td>0038 §2</td></tr>
+      <tr><td>"부하 오면 덜 중요한 걸 끕니다"</td><td class="q">그 등급을 <strong>지금</strong> 요청마다 붙여 둡시다. 장애 중에 정할 일이 아닙니다.</td><td>0043 §4</td></tr>
+    </tbody>
+  </table>
+
+  <h2>스타일·경계</h2>
+  <table>
+    <thead><tr><th style="width:30%">들리는 말</th><th style="width:46%">되묻는 문장</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>"MSA로 가시죠"</td><td class="q">이점 네 개는 <strong>제약 세 개를 지킬 때만</strong> 나옵니다. 서비스들이 데이터를 어떻게 나눠 갖나요?</td><td>0039 §1</td></tr>
+      <tr><td>거절해야 할 때</td><td class="q">프리미엄 조건 중 <strong>서비스 경계</strong>와 <strong>팀 수</strong>가 아직 아닙니다. 모듈러 모놀리스로 경계를 찾고, 안정되면 가장자리부터 떼어내죠.</td><td>0039 §5</td></tr>
+      <tr><td>"서비스 8개인데 항상 같이 배포합니다"</td><td class="q">경계가 틀렸습니다. 함께 배포해야 하는 것은 <strong>이미 하나의 서비스</strong>입니다.</td><td>0039 §2</td></tr>
+      <tr><td>"테이블 그룹으로 나눴습니다"</td><td class="q">두 서비스가 <strong>'상품'을 같은 뜻</strong>으로 씁니까? 같으면 경계가 아니라 파일을 나눈 겁니다.</td><td>0041 §1·§2</td></tr>
+      <tr><td>경계 검증</td><td class="q">이 경계를 <strong>원자적으로 넘어야 하는 트랜잭션</strong>이 있나요? 있으면 잘못 그었습니다.</td><td>0041 §2</td></tr>
+      <tr><td>"모듈 경계는 팀에서 합의했습니다"</td><td class="q">어긴 코드가 <strong>빌드에 실패</strong>하나요? 아니면 6개월 뒤에 없습니다.</td><td>0039 §4 · 0044 §3</td></tr>
+      <tr><td>"레거시를 3개월 안에 재작성"</td><td class="q">이 재작성으로 개선할 <strong>품질 속성 시나리오</strong>가 뭔가요? 없으면 가장자리부터 Strangler Fig로.</td><td>0041 §4</td></tr>
+    </tbody>
+  </table>
+
+  <h2>패턴·데이터</h2>
+  <table>
+    <thead><tr><th style="width:30%">들리는 말</th><th style="width:46%">되묻는 문장</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>"○○ 패턴 쓰겠습니다"</td><td class="q">이 패턴을 넣으면 <strong>어떤 새 문제가 생기죠?</strong> 그리고 그걸 메우는 짝 패턴은요?</td><td>0040 §1·§3</td></tr>
+      <tr><td>"캐시 붙였는데 여전히 느립니다"</td><td class="q">패턴을 더 세게 쓰기 전에 <strong>원인부터요.</strong> 캐시 적중률이 얼마입니까?</td><td>0040 §2</td></tr>
+      <tr><td>"Saga로 처리합니다"</td><td class="q">이 saga의 <strong>피벗은 어느 단계</strong>입니까? 그 뒤는 보상이 아니라 재시도여야 합니다.</td><td>0040 §5</td></tr>
+      <tr><td>"실패하면 앞 단계를 전부 보상합니다"</td><td class="q">결제 승인 뒤에도 보상하나요? 그건 보상이 아니라 <strong>새 사고</strong>입니다.</td><td>0040 §5</td></tr>
+      <tr><td>"보상 실패하면 로그 남깁니다"</td><td class="q">보상 실패는 <strong>돈이 어긋난 상태</strong>입니다. 알림과 정합성 검사가 있어야 합니다.</td><td>0042 §5</td></tr>
+      <tr><td>"중복은 조회해서 거릅니다"</td><td class="q"><strong>멱등 키가 뭡니까?</strong> 키 기록과 처리가 같은 트랜잭션인가요? 키에 유니크 제약이 있나요?</td><td>0042 §3·§4</td></tr>
+      <tr><td>"correlationId로 중복 제거합니다"</td><td class="q">그건 <strong>여러 메시지가 공유</strong>합니다. saga 2단계가 1단계에 막힙니다.</td><td>0042 §3</td></tr>
+      <tr><td>구독자가 여러 개인 pub/sub</td><td class="q">키가 메시지 ID뿐입니다. <strong>소비자 신원을 복합키에</strong> 넣어야 첫 소비자가 나머지를 안 막습니다.</td><td>0042 §3</td></tr>
+      <tr><td>추적 설계</td><td class="q"><strong>trace-id · saga ID · 멱등 키</strong>는 서로 다릅니다. 각각 무엇으로 잡을지 정하죠.</td><td>0043 §5</td></tr>
+    </tbody>
+  </table>
+
+  <h2>기록·강제</h2>
+  <table>
+    <thead><tr><th style="width:30%">상황</th><th style="width:46%">문장</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>결정이 내려졌을 때</td><td class="q">ADR로 남기죠. Context에 <strong>driver</strong>, Consequences에 <strong>포기한 것</strong>까지.</td><td>0044 §4</td></tr>
+      <tr><td>Consequences가 장점뿐일 때</td><td class="q">나쁜 것도 적어야 합니다. 비어 있으면 트레이드오프를 계산 안 한 겁니다.</td><td>0044 §4</td></tr>
+      <tr><td>설계 규칙을 정했을 때</td><td class="q">이걸 어기면 <strong>무엇이 실패</strong>합니까? 검사가 없으면 규칙이 아니라 희망입니다.</td><td>0044 §3</td></tr>
+      <tr><td>다이어그램이 복잡할 때</td><td class="q">Container 레벨 한 장과 Context 한 장으로 나누죠. 한 장에 다 담으면 아무도 안 봅니다.</td><td>0044 §5</td></tr>
+    </tbody>
+  </table>
+
+  <h2>면접에서 — 세 등급</h2>
+  <table>
+    <thead><tr><th style="width:10%">등급</th><th style="width:52%">답변</th><th>들리는 것</th></tr></thead>
+    <tbody>
+      <tr><td class="no">하</td><td>"MSA가 요즘 표준이라서요."</td><td>남이 정한 걸 따랐다</td></tr>
+      <tr><td style="color:#b45309;font-weight:700">중</td><td>"서비스를 독립 배포하고 싶었습니다."</td><td>이점은 안다. 대가는 모르겠다</td></tr>
+      <tr><td class="ok">상</td><td>"제약이 6주 마감에 팀 5명이었고, 품질 driver는 '이벤트 시작 시 10배 부하에서 p99 500ms 유지'였습니다.
+        MSA는 그 제약에서 운영 복잡도 비용을 감당 못 한다고 봤고, 모듈러 모놀리스 + 큐로 부하를 평탄화했습니다.
+        모듈 경계는 아키텍처 테스트로 강제했고요. <strong>대신 독립 배포와 독립 스케일은 포기했습니다.</strong>"</td>
+        <td>driver를 알고 <strong>포기한 것까지</strong> 말한다</td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm" style="margin-top:22px">
+    <strong>이 카드를 실제 문서에 적용한 사례:</strong>
+    <a href="../lessons/0045-review-in-practice-market-replay.html">레슨 0045 — 마켓 리플레이 백엔드 리뷰</a>
+    (비위험 6 · 위험 4 · 절충점 1 · 민감점 3).<br>
+    증상별로 어느 레슨을 열지는 <a href="../lessons/0044-evaluate-enforce-record.html#">0044 §6 진단 표</a>에 있다.
+    개념 관계도는 <a href="0020-architecture-design-map.html">지도 0020</a>.
+  </p>
+
+</main>
+</body>
+</html>

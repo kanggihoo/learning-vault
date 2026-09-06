@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>검증하고, 강제하고, 남기기</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .drill { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 16px 12px; margin: 14px 0; }
+    .quote { border-left: 4px solid #9aa5b1; padding: 8px 14px; margin: 12px 0; color: #3e4c59; font-size: 0.94rem; }
+    .quote cite { display: block; margin-top: 6px; font-size: 0.85rem; color: #6b7280; font-style: normal; }
+    .adr { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 18px 14px; margin: 14px 0; font-size: 0.92rem; }
+    .adr h4 { margin: 14px 0 4px; font-size: 0.9rem; color: #0f766e; text-transform: uppercase; letter-spacing: 0.04em; }
+    .adr p { margin: 4px 0; }
+    .diag td:first-child { font-weight: 600; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">아키텍처 설계 · 8/8 · 레슨 0044 · 지도의 <a href="../reference/0020-architecture-design-map.html#s8">§8</a>·<a href="../reference/0020-architecture-design-map.html#s9">§9</a> · <strong>아크 마무리</strong></p>
+  <h1>검증하고, 강제하고, 남기기</h1>
+
+  <p class="lead">
+    지금까지 일곱 레슨은 전부 <strong>결정을 내리는 법</strong>이었다.
+    남은 것은 결정 <em>이후</em>의 일 — <strong>무엇부터 볼지 정하고(우선순위), 맞는지 확인하고(검증),
+    시간이 지나도 지켜지게 만들고(강제), 왜 그랬는지 남기는 것(기록).</strong>
+    AI가 코드를 쓰는 환경에서 <strong>사람에게 확실히 남는 일</strong>이 정확히 이 넷이다.
+    코드는 생성되지만, 우선순위·트레이드오프·근거는 생성되지 않는다.
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    ① 유틸리티 트리로 <strong>무엇부터 설계할지</strong> 두 축으로 정한다.
+    ② 평가의 네 산출물(<strong>위험·비위험·민감점·절충점</strong>)로 설계 리뷰의 결과를 구조화한다.
+    ③ 결정을 <strong>자동으로 지키는 장치</strong>를 붙인다.
+    ④ ADR과 C4로 남긴다. 그리고 <strong>여덟 레슨 전체를 진단 표 하나로 회수한다.</strong>
+  </p>
+
+  <h2>§1 · 유틸리티 트리 — 무엇부터 볼지</h2>
+
+  <p>
+    <strong>무한한 품질 요구를 다 만족시키는 아키텍처는 없다.</strong>
+    그래서 평가 방법론들은 예외 없이 <em>우선순위를 정하는 단계</em>부터 시작한다.
+    유틸리티 트리가 그 도구다 — <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037</a>에서 쓴
+    6부 시나리오를 <strong>잎에 매달고 두 축으로 점수를 매긴다.</strong>
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 274" role="img" aria-label="효용에서 품질 속성, 관심사, 시나리오 잎으로 내려가는 유틸리티 트리">
+    <defs>
+      <marker id="u1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+    </defs>
+
+    <rect class="d-box-a" x="390" y="10" width="120" height="34"/>
+    <text class="d-title" x="450" y="33" text-anchor="middle">효용</text>
+
+    <path class="d-line" d="M420,44 L130,64" marker-end="url(#u1)"/>
+    <path class="d-line" d="M450,44 L450,64" marker-end="url(#u1)"/>
+    <path class="d-line" d="M480,44 L770,64" marker-end="url(#u1)"/>
+
+    <rect class="d-box" x="40" y="66" width="180" height="32"/>
+    <text class="d-label-sm" x="130" y="87" text-anchor="middle">성능</text>
+    <rect class="d-box" x="360" y="66" width="180" height="32"/>
+    <text class="d-label-sm" x="450" y="87" text-anchor="middle">가용성</text>
+    <rect class="d-box" x="680" y="66" width="180" height="32"/>
+    <text class="d-label-sm" x="770" y="87" text-anchor="middle">변경 용이성</text>
+
+    <path class="d-line" d="M130,98 L130,110" marker-end="url(#u1)"/>
+    <path class="d-line" d="M450,98 L450,110" marker-end="url(#u1)"/>
+    <path class="d-line" d="M770,98 L770,110" marker-end="url(#u1)"/>
+
+    <rect class="d-box-c" x="40" y="112" width="180" height="30"/>
+    <text class="d-label-sm" x="130" y="132" text-anchor="middle">응답 시간</text>
+    <rect class="d-box-c" x="360" y="112" width="180" height="30"/>
+    <text class="d-label-sm" x="450" y="132" text-anchor="middle">장애 복구</text>
+    <rect class="d-box-c" x="680" y="112" width="180" height="30"/>
+    <text class="d-label-sm" x="770" y="132" text-anchor="middle">신규 결제수단</text>
+
+    <path class="d-line" d="M130,142 L130,154" marker-end="url(#u1)"/>
+    <path class="d-line" d="M450,142 L450,154" marker-end="url(#u1)"/>
+    <path class="d-line" d="M770,142 L770,154" marker-end="url(#u1)"/>
+
+    <rect class="d-box-b" x="40" y="156" width="180" height="80" style="stroke:#b91c1c;stroke-width:2"/>
+    <text class="d-label-sm" x="130" y="176" text-anchor="middle">동시 500명 피크에</text>
+    <text class="d-label-sm" x="130" y="192" text-anchor="middle">주문 응답 p99가</text>
+    <text class="d-label-sm" x="130" y="208" text-anchor="middle">300ms 이내</text>
+    <text class="d-title" x="130" y="228" text-anchor="middle" style="fill:#b91c1c">(H, H) ← 먼저</text>
+
+    <rect class="d-box" x="360" y="156" width="180" height="80"/>
+    <text class="d-label-sm" x="450" y="176" text-anchor="middle">노드 1대가 죽어도</text>
+    <text class="d-label-sm" x="450" y="192" text-anchor="middle">30초 안에 정상</text>
+    <text class="d-label-sm" x="450" y="208" text-anchor="middle">트래픽으로 복귀</text>
+    <text class="d-title" x="450" y="228" text-anchor="middle">(H, M)</text>
+
+    <rect class="d-box" x="680" y="156" width="180" height="80"/>
+    <text class="d-label-sm" x="770" y="176" text-anchor="middle">새 결제수단 하나를</text>
+    <text class="d-label-sm" x="770" y="192" text-anchor="middle">기존 코드 수정 없이</text>
+    <text class="d-label-sm" x="770" y="208" text-anchor="middle">2인일 내 추가</text>
+    <text class="d-title" x="770" y="228" text-anchor="middle">(M, M)</text>
+
+    <text class="d-label" x="450" y="262" text-anchor="middle">잎마다 (비즈니스 중요도, 기술 난도)를 H/M/L로 — (H, H)부터 설계하고 평가한다</text>
+  </svg>
+  <figcaption>
+    두 축인 것이 핵심이다. <strong>중요하지만 쉬운 것</strong>은 알아서 되고,
+    <strong>어렵지만 안 중요한 것</strong>은 미뤄도 된다. 위험은 (H, H)에 몰려 있다.
+    잎이 6부 시나리오라는 것도 중요하다 — <strong>"성능 중요함" 같은 잎은 우선순위를 매길 수 없다.</strong>
+  </figcaption>
+  </figure>
+
+  <p class="sm">
+    실무에서는 ATAM 전체를 돌릴 일이 드물다. 하지만 <strong>유틸리티 트리 하나는 혼자서도 30분이면 그린다</strong> —
+    그리고 그게 "이번 스프린트에 무엇을 먼저 설계할지"에 대한 가장 설득력 있는 답이 된다.
+  </p>
+
+  <h2>§2 · 평가의 네 산출물</h2>
+
+  <p>
+    설계 리뷰의 결과를 "괜찮아 보여요"로 남기면 아무것도 안 남는다.
+    ATAM 계열이 정한 <strong>네 가지 이름</strong>을 쓰면 리뷰가 문서가 된다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:18%">산출물</th><th style="width:36%">정의</th><th>예</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>위험</strong><br><span class="sm">Risk</span></td>
+        <td>"문제가 될 가능성이 있는 아키텍처 결정"</td>
+        <td>"재시도가 세 계층에 있어 하위 호출이 27배로 증폭될 수 있다"</td>
+      </tr>
+      <tr>
+        <td><strong>비위험</strong><br><span class="sm">Nonrisk</span></td>
+        <td>"암묵적 가정에 기대고 있는, 좋은 결정" — <strong>가정을 명시하면 좋은 결정임이 확인된다</strong></td>
+        <td>"동기 호출 체인이 2단계인 것은 괜찮다 — 단, 각 서비스가 99.9%라는 가정 하에"</td>
+      </tr>
+      <tr>
+        <td><strong>민감점</strong><br><span class="sm">Sensitivity point</span></td>
+        <td>품질 목표 달성에 결정적인 속성. <strong>바꾸면 한 품질이 크게 달라진다</strong></td>
+        <td>"VPN의 기밀성 수준은 <strong>암호화 비트 수</strong>에 민감하다"</td>
+      </tr>
+      <tr>
+        <td><strong>절충점</strong><br><span class="sm">Tradeoff point</span></td>
+        <td>"둘 이상의 속성에 영향을 주며, 둘 이상에 대해 민감점인 속성"</td>
+        <td>같은 암호화 비트 수 — <strong>보안과 성능 양쪽</strong>에 큰 영향을 준다</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>혼자 쓰는 축소판 — AI 설계안에 그대로 적용한다.</strong> 세 질문이면 된다.
+    <br>① <em>"이 설계가 겨냥한 품질 속성 시나리오를 6부로 적어줘."</em> → 응답 측정 칸이 비면 근거가 없다는 뜻
+    <br>② <em>"그 시나리오를 만족시키는 경로를 구조 위에서 짚어줘."</em> → 못 짚으면 구조와 요구가 안 이어져 있다
+    <br>③ <em>"이 결정의 절충점은 무엇이고 무엇을 내줬어?"</em> → 답이 없으면 트레이드오프를 계산 안 한 것
+    <br><span class="mid">이 셋이 ATAM의 뼈대이고, 셋 다 "빈칸을 가리키는 질문"이라 반박당하지 않는다.</span>
+  </p>
+
+  <h2>§3 · 적합성 함수 — 결정을 자동으로 지킨다</h2>
+
+  <div class="quote">
+    아키텍처 적합성 함수는 어떤 아키텍처 특성에 대한 <strong>객관적인 무결성 평가</strong>를 제공한다.
+    (…) 아키텍트는 아키텍처 특성을 <strong>자동화되고 지속적인 방식으로</strong> 전달·검증·보존할 수 있다.
+    <cite>— Thoughtworks Technology Radar, <em>Architectural fitness function</em></cite>
+  </div>
+
+  <p>
+    <a href="./0039-architecture-styles-constraints-and-the-microservice-premium.html">0039</a>에서 한 말이 여기서 회수된다 —
+    <strong>"제약을 자동으로 강제하지 않는 스타일은 스타일이 아니라 희망이다."</strong>
+    합의는 마감 앞에서 깨지고, 한 번 깨지면 아무도 되돌리지 않는다.
+    결정을 지키는 유일한 방법은 <strong>어긴 것이 빌드나 배포를 막는 것</strong>이다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:32%">아키텍처 결정</th><th style="width:34%">이것을 지키는 자동 검사</th><th>없으면</th></tr></thead>
+    <tbody>
+      <tr><td>계층은 아래만 호출한다</td><td>계층 규칙 위반 import를 찾는 아키텍처 테스트 → <strong>빌드 실패</strong></td><td>6개월 뒤 계층이 사라져 있다</td></tr>
+      <tr><td>모듈은 공개 인터페이스로만 참조</td><td>빌드 도구의 모듈 분리 · 패키지 접근 제한</td><td>모듈러 모놀리스가 그냥 모놀리스가 된다</td></tr>
+      <tr><td>서비스는 자기 DB만 쓴다</td><td><strong>DB 계정을 서비스별로 분리</strong>하고 권한을 스키마 단위로 준다</td><td>0039 §2의 분산 모놀리스</td></tr>
+      <tr><td>순환 의존이 없다</td><td>의존 그래프 검사 → CI 실패</td><td>어느 순간 아무것도 따로 테스트할 수 없다</td></tr>
+      <tr><td>주문 API p99 300ms 이내</td><td>부하 테스트를 <strong>배포 게이트</strong>로</td><td>천천히 나빠지고 아무도 순간을 모른다</td></tr>
+      <tr><td>공개 API는 하위 호환을 깨지 않는다</td><td>계약 테스트 · 스키마 호환성 검사</td><td>배포하는 날 소비자가 깨진다</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>다섯 번째 줄이 이 아크 전체를 잇는다.</strong> "p99 300ms"를 자동 검사로 만들 수 있는 이유는
+    <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037</a>에서
+    <strong>응답 측정을 숫자로 적었기 때문</strong>이다.
+    "빨라야 한다"였다면 검사를 만들 수 없다.
+    <span class="mid">시나리오의 여섯 번째 칸이 여기서 실행 가능한 테스트가 된다 — 이게 6부로 쓰는 진짜 이유다.</span>
+  </p>
+
+  <h2>§4 · ADR — 왜를 남긴다</h2>
+
+  <p>
+    코드는 <strong>무엇을</strong> 했는지 말하지만 <strong>왜</strong>는 말하지 않는다.
+    그리고 AI가 코드를 쓰는 환경에서는 이 격차가 더 벌어진다 —
+    <strong>구현은 몇 분이면 나오는데, 그 선택을 강제한 driver는 어디에도 안 남는다.</strong>
+    ADR은 결정 하나당 마크다운 한 장이다.
+  </p>
+
+  <div class="adr">
+    <h4>ADR-012 · 주문-결제 정합성을 Saga로 처리한다</h4>
+    <p><strong>Status</strong> — accepted (2026-09-05)</p>
+    <h4>Context</h4>
+    <p>
+      결제는 외부 PG를 거치므로 주문 DB와 하나의 트랜잭션으로 묶을 수 없다 <span class="sm">(제약)</span>.
+      품질 driver는 <em>"PG 응답 지연이 지속되는 상황에서 주문-결제 상태 불일치가 5분 내 0건, 이중 청구 0건"</em>이다
+      <span class="sm">(품질 속성 시나리오)</span>. 팀은 5명, 발표까지 6주 <span class="sm">(제약)</span>.
+    </p>
+    <h4>Decision</h4>
+    <p>
+      주문 확정을 Saga로 처리한다. <strong>결제 승인을 피벗</strong>으로 두고, 그 앞 단계는 보상 가능,
+      그 뒤 단계는 멱등·재시도 가능으로 설계한다. 조율은 주문 서비스 내부 오케스트레이터로 시작한다.
+    </p>
+    <h4>Consequences</h4>
+    <p>
+      <span class="ok">+</span> 외부 PG 장애 시에도 주문 상태가 어긋난 채 남지 않는다.<br>
+      <span class="no">−</span> <strong>격리성이 없다.</strong> 주문 중간 상태가 조회 API에 노출되므로 <code>PENDING</code>을 프런트에서 처리해야 한다.<br>
+      <span class="no">−</span> 보상 로직이 도메인 지식이 되어 결제 정책이 바뀌면 함께 바뀐다.<br>
+      <span class="no">−</span> saga가 늘어나면 오케스트레이터를 별도 서비스로 빼야 한다 <span class="sm">(그때 ADR을 supersede)</span>.
+    </p>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:20%">필드</th><th>여기에 무엇이 들어가나 — 이 아크에서 배운 것</th></tr></thead>
+    <tbody>
+      <tr><td>Title</td><td>결정을 서술하는 제목. 번호와 함께 파일명이 된다.</td></tr>
+      <tr><td>Status</td><td><code>proposed</code> · <code>accepted</code> · <code>rejected</code> · <code>deprecated</code> · <code>superseded</code><br>
+          <strong>틀린 결정을 지우지 않고 supersede 한다</strong> — 왜 바뀌었는지가 남아야 한다.</td></tr>
+      <tr><td><strong>Context</strong></td><td><a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037의 driver 5종</a>이 그대로 들어갈 자리다.
+          제약·품질 속성 시나리오·주요 기능.</td></tr>
+      <tr><td>Decision</td><td>무엇을 하기로 했는가. 전술·패턴·스타일의 이름이 여기 나온다.</td></tr>
+      <tr><td><strong>Consequences</strong></td><td><strong>좋은 것과 나쁜 것 둘 다.</strong> 이 칸이 비면 트레이드오프를 계산하지 않은 것이다 —
+          <a href="../reference/0020-architecture-design-map.html#s7">지도 §7</a>의 절충점이 여기 산다.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    이 학습 저장소의 <code>learning-records/</code>가 정확히 같은 형식이다 —
+    <strong>"이때 무엇을 알게 됐고, 그래서 앞으로 무엇이 달라지는가"</strong>를 남기는 것.
+  </p>
+
+  <h2>§5 · C4 — 무엇을 그린다</h2>
+
+  <p>
+    다이어그램이 실패하는 방식은 거의 항상 같다 — <strong>한 장에 다 담으려다 아무도 못 읽는다.</strong>
+    C4는 이걸 <strong>줌 레벨</strong>로 푼다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:16%">레벨</th><th style="width:30%">무엇을 보여주나</th><th style="width:22%">독자</th><th>실무</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1. Context</strong></td><td>시스템 하나와 사용자·외부 시스템</td><td>비개발자 포함 전원</td><td class="ok">항상 그린다. 한 장.</td></tr>
+      <tr><td><strong>2. Container</strong></td><td>배포 단위 — 웹앱, API, DB, 큐, 워커</td><td>개발자·운영</td><td class="ok">가장 많이 쓴다. <strong>여기서 스타일이 보인다.</strong></td></tr>
+      <tr><td><strong>3. Component</strong></td><td>한 컨테이너 내부의 주요 구성 요소</td><td>그 컨테이너 개발자</td><td class="mid">복잡한 컨테이너에만.</td></tr>
+      <tr><td><strong>4. Code</strong></td><td>클래스 다이어그램 수준</td><td>거의 없음</td><td class="no">거의 안 그린다. IDE가 더 잘한다.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    보조 다이어그램: <strong>Dynamic</strong>(한 시나리오가 흐르는 순서 — Saga 설명에 좋다),
+    <strong>Deployment</strong>(인프라 배치), <strong>System Landscape</strong>(여러 시스템의 전경).
+    표기법·도구에 독립적이라 화이트보드로도 된다.
+  </p>
+
+  <p class="note">
+    <strong>ADR과 C4는 역할이 다르다.</strong> C4는 <strong>지금 무엇이 있는지</strong>를 보여주고,
+    ADR은 <strong>왜 그렇게 됐는지</strong>를 남긴다. 둘 중 하나만 있으면
+    "이 큐가 왜 여기 있죠?"에 답할 수 없거나(C4만), "그래서 지금 어떻게 생겼죠?"에 답할 수 없다(ADR만).
+  </p>
+
+  <h2>§6 · 여덟 레슨 회수 — 증상 진단 표</h2>
+
+  <p>
+    실제로 쓰이는 방식은 "레슨을 복습한다"가 아니라 <strong>"이 증상이 보이는데 어디를 열지"</strong>다.
+    이 표를 <a href="../reference/0020-architecture-design-map.html">지도</a>와 함께 북마크해 두면 된다.
+  </p>
+
+  <table class="diag">
+    <thead><tr><th style="width:44%">증상 / 상황</th><th>열 곳</th></tr></thead>
+    <tbody>
+      <tr><td>"이 구조를 왜 이렇게 했는지 설명을 못 하겠다"</td><td><a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037 §2</a> — driver 5종</td></tr>
+      <tr><td>요구가 "빨라야 한다"로만 적혀 있다</td><td><a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037 §3</a> — 시나리오 6부</td></tr>
+      <tr><td>장애가 나면 한참 뒤에 안다</td><td><a href="./0038-tactics-detect-recover-prevent.html">0038 §2</a> — 감지 전술과 MTTD</td></tr>
+      <tr><td>"이 패턴 쓰죠"에 뭘 되물어야 할지 모르겠다</td><td><a href="./0040-patterns-never-come-alone.html">0040 §1</a> — 문제·해법·대가 세 칸</td></tr>
+      <tr><td>MSA인데 이점이 하나도 안 보인다</td><td><a href="./0039-architecture-styles-constraints-and-the-microservice-premium.html">0039 §2</a> — 분산 모놀리스 진단표</td></tr>
+      <tr><td>"MSA로 가시죠"를 거절할 근거가 필요하다</td><td><a href="./0039-architecture-styles-constraints-and-the-microservice-premium.html">0039 §5</a> — 프리미엄 체크리스트</td></tr>
+      <tr><td>서비스를 나눴는데 계속 같이 배포한다</td><td><a href="./0041-boundaries-bounded-context-and-conways-law.html">0041 §2</a> — 경계 검사 세 질문</td></tr>
+      <tr><td>서비스를 어디서 잘라야 할지 모르겠다</td><td><a href="./0041-boundaries-bounded-context-and-conways-law.html">0041 §2</a> — 언어가 바뀌는 곳</td></tr>
+      <tr><td>캐시를 붙였는데 여전히 느리다</td><td><a href="./0040-patterns-never-come-alone.html">0040 §2</a> — 원인이 패턴을 고른다</td></tr>
+      <tr><td>회로 차단기가 있는데 가용성이 그대로다</td><td><a href="./0040-patterns-never-come-alone.html">0040 §4</a> — Open일 때 무엇을 응답하나</td></tr>
+      <tr><td>중복 결제·이중 차감이 났다</td><td><a href="./0042-idempotency-the-shared-part.html">0042 §3·§4</a> — 멱등 키와 유니크 제약</td></tr>
+      <tr><td>보상이 실패했는데 조용히 어긋난 채로 남았다</td><td><a href="./0042-idempotency-the-shared-part.html">0042 §5</a> — 보상 실패와 알림</td></tr>
+      <tr><td>재시도를 넣었는데 오히려 더 잘 죽는다</td><td><a href="./0043-choosing-the-numbers.html">0043 §2</a> — 재시도 예산, 한 계층만</td></tr>
+      <tr><td>타임아웃 값을 얼마로 할지 못 정하겠다</td><td><a href="./0043-choosing-the-numbers.html">0043 §1</a> — p99와 데드라인 전파</td></tr>
+      <tr><td>부하가 오면 뭘 먼저 끌지 안 정해져 있다</td><td><a href="./0043-choosing-the-numbers.html">0043 §4</a> — 중요도 등급과 전파</td></tr>
+      <tr><td>설계 규칙이 시간이 지나면 무너진다</td><td><strong>0044 §3</strong> — 적합성 함수</td></tr>
+      <tr><td>왜 그렇게 했는지 아무도 기억 못 한다</td><td><strong>0044 §4</strong> — ADR</td></tr>
+      <tr><td>무엇부터 설계할지 우선순위가 안 선다</td><td><strong>0044 §1</strong> — 유틸리티 트리 (H, H)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>§7 · 확인 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> 유틸리티 트리의 잎에 붙이는 두 축은?</p>
+    <button type="button" data-target="h1" data-answer="correct">비즈니스 중요도와 기술 난도</button>
+    <button type="button" data-target="h1" data-answer="wrong" data-hint="오답. 공수와 버그는 결과지 우선순위 축이 아니다.">개발 공수와 예상 버그 개수</button>
+    <button type="button" data-target="h1" data-answer="wrong" data-hint="오답. 코드 양과 인원은 품질 요구와 무관하다.">코드 라인 수와 팀 인원 수</button>
+    <button type="button" data-target="h1" data-answer="wrong" data-hint="오답. 일정과 예산은 제약이지 시나리오 우선순위 축이 아니다.">출시 일정과 마케팅 예산액</button>
+    <p class="answer" id="h1"></p>
+
+    <p><strong>Q2.</strong> 절충점(tradeoff point)의 정의는?</p>
+    <button type="button" data-target="h2" data-answer="correct">둘 이상 품질에 작용하는 민감점</button>
+    <button type="button" data-target="h2" data-answer="wrong" data-hint="오답. 한 품질만 바꾸는 것은 민감점이지 절충점이 아니다.">한 품질만 크게 바꾸는 결정점</button>
+    <button type="button" data-target="h2" data-answer="wrong" data-hint="오답. 그건 비위험(nonrisk)의 정의다.">가정을 확인해 안전한 좋은 결정</button>
+    <button type="button" data-target="h2" data-answer="wrong" data-hint="오답. 그건 위험(risk)의 정의다.">문제 가능성이 있는 설계 결정</button>
+    <p class="answer" id="h2"></p>
+
+    <p><strong>Q3.</strong> 적합성 함수가 필요한 이유는?</p>
+    <button type="button" data-target="h3" data-answer="correct">합의는 시간이 지나면 무너진다</button>
+    <button type="button" data-target="h3" data-answer="wrong" data-hint="오답. 테스트는 문서를 대신하지 못하고, ADR이 따로 필요하다.">테스트 코드가 문서를 대신한다</button>
+    <button type="button" data-target="h3" data-answer="wrong" data-hint="오답. 검사는 위반을 알릴 뿐 성능을 개선하지 않는다.">성능이 자동으로 좋아지게 된다</button>
+    <button type="button" data-target="h3" data-answer="wrong" data-hint="오답. 오히려 결정 기록(ADR)은 여전히 필요하다.">설계 문서를 안 써도 되게 한다</button>
+    <p class="answer" id="h3"></p>
+  </section>
+
+  <h2>§8 · 이 아크의 30초 요약</h2>
+
+  <div class="drill">
+    <p>
+      <strong>아키텍처는 구조를 고르는 일이 아니라, 무엇이 구조를 강제하는지 찾아 거기에 답하는 일이다.</strong>
+    </p>
+    <p>
+      못 바꾸는 것들(<strong>driver</strong>)을 먼저 찾고 → 그중 품질 속성을 <strong>6부 시나리오</strong>로 써서 검증 가능하게 만들고
+      → 그걸 달성할 <strong>전술</strong>을 감지·복구·예방 같은 범주로 빠짐없이 고르고
+      → 그 전술들이 굳어 <strong>패턴</strong>이 되고, 패턴들이 사는 집이 <strong>스타일</strong>이다.
+      스타일의 이점은 <strong>제약을 지킨 대가</strong>로 나오고, 제약을 지키게 하는 건 코드가 아니라
+      <strong>조직</strong>과 <strong>자동 검사</strong>다. 그리고 왜 그랬는지는 <strong>ADR</strong>에 남는다.
+    </p>
+    <p class="sm">
+      리뷰에서 이 아크가 하는 일은 하나다 — <strong>취향 싸움을 빈칸 지적으로 바꾼다.</strong>
+      "이거 별로인데요"는 반박당하지만, "응답 측정 칸이 비었는데요"는 반박당하지 않는다.
+    </p>
+  </div>
+
+  <p><strong>1차 출처:</strong></p>
+  <ul>
+    <li><a href="https://www.informit.com/articles/article.aspx?p=24371&amp;seqNum=8">Clements, Kazman &amp; Klein — <em>Evaluating Software Architectures</em>, 평가의 산출물</a>
+        — §2의 원문. 위험·비위험·민감점·절충점의 정의와 VPN 암호화 예시. <strong>하나만 읽는다면 이것.</strong></li>
+    <li><a href="https://www.thoughtworks.com/en-us/radar/techniques/architectural-fitness-function">Thoughtworks — Architectural fitness function</a>
+        — §3의 정의 출처. <span class="sm">2018년 Radar 항목이라 현재판에는 없다. 개념 자체는 <em>Building Evolutionary Architectures</em>(Ford·Parsons·Kua)가 정본.</span></li>
+    <li><a href="https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions">Michael Nygard — Documenting Architecture Decisions (2011)</a> ·
+        <a href="https://adr.github.io/">adr.github.io</a> — ADR 원문과 템플릿 모음.</li>
+    <li><a href="https://c4model.com/">c4model.com</a> — Simon Brown. 레벨 정의와 예시.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="../reference/0020-architecture-design-map.html">지도 — 아키텍처 설계 지도</a> ·
+    <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037</a> ·
+    <a href="./0038-tactics-detect-recover-prevent.html">0038</a> ·
+    <a href="./0039-architecture-styles-constraints-and-the-microservice-premium.html">0039</a> ·
+    <a href="./0040-patterns-never-come-alone.html">0040</a> ·
+    <a href="./0041-boundaries-bounded-context-and-conways-law.html">0041</a> ·
+    <a href="./0042-idempotency-the-shared-part.html">0042</a> ·
+    <a href="./0043-choosing-the-numbers.html">0043</a>.
+  </p>
+
+  <p class="note">
+    <strong>여기서 멈춰도 되고, 이어가도 된다.</strong> 이 아크가 안 다룬 것 중 물어볼 만한 것:
+    <strong>DDD 전술 패턴</strong>(애그리게이트·리포지토리 — 경계 <em>안쪽</em>의 설계) ·
+    <strong>이벤트 스키마 진화</strong>(호환성 규칙과 버저닝) ·
+    <strong>멀티테넌시</strong>(격리 수준과 비용) ·
+    <strong>실제 설계 문서 리뷰</strong>(네가 가진 문서를 이 아크의 어휘로 같이 읽기).
+    마지막 것이 가장 값이 클 것 같다 — 배운 어휘가 실제 도구가 되는지 확인하는 유일한 방법이라서.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

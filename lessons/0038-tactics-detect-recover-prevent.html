@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>전술(Tactic) — 감지 없는 복구는 복구가 아니다</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .drill { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 16px 12px; margin: 14px 0; }
+    .drill p.q { font-weight: 700; margin-bottom: 6px; }
+    .quote { border-left: 4px solid #9aa5b1; padding: 8px 14px; margin: 12px 0; color: #3e4c59; font-size: 0.94rem; }
+    .formula { text-align: center; font-size: 1.05rem; padding: 12px; background: #eef7f5;
+               border-radius: 8px; margin: 14px 0; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">아키텍처 설계 · 2/N · 레슨 0038 · 지도의 <a href="../reference/0020-architecture-design-map.html#s3">§3</a>을 판다</p>
+  <h1>전술(Tactic) — 감지 없는 복구는 복구가 아니다</h1>
+
+  <p class="lead">
+    <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">앞 레슨</a>에서 품질 속성을
+    6부 시나리오로 쓸 수 있게 됐다. 다음 질문은 하나다 — <strong>그래서 무엇으로 달성하나?</strong>
+    그 답의 최소 단위가 <strong>전술(tactic)</strong>이다. 전술은 구조를 만들지 않고,
+    "무엇을 할 것인가" 한 가지만 말한다. 그래서 <strong>도구가 바뀌어도 남는다.</strong>
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    ① 설계안에서 <strong>빠진 전술 범주를 이름 붙여</strong> 지적할 수 있다 — "복구는 있는데 감지가 없다".
+    ② 모든 전술이 만들어내는 <strong>새로운 문제</strong>를 짝지어 말할 수 있다 — "재시도를 넣으면 멱등성이 필요해진다".
+    이 두 개가 설계 리뷰에서 가장 자주 쓰이는 기술이다.
+  </p>
+
+  <h2>§1 · 전술은 명사가 아니라 동사다</h2>
+
+  <p>
+    설계 회의에서 이런 대화가 오간다.
+  </p>
+
+  <div class="quote">
+    <strong>Q.</strong> 결제 서비스가 죽으면 어떻게 되나요?<br>
+    <strong>A.</strong> Resilience4j로 서킷 브레이커 걸어 뒀습니다.
+  </div>
+
+  <p>
+    이 답에는 <strong>결정이 없다.</strong> 라이브러리 이름과 패턴 이름만 있다.
+    같은 말을 전술 층에서 다시 하면 이렇게 된다 —
+    <em>"연속 실패를 <strong>감지</strong>해서 호출을 차단하고, 차단된 동안은 캐시된 마지막 값으로
+    <strong>우아하게 성능을 낮춰</strong> 응답한다. 30초 뒤 <strong>재시도</strong>해서 살아났으면 복귀한다."</em>
+  </p>
+
+  <p>
+    차이는 두 가지다. 첫째, 전술 문장은 <strong>검증할 수 있다</strong> — "차단된 동안 무엇을 응답하나요?"에
+    답이 들어 있다. 둘째, <strong>도구를 갈아도 문장이 그대로 남는다.</strong>
+    Resilience4j를 쓰든 Envoy 사이드카를 쓰든 직접 짜든, 결정은 같다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:32%">들리는 말 (도구·패턴 이름)</th><th>전술로 번역하면</th></tr></thead>
+    <tbody>
+      <tr><td>"Redis 캐시를 뒀습니다"</td><td>데이터 <strong>복제본을 유지</strong>해서 원본 조회 수요를 줄인다 <span class="sm">(성능 · 자원 관리)</span></td></tr>
+      <tr><td>"Kafka를 넣었습니다"</td><td>큐로 <strong>수요를 평탄화</strong>하고, 생산자·소비자 사이에 <strong>중개자를 둔다</strong> <span class="sm">(성능 + 변경 용이성)</span></td></tr>
+      <tr><td>"헬스체크가 있습니다"</td><td>주기적으로 <strong>결함을 감지</strong>하고, 실패한 인스턴스를 <strong>서비스에서 제외</strong>한다 <span class="sm">(가용성 · 감지 + 예방)</span></td></tr>
+      <tr><td>"JWT를 씁니다"</td><td><strong>액터를 인증</strong>하고, 검증을 위해 매번 저장소를 조회하는 <strong>수요를 줄인다</strong> <span class="sm">(보안 + 성능)</span></td></tr>
+      <tr><td>"인터페이스로 분리했습니다"</td><td>구현을 <strong>캡슐화</strong>하고 바인딩을 <strong>지연</strong>한다 <span class="sm">(변경 용이성)</span></td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>왜 이 번역이 리뷰 기술인가.</strong> 오른쪽 칸으로 말하면 <em>"그럼 감지는 어떻게 하죠?"</em>,
+    <em>"복제본이 원본과 어긋나면요?"</em> 같은 다음 질문이 자동으로 생긴다.
+    왼쪽 칸으로 말하면 다음 질문이 안 나온다 — <strong>도구 이름은 대화를 끝내고, 전술은 대화를 연다.</strong>
+  </p>
+
+  <h2>§2 · 가용성의 세 칸은 시간축 위에 있다</h2>
+
+  <p>
+    전술 카탈로그가 왜 하필 <strong>감지 · 복구 · 예방</strong>으로 나뉘는지는, 장애를 시간축에 펼쳐 보면 바로 보인다.
+    셋은 종류가 다른 게 아니라 <strong>서로 다른 구간에서 일한다.</strong>
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 268" role="img" aria-label="장애 타임라인 위에 예방·감지·복구 전술이 각각 다른 구간에서 작동하는 그림">
+    <defs>
+      <marker id="t1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+    </defs>
+
+    <rect class="d-box-c" x="50" y="44" width="170" height="52"/>
+    <text class="d-title" x="135" y="66" text-anchor="middle">예방 전술</text>
+    <text class="d-label-sm" x="135" y="84" text-anchor="middle">트랜잭션 · 서비스에서 제외</text>
+
+    <rect class="d-box-b" x="220" y="44" width="190" height="52"/>
+    <text class="d-title" x="315" y="66" text-anchor="middle">감지 전술</text>
+    <text class="d-label-sm" x="315" y="84" text-anchor="middle">하트비트 · 핑/에코 · 예외 감지</text>
+
+    <rect class="d-box-a" x="410" y="44" width="290" height="52"/>
+    <text class="d-title" x="555" y="66" text-anchor="middle">복구 전술</text>
+    <text class="d-label-sm" x="555" y="84" text-anchor="middle">재시도 · 페일오버 · 롤백 · 우아한 성능 저하</text>
+
+    <text class="d-label-sm" x="785" y="74" text-anchor="middle">정상</text>
+
+    <path class="d-line" d="M50,140 L862,140" marker-end="url(#t1)"/>
+    <path class="d-line" d="M220,128 L220,152"/>
+    <path class="d-line" d="M410,128 L410,152"/>
+    <path class="d-line" d="M700,128 L700,152"/>
+    <text class="d-label-sm" x="220" y="170" text-anchor="middle">결함 발생</text>
+    <text class="d-label-sm" x="410" y="170" text-anchor="middle">감지됨</text>
+    <text class="d-label-sm" x="700" y="170" text-anchor="middle">정상 복귀</text>
+    <text class="d-label-sm" x="120" y="170" text-anchor="middle">정상 운영</text>
+
+    <path class="d-line-d" d="M220,190 L410,190"/>
+    <path class="d-line-d" d="M220,184 L220,196"/>
+    <path class="d-line-d" d="M410,184 L410,196"/>
+    <text class="d-label-sm" x="315" y="208" text-anchor="middle">MTTD — 아무도 모르는 시간</text>
+
+    <path class="d-line-a" d="M220,228 L700,228"/>
+    <path class="d-line-a" d="M220,222 L220,234"/>
+    <path class="d-line-a" d="M700,222 L700,234"/>
+    <text class="d-label" x="460" y="250" text-anchor="middle">사용자가 겪는 장애 시간 — SLA에서 깎이는 구간</text>
+
+    <text class="d-label-sm" x="862" y="196" text-anchor="end" style="fill:#b91c1c">감지가 늦으면 이 구간 전체가 길어진다</text>
+  </svg>
+  <figcaption>
+    감지 전술은 장애를 <strong>막지도 고치지도 못한다.</strong> 그런데도 세 범주 중 하나인 이유는,
+    <strong>MTTD가 그대로 장애 시간에 더해지기</strong> 때문이다. 5분 만에 고칠 수 있어도 40분 뒤에 알면 45분짜리 장애다.
+  </figcaption>
+  </figure>
+
+  <p>가용성을 숫자로 쓰면 이 관계가 더 분명해진다.</p>
+
+  <p class="formula">
+    가용성 = MTBF ÷ (MTBF + <strong>장애 시간</strong>) &nbsp;&nbsp;·&nbsp;&nbsp;
+    장애 시간 = <strong>MTTD</strong> + 복구 시간
+  </p>
+
+  <p>
+    Google SRE의 가용성 표를 보면 이 몇 분이 왜 중요한지 감이 온다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:20%">가용성</th><th style="width:26%">연간 허용 장애</th><th style="width:26%">월간</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td class="num">99%</td><td class="num">3.65일</td><td class="num">7.2시간</td><td>사내 도구 수준</td></tr>
+      <tr><td class="num">99.9% <span class="sm">(3 nines)</span></td><td class="num">8.76시간</td><td class="num">43.2분</td><td>일반적인 서비스 SLA</td></tr>
+      <tr><td class="num">99.99% <span class="sm">(4 nines)</span></td><td class="num">52.6분</td><td class="num">4.32분</td><td><strong>사람이 알아채고 대응하면 이미 초과</strong></td></tr>
+      <tr><td class="num">99.999% <span class="sm">(5 nines)</span></td><td class="num">5.26분</td><td class="num">25.9초</td><td>자동 감지·자동 복구 외에는 불가능</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>여기서 설계 결론이 하나 나온다.</strong> "99.99%를 목표로 합니다"라고 말한 순간
+    <strong>사람이 알림을 받고 조치하는 복구 경로는 자동으로 탈락한다.</strong> 연간 예산이 52분인데
+    새벽에 알림 받고 노트북 여는 데만 15분이 든다. 이건 취향이 아니라 산수다 —
+    <span class="mid">품질 속성 시나리오의 응답 측정이 전술 선택을 강제하는 가장 깔끔한 예다.</span>
+  </p>
+
+  <h2>§3 · 진단 연습 — 어느 칸이 비었나</h2>
+
+  <p>
+    아래 설계안을 읽고 <strong>감지 · 복구 · 예방</strong> 중 어느 칸이 비었는지 먼저 답해 본다.
+  </p>
+
+  <div class="drill">
+    <p class="q">① "결제 API 호출은 3회까지 재시도하고, 그래도 실패하면 실패 응답을 반환합니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>감지가 비었다.</strong> 재시도(복구)는 있는데 <em>"지속적 실패"를 판정하는 장치</em>가 없다.
+      그래서 상대가 완전히 죽어 있어도 모든 요청이 3번씩 두드린다.</p>
+      <p><strong>그리고 이건 단순히 비효율이 아니라 위험이다.</strong> Google SRE 문서의 계산 —
+      3개 계층이 각각 4번 시도하면 <strong>사용자 요청 하나가 DB에 64번(4³)</strong> 도달한다.
+      죽어가는 백엔드에 재시도가 몰리면 회복 자체를 막는다.</p>
+      <p class="sm">필요한 것: 실패율·연속 실패 <strong>감지</strong> → 차단(=서비스에서 제외) → 주기적 재시도로 복귀.
+      이 세 개를 묶어 이름 붙인 게 <strong>Circuit Breaker 패턴</strong>이다. 패턴이 전술의 조합이라는 게 여기서 보인다.</p>
+    </details>
+
+    <p class="q">② "인스턴스가 죽으면 로드밸런서가 30초마다 헬스체크로 걸러내고 트래픽을 나머지로 보냅니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>예방이 비었다.</strong> 감지(헬스체크)와 복구(트래픽 재분배)는 있다.
+      하지만 <em>왜 죽는지</em>에 손을 안 댔다.</p>
+      <p>가장 흔한 시나리오: 한 인스턴스가 과부하로 죽고 → 트래픽이 남은 인스턴스로 몰리고 →
+      그것도 죽고 → <strong>연쇄 붕괴</strong>. 감지·복구만으로는 이걸 못 막는다.
+      필요한 예방 전술은 <strong>수요 제어</strong> 쪽에 있다 — 레이트 리밋, 큐 크기 상한, 부하 차단(load shedding).</p>
+      <p class="sm">덤: 헬스체크 주기 30초는 그 자체로 MTTD 하한이 30초라는 뜻이다. §2의 표와 대조해 보자.</p>
+    </details>
+
+    <p class="q">③ "모든 쓰기는 트랜잭션으로 묶고, 실패 시 롤백합니다. 매일 새벽 전체 백업을 뜹니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>감지가 비었다</strong> — 그런데 종류가 다르다. 예방(트랜잭션)과 복구(백업)는 강하다.
+      문제는 <strong>"데이터가 잘못됐다"는 걸 언제 아는가</strong>다.</p>
+      <p>백업이 있어도 오염이 3일 전에 시작됐다는 걸 오늘 알면 3일치를 버려야 한다.
+      필요한 것: <strong>정합성 검사(sanity checking)</strong>와 <strong>상태 모니터링</strong> —
+      잔액 합계 검증, 주문-결제 상태 불일치 감시 같은 것.</p>
+      <p class="sm">앞 레슨 §4 실습 A의 응답 측정("불일치 5분 내 0건")이 정확히 이 전술을 요구하고 있었다.</p>
+    </details>
+  </div>
+
+  <p class="note">
+    세 문제의 공통점: <strong>답이 "더 튼튼하게 만드세요"가 아니라 특정 칸의 이름</strong>이었다.
+    이게 전술 카탈로그의 유일한 쓸모다. 막연한 불안("이거 장애 나면 어떡하죠")을
+    <strong>구체적인 빈칸</strong>으로 바꿔 준다. 빈칸은 반박할 수 없고, 불안은 반박당한다.
+  </p>
+
+  <h2>§4 · 모든 전술은 새 문제를 만든다</h2>
+
+  <p>
+    전술을 하나 넣으면 품질 하나가 올라가고 <strong>반드시 다른 것이 내려간다.</strong>
+    설계 설명에서 이 짝을 말하지 못하면 아직 그 전술을 이해한 게 아니다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:22%">전술</th><th style="width:30%">얻는 것</th><th>대신 생기는 문제</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>재시도</strong></td>
+        <td>일시적 실패를 사용자에게 안 보이게 함</td>
+        <td><span class="no">중복 실행</span> → <strong>멱등성이 필수가 된다.</strong> 그리고 <strong>장애 증폭</strong> —
+            SRE 문서의 예: 10,000 QPS 한계에 10,100이 들어오면 초과분 100의 재시도가
+            "200 → 300 QPS"로 <strong>자라난다</strong>.</td>
+      </tr>
+      <tr>
+        <td><strong>지수 백오프</strong></td>
+        <td>재시도 간격을 벌려 증폭을 완화</td>
+        <td>클라이언트들이 <strong>동시에 깨어난다</strong>(재시도 물결). 그래서 <strong>지터</strong>가 필요하다 —
+            AWS 시뮬레이션에서 full jitter는 클라이언트 총 작업량을 <strong>절반 이하</strong>로 줄였다.</td>
+      </tr>
+      <tr>
+        <td><strong>타임아웃</strong></td>
+        <td>느린 의존이 내 스레드를 잡아먹는 걸 막음</td>
+        <td>짧으면 <strong>성공했을 요청을 죽이고</strong>(그리고 재시도를 유발), 길면 스레드 고갈을 못 막는다.
+            정상 응답 분포(p99)를 모르면 정할 수 없다.</td>
+      </tr>
+      <tr>
+        <td><strong>데이터 복제본 유지</strong><br><span class="sm">(캐시·리드 레플리카)</span></td>
+        <td>읽기 지연·부하 대폭 감소</td>
+        <td><span class="no">무효화 문제</span>. 언제 버릴지, 스테일을 얼마나 허용할지가 <strong>새로운 품질 속성 결정</strong>이 된다.
+            "얼마나 오래된 데이터까지 괜찮은가"에 답이 없으면 캐시를 못 넣는다.</td>
+      </tr>
+      <tr>
+        <td><strong>우아한 성능 저하</strong></td>
+        <td>일부가 죽어도 핵심 기능은 산다</td>
+        <td><strong>무엇을 버릴지 누가 정하나.</strong> 이건 기술 결정이 아니라 비즈니스 결정이고,
+            미리 안 정해 두면 장애 중에 정하게 된다.</td>
+      </tr>
+      <tr>
+        <td><strong>중개자 사용</strong><br><span class="sm">(큐·게이트웨이)</span></td>
+        <td>결합도 감소, 부하 평탄화</td>
+        <td>홉이 늘어 <strong>지연 증가</strong>, 중개자 자체가 <strong>새 장애점</strong>,
+            그리고 <strong>최종 일관성</strong>이 도입된다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>리뷰 문장으로 바로 쓰는 법.</strong> AI가 "재시도를 추가했습니다"라고 하면
+    <em>"재시도가 붙었으니 이 엔드포인트는 이제 멱등이어야 하는데, 멱등 키는 무엇으로 잡았나요?
+    그리고 대상이 완전히 죽었을 때 재시도를 멈출 조건은요?"</em>
+    — 두 질문 모두 <strong>표의 오른쪽 칸에서 자동으로 나온다.</strong>
+  </p>
+
+  <h2>§5 · 같은 방법, 다른 품질</h2>
+
+  <p>
+    가용성에서 배운 방식 — <strong>범주를 세워 놓고 빈칸을 찾는다</strong> — 은 그대로 다른 품질에 적용된다.
+    범주만 다르다. 그리고 품질마다 <strong>사람들이 습관적으로 비워 두는 칸</strong>이 정해져 있다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:16%">품질</th><th style="width:34%">범주</th><th style="width:22%">거의 항상 채워지는 칸</th><th>거의 항상 비는 칸</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>가용성</strong></td>
+        <td>감지 · 복구 · 예방</td>
+        <td>복구 <span class="sm">(재시도·다중화)</span></td>
+        <td><span class="no">감지</span> — 언제 문제인지 판정하는 장치</td>
+      </tr>
+      <tr>
+        <td><strong>성능</strong></td>
+        <td>수요 제어 · 자원 관리</td>
+        <td>자원 관리 <span class="sm">(스케일아웃·캐시)</span></td>
+        <td><span class="no">수요 제어</span> — 레이트 리밋, 이벤트 우선순위, 큐 상한.
+            <span class="sm">자원은 유한한데 수요를 안 막으면 증설이 항상 진다.</span></td>
+      </tr>
+      <tr>
+        <td><strong>보안</strong></td>
+        <td>탐지 · 저항 · 대응 · 복구</td>
+        <td>저항 <span class="sm">(인증·인가·암호화)</span></td>
+        <td><span class="no">탐지와 복구</span> — 이상 탐지, <strong>감사 추적</strong>.
+            <span class="sm">"뚫렸을 때 무엇이 새어 나갔는지 알 수 있나"에 답이 없다.</span></td>
+      </tr>
+      <tr>
+        <td><strong>변경 용이성</strong></td>
+        <td>응집도 증가 · 결합도 감소 · 바인딩 지연</td>
+        <td>결합도 감소 <span class="sm">(인터페이스 추가)</span></td>
+        <td><span class="no">응집도 증가</span> — 책임 재배치.
+            <span class="sm">인터페이스만 늘리고 책임은 안 옮기면 결합만 숨겨진다.</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    전체 전술 목록은 <a href="../reference/0020-architecture-design-map.html#s3">지도 §3</a>에 있다. 외우지 말고
+    설계 리뷰 때 열어 두는 체크리스트로 쓴다.
+  </p>
+
+  <h2>§6 · 확인 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> 재시도만 넣고 차단 장치가 없을 때의 가장 큰 위험은?</p>
+    <button type="button" data-target="b1" data-answer="correct">장애를 증폭시켜 더 키운다</button>
+    <button type="button" data-target="b1" data-answer="wrong" data-hint="오답. 속도가 아니라 죽어가는 대상에 부하를 더 얹는 것이 문제다.">응답 시간이 조금 느려진다</button>
+    <button type="button" data-target="b1" data-answer="wrong" data-hint="오답. 로그는 결과일 뿐 위험의 본체가 아니다.">로그 양이 크게 늘어난다</button>
+    <button type="button" data-target="b1" data-answer="wrong" data-hint="오답. 메모리보다 훨씬 앞서 대상 서비스가 무너진다.">메모리 사용량이 증가한다</button>
+    <p class="answer" id="b1"></p>
+
+    <p><strong>Q2.</strong> 감지까지 걸리는 시간(MTTD)이 길어지면 직접 나빠지는 것은?</p>
+    <button type="button" data-target="b2" data-answer="correct">장애 시간이 늘어 가용성이 준다</button>
+    <button type="button" data-target="b2" data-answer="wrong" data-hint="오답. 감지가 늦다고 결함이 더 자주 나지는 않는다.">결함 발생 간격이 짧아진다</button>
+    <button type="button" data-target="b2" data-answer="wrong" data-hint="오답. 처리량은 감지 속도와 직접 관계가 없다.">처리량이 늘어 큐가 길어진다</button>
+    <button type="button" data-target="b2" data-answer="wrong" data-hint="오답. 응집도는 변경 용이성 쪽 개념이다.">응집도가 낮아 결합이 늘어난다</button>
+    <p class="answer" id="b2"></p>
+
+    <p><strong>Q3.</strong> "Resilience4j를 씁니다"가 설계 근거로 약한 이유는?</p>
+    <button type="button" data-target="b3" data-answer="correct">도구 이름은 전술을 말해주지 않는다</button>
+    <button type="button" data-target="b3" data-answer="wrong" data-hint="오답. 라이브러리 성능이 문제가 아니라 답에 결정이 없는 것이 문제다.">그 라이브러리는 성능이 좋지 않아서</button>
+    <button type="button" data-target="b3" data-answer="wrong" data-hint="오답. 사용 가능 여부와 무관하게 답의 형태가 문제다.">스프링 환경에서는 쓸 수 없는 것이라</button>
+    <button type="button" data-target="b3" data-answer="wrong" data-hint="오답. 회로 차단은 지금도 표준적인 접근이다.">회로 차단은 이미 낡은 방식이 되어서</button>
+    <p class="answer" id="b3"></p>
+  </section>
+
+  <h2>§7 · 이 레슨이 주는 문장 세 개</h2>
+
+  <table>
+    <thead><tr><th style="width:26%">상황</th><th>쓰는 문장</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>AI 설계안 리뷰</td>
+        <td>"복구 전술은 있는데 <strong>감지 전술이 없습니다.</strong> 지속 실패를 무엇으로 판정하나요?"</td>
+      </tr>
+      <tr>
+        <td>전술 추가 요청을 받았을 때</td>
+        <td>"재시도를 넣으면 <strong>멱등성이 필요해집니다.</strong> 멱등 키를 무엇으로 잡을지 먼저 정하죠."</td>
+      </tr>
+      <tr>
+        <td>기술면접</td>
+        <td>"가용성 목표가 99.9%였고, 감지·복구·예방 세 축으로 나눠서 접근했습니다.
+            감지는 헬스체크와 상태 불일치 모니터링, 복구는 재시도와 우아한 성능 저하,
+            예방은 레이트 리밋이었습니다. <strong>재시도 때문에 멱등성 비용을 추가로 냈습니다.</strong>"</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    세 번째 문장의 힘은 마지막 절에 있다. <strong>대가를 스스로 먼저 말하는 것</strong>이
+    "이 사람은 자기가 무엇을 했는지 안다"의 유일한 증거다 —
+    <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037 §7</a>과 같은 구조다.
+  </p>
+
+  <h2>§8 · 다음</h2>
+
+  <p>
+    전술은 "무엇을 할지"만 말하고 <strong>구조를 만들지 않는다.</strong>
+    §3 ①에서 감지 + 차단 + 주기적 재시도가 <strong>Circuit Breaker</strong>라는 이름으로 묶이는 걸 봤다.
+    이렇게 전술 여러 개가 굳어 구조가 된 것이 <strong>패턴</strong>이고, 패턴들이 사는 집이 <strong>스타일</strong>이다.
+    다음 레슨은 그 <strong>세 층을 가르는 기준</strong> — 문헌마다 이름이 흔들려도 흔들리지 않는 판별법이다.
+  </p>
+
+  <p><strong>먼저 읽을 1차 출처:</strong></p>
+  <ul>
+    <li><a href="https://www.informit.com/articles/article.aspx?p=3197432&amp;seqNum=4">Cervantes &amp; Kazman — Design Concepts to Support Availability</a>
+        — 감지·복구·예방 세 범주와 전 전술 목록의 원문. <strong>하나만 읽는다면 이것.</strong>
+        (<a href="https://www.informit.com/articles/article.aspx?p=3197432&amp;seqNum=3">성능</a> ·
+         <a href="https://www.informit.com/articles/article.aspx?p=3197432&amp;seqNum=6">보안</a> 편도 같은 형식이다.)</li>
+    <li><a href="https://sre.google/sre-book/addressing-cascading-failures/">Google SRE Book — Addressing Cascading Failures</a>
+        — §4의 재시도 증폭 근거. "3계층 × 4회 = 64회", 서버 전역 재시도 예산(분당 60회) 같은 구체 지침이 있다.</li>
+    <li><a href="https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/">AWS — Exponential Backoff And Jitter</a>
+        — 지터가 왜 필요한지에 대한 시뮬레이션. full jitter가 작업량을 절반 이하로 줄인 그래프.</li>
+    <li><a href="https://sre.google/sre-book/availability-table/">Google SRE Book — Availability Table</a>
+        — §2 표의 출처. 목표 가용성을 시간으로 환산해 볼 때 열어 둔다.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="../reference/0020-architecture-design-map.html#s3">지도 §3 — 전술 카탈로그</a> ·
+    <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037 — Architecture Driver</a> ·
+    <a href="../reference/0007-transactional-outbox-cheatsheet.html">0007 — Outbox(멱등성이 왜 따라오는지)</a> ·
+    <a href="../reference/0008-redis-streams-consumer-group-cheatsheet.html">0008 — Redis Streams(재시도·DLQ의 실제 모양)</a>.
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> 이 레슨에서 파고들 만한 곳:
+    <strong>타임아웃 값을 실제로 어떻게 정하나</strong>(p99와의 관계) ·
+    <strong>멱등 키를 무엇으로 잡아야 하나</strong>(클라이언트 생성 vs 서버 생성) ·
+    <strong>우아한 성능 저하의 경계를 누가 어떻게 정하나</strong> ·
+    <strong>수요 제어 전술(레이트 리밋·부하 차단)을 어느 계층에 두나</strong>.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

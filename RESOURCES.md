@@ -213,3 +213,94 @@
   `@Scheduled` 관련 질문 태그. Use for: 스레드 풀 고갈, 겹침 실행, cron vs fixedRate 선택 사례 확인.
 - [Spring Community Forum (spring.io)](https://spring.io/community)
   Spring 공식 커뮤니티 채널 목록. Use for: 스케줄링·WebSocket 설계 질문을 올릴 곳 찾기.
+
+## Software Architecture Knowledge
+
+- [Cervantes & Kazman, *Designing Software Architectures* — §2.4 Architectural Drivers](https://www.informit.com/articles/article.aspx?p=2738304&seqNum=4)
+  ADD 계열의 표준 교재 발췌(무료). Use for: architecture driver 5종의 정의, 품질 속성 시나리오 6부와 <C> 버튼 표준 예시.
+- [Cervantes & Kazman, 3장 — Design Concepts (전술 카탈로그)](https://www.informit.com/articles/article.aspx?p=3197432)
+  같은 책 3장 발췌. Use for: 가용성·성능·보안·변경용이성·통합용이성의 전술 범주와 개별 전술 이름 확인.
+  (성능 seqNum=3, 가용성 4, 변경용이성 5, 보안 6, 통합용이성 7)
+- [SEI — Attribute-Driven Design Method Collection](https://www.sei.cmu.edu/library/attribute-driven-design-method-collection/)
+  ADD 원출처(CMU SEI). Use for: ADD 입력(기능 요구·품질 속성 시나리오·제약)과 재귀 분해 절차 확인.
+- [ISO/IEC 25010:2023 — Product quality model](https://www.iso.org/standard/78176.html)
+  품질 속성 국제 표준(유료). Use for: 정식 명칭·범위 인용이 필요할 때.
+- [arc42 — ISO/IEC 25010 quality model](https://quality.arc42.org/standards/iso-25010)
+  25010:2023의 9개 특성과 하위 특성을 무료로 정리. Use for: 품질 속성 어휘 확인, 2011→2023 변경(Usability→Interaction Capability, Portability→Flexibility).
+- [Azure Architecture Center — Cloud Design Patterns](https://learn.microsoft.com/en-us/azure/architecture/patterns/)
+  기술 중립 패턴 카탈로그 40여 개, 각각 문제·고려사항·WAF 필러 표기. Use for: Cache-Aside, Circuit Breaker, CQRS, Saga, Bulkhead 등의 정의와 **패턴 조합·안티패턴** 확인.
+- [Azure Architecture Center — Architecture Styles](https://learn.microsoft.com/en-us/azure/architecture/guide/architecture-styles/)
+  N-tier, Web-Queue-Worker, Microservices, Event-driven, Big data, Big compute. Use for: 스타일 = 제약이라는 정의, 스타일별 의존성 관리 방식과 적합 도메인 표.
+- [microservices.io — A pattern language for microservices](https://microservices.io/patterns/)
+  Chris Richardson. Use for: Saga(코레오그래피 vs 오케스트레이션), API Gateway/BFF, Database per Service, Transactional Outbox의 정본 설명.
+- [c4model.com](https://c4model.com/)
+  Simon Brown의 C4 모델. Use for: Context/Container/Component/Code 4레벨과 보조 다이어그램(Dynamic, Deployment).
+- [adr.github.io](https://adr.github.io/) · [Nygard, Documenting Architecture Decisions (2011)](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
+  ADR 표준 템플릿과 원문. Use for: Title/Status/Context/Decision/Consequences 5필드와 supersede 관행.
+
+## Gaps
+
+- ~~ATAM의 무료 1차 출처를 못 찾았다~~ → **2026-09-05 해결.** Clements/Kazman/Klein의 InformIT 발췌로 대체
+  (위 "평가·강제·기록" 항목). ATAM 9단계 전체 절차는 여전히 유료지만, 실무에 필요한 **4산출물 정의**는 확보했다.
+- AWS Builders' Library "Timeouts, retries, and backoff with jitter"는 builder.aws.com으로 301 이동했고
+  본문 fetch가 안 된다. 같은 내용은 위 AWS 블로그 글로 대체했다.
+- 아키텍처 학습용 커뮤니티(Wisdom)를 아직 정하지 않았다. 사용자에게 의향을 확인할 것.
+
+### Reliability / tactics 보강 (0038에서 검증)
+
+- [Google SRE Book — Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
+  재시도 증폭의 정본 설명. Use for: "3계층 × 4회 = 64회" 계산, 서버 전역 재시도 예산(분당 60회), 랜덤 지수 백오프 권고.
+- [Google SRE Book — Availability Table (Appendix A)](https://sre.google/sre-book/availability-table/)
+  가용성 %를 연/분기/월/주/일 장애 시간으로 환산한 표. Use for: 목표 가용성이 전술 선택을 강제하는 논증(99.99% = 연 52.6분).
+- [AWS Architecture Blog — Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)
+  Marc Brooker. Use for: full/equal/decorrelated jitter 비교와 시뮬레이션 결과(full jitter가 클라이언트 작업량 절반 이하).
+
+### 스타일 선택 판단 (0039에서 검증)
+
+- [Martin Fowler — MicroservicePremium](https://martinfowler.com/bliki/MicroservicePremium.html)
+  Use for: "모놀리스로 관리하기에 너무 복잡한 시스템이 아니라면 고려조차 하지 마라", "대부분의 시스템은 하나의 모놀리식 앱으로" 인용.
+- [Martin Fowler — MonolithFirst](https://martinfowler.com/bliki/MonolithFirst.html)
+  Use for: 성공 사례는 거의 전부 모놀리스에서 쪼개져 나왔다는 관찰, "좋고 안정적인 서비스 경계를 찾았을 때만 잘 작동한다".
+- [Martin Fowler — MicroservicePrerequisites](https://martinfowler.com/bliki/MicroservicePrerequisites.html)
+  Use for: 전제 조건 3종(수 시간 내 서버 프로비저닝 · 기본 모니터링 · 수 시간 내 배포 파이프라인)과 DevOps 문화 요구.
+
+### 패턴 조합·Saga (0040에서 검증)
+
+- [Azure — Saga 패턴](https://learn.microsoft.com/en-us/azure/architecture/patterns/saga)
+  Use for: **보상 가능(compensable) / 피벗(pivot) / 재시도 가능(retryable)** 3분류, 데이터 이상 3종(lost update·dirty read·fuzzy read), 대응책(시맨틱 락·교환 가능 갱신·비관적 뷰·값 재확인·버전 파일), 코레오그래피 vs 오케스트레이션 장단점 표.
+- [Martin Fowler — CircuitBreaker](https://martinfowler.com/bliki/CircuitBreaker.html)
+  Use for: Closed/Open/Half-Open 세 상태와 전이, "차단 중엔 작업을 큐에 넣거나 캐시된 데이터를 보여주라", 상태 전이 로깅이 조기 경보라는 지적.
+- [Chris Richardson — Pattern: Saga](https://microservices.io/patterns/data/saga.html)
+  Use for: "자동 롤백 없음 — 개발자가 보상 트랜잭션을 설계해야 한다", "격리성(ACID의 I) 없음"과 countermeasure 개념.
+
+### 경계·조직 (0041에서 검증)
+
+- [Martin Fowler — BoundedContext](https://martinfowler.com/bliki/BoundedContext.html)
+  Use for: "언어가 달라지면 다른 모델이 필요하다", 전력회사 "계량기"의 다의성 사례, Customer/Product 다의어 경고.
+- [Martin Fowler — ConwaysLaw](https://martinfowler.com/bliki/ConwaysLaw.html)
+  Use for: Conway 원문 인용, "맞서 싸우려 들면 반드시 패배한다", 6팀→6서브시스템 일화, 역콘웨이 전략 3분류.
+- [Martin Fowler — StranglerFigApplication](https://martinfowler.com/bliki/StranglerFigApplication.html)
+  Use for: 이음매(seam) 찾기가 진짜 작업이라는 지적("그런 시스템은 유니콘이다"), 전환 아키텍처 비용 정당화, 조직 문화가 안 바뀌면 새 시스템도 같은 엉망이 된다는 경고.
+
+### 멱등성 (0042에서 검증)
+
+- [Azure — Idempotent Consumer](https://learn.microsoft.com/en-us/azure/architecture/patterns/idempotent-consumer)
+  Use for: exactly-once 불가와 effectively-once, 중복 발생 3경로, 키 선택 규칙(correlationId 금지, 다중 구독자 복합키), **inbox 패턴**, 유니크 제약으로 경쟁 해소, 외부 호출 2단계 기록, 키 보관 기간 산정.
+- [Stripe — Idempotent requests](https://docs.stripe.com/api/idempotent_requests)
+  Use for: 실제 API의 멱등 키 규칙 — V4 UUID 권장, 255자, 24시간 보관, 결과(상태코드+본문) 재현, 파라미터 불일치 시 에러, GET/DELETE엔 불필요.
+- [Azure — Compensating Transaction](https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction)
+  Use for: 보상은 원상복구가 아니라는 것, 역순일 필요 없음, 보상 실패 시 멱등 재시도·DLQ·사람 개입, "전진 우선(재시도→대체경로→보상)", 되돌릴 수 없는 지점 명시.
+
+### 숫자·과부하 (0043에서 검증)
+
+- [Google SRE Book — Handling Overload](https://sre.google/sre-book/handling-overload/)
+  Use for: 중요도 4등급(CRITICAL_PLUS~SHEDDABLE)과 **RPC 자동 전파**, 클라이언트 적응형 스로틀링(requests > K×accepts, K=2), 재시도 예산(요청당 3회·클라이언트 10%), "바로 위 계층에서만 재시도", 로컬 신호 기반 부하 차단, 전역 vs 국소 과부하 구분.
+- [W3C — Trace Context](https://www.w3.org/TR/trace-context/)
+  Use for: `traceparent` 형식(version 1B · trace-id 16B · parent-id 8B · flags 1B), `tracestate` 최대 32항목.
+
+### 평가·강제·기록 (0044에서 검증)
+
+- [Clements, Kazman & Klein — Evaluating Software Architectures (평가 산출물)](https://www.informit.com/articles/article.aspx?p=24371&seqNum=8)
+  Use for: 위험·비위험·민감점·절충점의 정본 정의와 VPN 암호화 비트 수 예시. **§8의 ATAM 갭이 이걸로 메워졌다.**
+- [Thoughtworks Radar — Architectural fitness function](https://www.thoughtworks.com/en-us/radar/techniques/architectural-fitness-function)
+  Use for: 적합성 함수 정의("객관적 무결성 평가"). 주의: 2018년 항목이라 현재판엔 없다. 정본은 *Building Evolutionary Architectures*(Ford·Parsons·Kua).

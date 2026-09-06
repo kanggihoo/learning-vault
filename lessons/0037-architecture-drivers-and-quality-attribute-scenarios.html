@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture Driver — 구조를 강제하는 다섯 가지</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .drill { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 16px 12px; margin: 14px 0; }
+    .drill p.q { font-weight: 700; margin-bottom: 6px; }
+    .slot { display: block; width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.92rem;
+            padding: 8px 10px; border: 1px solid #c9c9c1; border-radius: 6px; background: #fbfbf9; }
+    .six { display: grid; grid-template-columns: 92px 1fr; gap: 6px 10px; align-items: center; margin: 10px 0; }
+    .six span { font-size: 0.85rem; color: #52606d; text-align: right; }
+    .vague { background: #fff7ed; border-left: 4px solid #b45309; padding: 10px 14px; font-style: italic; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">아키텍처 설계 · 1/N · 레슨 0037 · 지도의 <a href="../reference/0020-architecture-design-map.html#s1">§1–§2</a>를 판다</p>
+  <h1>Architecture Driver — 구조를 강제하는 다섯 가지</h1>
+
+  <p class="lead">
+    설계 리뷰에서 가장 강한 질문은 "이거 왜 이렇게 했어요?"가 아니다.
+    <strong>"이 구조를 강제한 게 뭐였죠?"</strong>다. 앞의 질문에는 취향으로 답할 수 있고,
+    뒤의 질문에는 driver로만 답할 수 있다. 이 레슨은 그 driver의 정체와, 그중 가장 센 놈인
+    <strong>품질 속성을 반박 불가능한 형태로 쓰는 법</strong>을 다룬다.
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    ① 아무 문장이나 던져 줬을 때 그게 다섯 driver 중 무엇인지, 아니면 driver가 아닌지 판정할 수 있다.
+    ② "빨라야 한다" 같은 형용사를 <strong>여섯 조각짜리 검증 가능한 문장</strong>으로 바꿀 수 있다.
+    이 두 개가 나머지 전부(전술·스타일·패턴)의 입력이다.
+  </p>
+
+  <h2>§1 · 아키텍처는 구조를 고르는 일이 아니다</h2>
+
+  <p>
+    "아키텍처 설계"라고 하면 보통 <em>모놀리스냐 MSA냐</em>부터 떠올린다. 그게 거꾸로다.
+    스타일은 <strong>결과</strong>이지 시작점이 아니다. 시작점은 이 질문이다 —
+    <strong>이 시스템에서 내가 마음대로 못 정하는 것은 무엇인가?</strong>
+  </p>
+
+  <p>
+    그 "마음대로 못 정하는 것"의 총칭이 <strong>architecture driver</strong>다.
+    정해지면 구조가 따라 결정되고, 설계자가 자유롭게 바꿀 수 없는 것들이다.
+    반대로 driver가 아닌 것 — 변수명, 어떤 로깅 라이브러리, 어느 팀원이 맡을지 — 은
+    바꿔도 구조가 안 바뀌므로 아키텍처 논의에 올라올 필요가 없다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 200" role="img" aria-label="driver가 설계 개념을 거쳐 구조로 이어지는 방향과, 거꾸로 가는 잘못된 방향">
+    <defs>
+      <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+      </marker>
+      <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+      </marker>
+    </defs>
+    <text class="d-title" x="20" y="24">올바른 방향</text>
+    <rect class="d-box-b" x="20" y="34" width="230" height="48"/>
+    <text class="d-label" x="135" y="56" text-anchor="middle">Driver</text>
+    <text class="d-label-sm" x="135" y="72" text-anchor="middle">못 바꾸는 것들을 먼저 찾는다</text>
+    <path class="d-line-a" d="M254,58 L326,58" marker-end="url(#a1)"/>
+    <rect class="d-box" x="330" y="34" width="230" height="48"/>
+    <text class="d-label" x="445" y="56" text-anchor="middle">설계 개념</text>
+    <text class="d-label-sm" x="445" y="72" text-anchor="middle">전술 · 패턴 · 스타일 선택</text>
+    <path class="d-line-a" d="M564,58 L636,58" marker-end="url(#a1)"/>
+    <rect class="d-box-a" x="640" y="34" width="230" height="48"/>
+    <text class="d-label" x="755" y="56" text-anchor="middle">구조</text>
+    <text class="d-label-sm" x="755" y="72" text-anchor="middle">근거를 댈 수 있는 결과물</text>
+
+    <text class="d-title" x="20" y="130" style="fill:#b91c1c">흔한 실패</text>
+    <rect class="d-box-c" x="640" y="140" width="230" height="48"/>
+    <text class="d-label" x="755" y="162" text-anchor="middle">"일단 MSA로 가죠"</text>
+    <text class="d-label-sm" x="755" y="178" text-anchor="middle">스타일이 먼저 정해진다</text>
+    <path class="d-line" style="stroke:#b91c1c;stroke-dasharray:5 4" d="M636,164 L254,164" marker-end="url(#a2)"/>
+    <text class="d-label-sm" x="445" y="156" text-anchor="middle" style="fill:#b91c1c">driver를 나중에 끼워 맞춘다</text>
+  </svg>
+  <figcaption>
+    아래 방향으로 가면 설계 리뷰에서 반박할 수 없게 된다 — 근거가 결정 뒤에 만들어졌기 때문이다.
+    AI에게 설계를 맡길 때 특히 잘 나타난다. AI는 driver를 안 물어보면 <strong>가장 흔한 스타일</strong>을 준다.
+  </figcaption>
+  </figure>
+
+  <h2>§2 · driver 다섯 종</h2>
+
+  <p>
+    Cervantes &amp; Kazman의 분류다. 다섯 개를 외우라는 게 아니라,
+    <strong>설계 회의에서 이 다섯 칸이 다 채워졌는지 확인하는 체크리스트</strong>로 쓴다.
+    비어 있는 칸이 나중에 재설계를 부른다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:20%">driver</th><th style="width:44%">판별 질문</th><th>예</th></tr></thead>
+    <tbody>
+      <tr><td><strong>설계 목적</strong></td><td>왜 <em>지금</em> 설계하나? 이 산출물은 어디에 쓰이나?</td><td>수주 전 공수 산정용 / 3년 운영할 시스템 구축용</td></tr>
+      <tr><td><strong>품질 속성</strong><br><span class="sm">가장 센 driver</span></td><td>얼마나 빨라야/안정적이어야/안전해야 하나? <strong>숫자로 답할 수 있나?</strong></td><td>피크 시 p99 300ms · 노드 1대 죽어도 30초 내 복구</td></tr>
+      <tr><td><strong>주요 기능</strong></td><td>비즈니스에 결정적이거나 기술적으로 어려운 기능은? <strong>전체의 약 10%</strong></td><td>주문 체결, 결제 승인 (회원정보 수정은 아니다)</td></tr>
+      <tr><td><strong>아키텍처 관심사</strong></td><td>요구사항에 안 적혔지만 <strong>누군가는 정해야 하는</strong> 것은?</td><td>예외 처리 규약 · 로깅/추적 · 인증 · 캐싱 · 설정 관리</td></tr>
+      <tr><td><strong>제약</strong></td><td>내가 <strong>통제할 수 없는</strong> 조건은?</td><td>사내 표준 스택 · 규제 · 마감 · 팀 역량 · 레거시 연동</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>왜 "주요 기능"이 10%인가.</strong> 기능 전부가 driver라면 driver라는 말이 무의미해진다.
+    구조를 바꾸는 기능만 driver다. CRUD 40개는 어떤 구조에서도 똑같이 만들어지지만,
+    "체결은 유실되면 안 된다"는 큐·트랜잭션·멱등성을 강제한다. <strong>구조를 강제하는가</strong>가 유일한 기준이다.
+  </p>
+
+  <h3>판별 연습 — 답을 생각한 뒤 펼치기</h3>
+
+  <div class="drill">
+    <p class="q">① "개인정보를 국외 리전에 저장할 수 없다"</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>제약.</strong> 법·규제라서 설계자가 협상할 수 없다. 그런데 이건 <em>배포 토폴로지 전체</em>를 결정한다 —
+      제약이 가장 조용하면서 가장 강한 driver인 이유다.</p>
+    </details>
+
+    <p class="q">② "장바구니에 상품을 담을 수 있어야 한다"</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>driver가 아니다.</strong> 기능 요구지만 <em>주요</em> 기능이 아니다. 어떤 구조를 골라도 똑같이 구현된다.
+      요구사항 목록에는 있어야 하지만 아키텍처 회의에는 올라올 필요가 없다.</p>
+    </details>
+
+    <p class="q">③ "장애 로그를 어디에 남기고 어떻게 상관관계를 추적할지 팀 전체가 같은 방식을 써야 한다"</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>아키텍처 관심사.</strong> 요구사항 문서엔 안 적히는데 안 정하면 팀마다 제각각이 된다.
+      <span class="mid">AI에게 코드를 맡길 때 가장 자주 무작위가 되는 칸이 바로 여기다.</span></p>
+    </details>
+
+    <p class="q">④ "동시 접속 500명 상황에서 주문 응답 p99가 300ms를 넘지 않는다"</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>품질 속성.</strong> 그리고 <strong>이미 시나리오 형태에 가깝다</strong> — 환경(동시 500명), 응답 측정(p99 300ms)이 들어 있다.
+      §3에서 나머지 조각을 채운다.</p>
+    </details>
+
+    <p class="q">⑤ "6주 뒤 발표까지 동작하는 데모가 나와야 한다"</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>제약</strong>이면서 <strong>설계 목적</strong>을 규정한다. 이게 정해지면 "지금은 확장성보다 구축 속도를 산다"가 정당해진다.
+      <strong>제약을 명시하지 않으면 나중에 "왜 이렇게 대충 했냐"는 말을 반박할 수 없다.</strong></p>
+    </details>
+  </div>
+
+  <h2>§3 · 품질 속성은 형용사가 아니다</h2>
+
+  <p class="vague">
+    "시스템은 빨라야 하고, 안정적이어야 하며, 확장 가능해야 한다."
+  </p>
+
+  <p>
+    이 문장에는 설계에 쓸 정보가 <strong>0</strong>이다. 반대하는 사람이 없다는 게 그 증거다.
+    무엇이든 만들어 놓고 "빠릅니다"라고 말할 수 있고, 아무도 틀렸다고 못 한다.
+    <strong>검증할 수 없는 요구는 요구가 아니다.</strong>
+  </p>
+
+  <p>
+    그래서 품질 속성은 <strong>여섯 조각</strong>으로 쓴다. 이 여섯 개가 다 차야
+    설계자는 무엇을 만들지 알고, 리뷰어는 만족했는지 판정할 수 있다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:20%">조각</th><th style="width:36%">묻는 것</th><th>표준 예시 (게임)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>자극원</strong> Source</td><td>누가/무엇이 일으켰나</td><td>사용자</td></tr>
+      <tr><td><strong>자극</strong> Stimulus</td><td>무슨 일이 일어났나</td><td>&lt;C&gt; 버튼을 누른다</td></tr>
+      <tr><td><strong>대상</strong> Artifact</td><td>시스템의 어느 부분이 받나</td><td>시스템 전체</td></tr>
+      <tr><td><strong>환경</strong> Environment</td><td>어떤 상황에서인가</td><td>정상 운영 중</td></tr>
+      <tr><td><strong>응답</strong> Response</td><td>무엇이 일어나야 하나</td><td>시점 모드가 전환된다</td></tr>
+      <tr><td><strong>응답 측정</strong> Measure</td><td>얼마나 잘? <strong>숫자로</strong></td><td>500ms 미만</td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    합치면 한 문장이 된다: <em>"정상 운영 중 사용자가 &lt;C&gt; 버튼을 누르면 시스템은 500ms 이내에 시점 모드를 전환한다."</em>
+    — 이건 그대로 테스트로 옮길 수 있다. 그게 목표다.
+  </p>
+
+  <p class="warn">
+    <strong>가장 자주 비는 두 칸은 <em>환경</em>과 <em>응답 측정</em>이다.</strong>
+    환경이 없으면 "평상시 300ms"인지 "블랙프라이데이에도 300ms"인지 알 수 없고, 이 둘의 설계 비용은 자릿수가 다르다.
+    응답 측정이 없으면 완성 판정을 못 한다. AI 설계안을 리뷰할 때 이 두 칸부터 물으면 대부분 무너진다.
+  </p>
+
+  <h2>§4 · 실습 — 형용사를 시나리오로</h2>
+
+  <p>
+    아래 세 개의 모호한 요구를 각각 6부로 바꿔 본다. 빈칸을 채운 뒤 모범 답안을 펼쳐 비교한다.
+    <strong>정답을 맞히는 게 목적이 아니라, 빈칸을 만나 "이건 물어봐야 하는 거구나"를 겪는 게 목적이다.</strong>
+    실제로 채워지지 않는 칸은 이해관계자에게 물어야 할 질문 목록이 된다.
+  </p>
+
+  <div class="drill">
+    <p class="q">A. "결제가 안정적이어야 한다"</p>
+    <div class="six">
+      <span>자극원</span><input class="slot" placeholder="누가?">
+      <span>자극</span><input class="slot" placeholder="무슨 일이?">
+      <span>대상</span><input class="slot" placeholder="어느 부분이?">
+      <span>환경</span><input class="slot" placeholder="어떤 상황에서?">
+      <span>응답</span><input class="slot" placeholder="무엇이 일어나야?">
+      <span>응답 측정</span><input class="slot" placeholder="숫자로">
+    </div>
+    <details class="reveal"><summary>모범 답안과 비교</summary>
+      <p>
+        <strong>자극원</strong> 결제 대행사(PG) · <strong>자극</strong> 승인 응답이 오지 않는다(타임아웃) ·
+        <strong>대상</strong> 결제 처리 서비스 · <strong>환경</strong> PG 장애로 응답 지연이 지속되는 상태 ·
+        <strong>응답</strong> 주문을 실패로 확정하지 않고 보류 상태로 두고, 결제 상태를 재조회해 정합을 맞춘다 ·
+        <strong>응답 측정</strong> 결제-주문 상태 불일치 5분 내 0건, 이중 청구 0건.
+      </p>
+      <p class="sm">
+        "안정적"이 사실은 <strong>"장애 상황에서 돈이 어긋나지 않는다"</strong>였다는 게 드러난다.
+        이건 가용성이 아니라 <strong>신뢰성 + 데이터 정합성</strong> 요구이고, 부르는 해법이 완전히 다르다
+        (다중화가 아니라 멱등성·상태 재조회·보상).
+      </p>
+    </details>
+  </div>
+
+  <div class="drill">
+    <p class="q">B. "확장 가능해야 한다"</p>
+    <div class="six">
+      <span>자극원</span><input class="slot" placeholder="누가?">
+      <span>자극</span><input class="slot" placeholder="무슨 일이?">
+      <span>대상</span><input class="slot" placeholder="어느 부분이?">
+      <span>환경</span><input class="slot" placeholder="어떤 상황에서?">
+      <span>응답</span><input class="slot" placeholder="무엇이 일어나야?">
+      <span>응답 측정</span><input class="slot" placeholder="숫자로">
+    </div>
+    <details class="reveal"><summary>모범 답안과 비교</summary>
+      <p>
+        <strong>자극원</strong> 마케팅 이벤트로 유입된 사용자 · <strong>자극</strong> 동시 요청이 평소의 10배로 증가한다 ·
+        <strong>대상</strong> 조회 API + 데이터 계층 · <strong>환경</strong> 사전 공지된 이벤트 시작 시각 ·
+        <strong>응답</strong> 오류 없이 처리하고, 필요한 만큼 인스턴스를 늘린다 ·
+        <strong>응답 측정</strong> p99 500ms 이하 유지, 5xx 비율 0.1% 이하, 증설 완료까지 3분 이내.
+      </p>
+      <p class="sm">
+        "확장 가능"이 두 개로 쪼개진 것에 주목하자 — <strong>부하를 견디는가</strong>(성능)와
+        <strong>얼마나 빨리 늘릴 수 있는가</strong>(탄력성)는 다른 문제다.
+        후자에 3분 제약이 붙는 순간 "예열된 인스턴스"나 "사전 스케일아웃"이 필요해지고, 구조가 바뀐다.
+      </p>
+    </details>
+  </div>
+
+  <div class="drill">
+    <p class="q">C. "유지보수하기 좋아야 한다"</p>
+    <div class="six">
+      <span>자극원</span><input class="slot" placeholder="누가?">
+      <span>자극</span><input class="slot" placeholder="무슨 일이?">
+      <span>대상</span><input class="slot" placeholder="어느 부분이?">
+      <span>환경</span><input class="slot" placeholder="어떤 상황에서?">
+      <span>응답</span><input class="slot" placeholder="무엇이 일어나야?">
+      <span>응답 측정</span><input class="slot" placeholder="숫자로">
+    </div>
+    <details class="reveal"><summary>모범 답안과 비교</summary>
+      <p>
+        <strong>자극원</strong> 개발자 · <strong>자극</strong> 새로운 결제 수단 하나를 추가한다 ·
+        <strong>대상</strong> 결제 모듈 · <strong>환경</strong> 설계·구현·테스트 시점(런타임이 아니다) ·
+        <strong>응답</strong> 기존 결제 수단 코드를 수정하지 않고 추가된다 ·
+        <strong>응답 측정</strong> 변경 파일 3개 이하, 작업 2인일 이하, 기존 테스트 무수정 통과.
+      </p>
+      <p class="sm">
+        변경 용이성 시나리오의 특징: <strong>환경이 런타임이 아니라 개발 시점</strong>이고,
+        측정 단위가 밀리초가 아니라 <strong>수정 범위와 공수</strong>다.
+        "새 결제 수단 추가"라는 자극이 명시되면 마이크로커널(플러그인) 구조가 자연스럽게 후보로 올라온다 —
+        <strong>driver가 스타일을 불러낸 것이지, 그 반대가 아니다.</strong>
+      </p>
+    </details>
+  </div>
+
+  <h2>§5 · 세 가지 흔한 함정</h2>
+
+  <table>
+    <thead><tr><th style="width:26%">함정</th><th style="width:37%">왜 문제인가</th><th>대신 이렇게</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>평균으로 쓴다</strong><br><span class="sm">"평균 응답 200ms"</span></td>
+        <td>평균은 꼬리를 숨긴다. 평균 200ms인 시스템의 p99가 4초일 수 있고, 사용자가 겪는 건 그쪽이다.</td>
+        <td>p95·p99로 쓴다. 어느 분위수인지 반드시 명시.</td>
+      </tr>
+      <tr>
+        <td><strong>환경을 안 쓴다</strong><br><span class="sm">"응답 300ms 이내"</span></td>
+        <td>평상시인지 피크인지, 정상인지 부분 장애 상태인지에 따라 설계 비용이 자릿수 단위로 다르다.</td>
+        <td>부하·장애 상태를 환경 칸에 못 박는다. 필요하면 시나리오를 둘로 나눈다.</td>
+      </tr>
+      <tr>
+        <td><strong>해법을 요구로 위장</strong><br><span class="sm">"Redis 캐시를 둔다"</span></td>
+        <td>이건 driver가 아니라 <strong>이미 내린 결정</strong>이다. 요구 자리에 해법이 앉으면 대안을 검토할 수 없다.</td>
+        <td>"왜?"를 한 번 더 물어 뒤에 있는 응답 측정을 꺼낸다. 캐시는 그 뒤에 후보가 된다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>세 번째가 AI 설계 리뷰의 핵심 기술이다.</strong> AI는 요구를 물으면 해법을 준다 —
+    "확장성을 위해 Kafka를 도입하겠습니다". 이때 "Kafka가 왜 나쁘냐"고 싸우면 진다(대개 나쁘지 않다).
+    대신 <strong>"이 결정이 겨냥한 품질 속성 시나리오를 6부로 적어줘"</strong>라고 하면,
+    응답 측정 칸이 비면서 결정이 근거 없이 내려졌다는 게 드러난다.
+    이건 취향 싸움이 아니라 <strong>빈칸을 가리키는 일</strong>이라 반박당하지 않는다.
+  </p>
+
+  <h2>§6 · 확인 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> "팀 5명 전원이 Java만 다룬다"는 어느 driver인가?</p>
+    <button type="button" data-target="a1" data-answer="correct">제약 조건 — 설계자가 통제할 수 없다</button>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. 이건 측정 대상이 아니라 못 바꾸는 외부 조건이다.">품질 속성 — 측정 가능하게 쓰는 것</button>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. 기능이 아니라 팀이 처한 조건에 대한 이야기다.">주요 기능 — 비즈니스에 결정적인 것</button>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. 지금 왜 설계하는지가 아니라 무엇이 막혀 있는지다.">설계 목적 — 지금 왜 설계하는지의 답</button>
+    <p class="answer" id="a1"></p>
+
+    <p><strong>Q2.</strong> 응답 측정(response measure)으로 <strong>쓸 수 없는</strong> 것은?</p>
+    <button type="button" data-target="a2" data-answer="correct">가능한 한 빠르게 응답한다</button>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. 분위수와 숫자가 있으므로 판정할 수 있다.">p99 응답이 300ms 이내다</button>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. 건수는 세면 되므로 검증 가능하다.">주문 유실 건수가 0건이다</button>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. 시간 상한이 있으므로 측정할 수 있다.">30초 안에 서비스가 복구된다</button>
+    <p class="answer" id="a2"></p>
+
+    <p><strong>Q3.</strong> 시나리오의 '환경(environment)' 칸이 하는 일은?</p>
+    <button type="button" data-target="a3" data-answer="correct">자극이 발생하는 상황을 못 박는다</button>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 그건 자극원(source)이 맡는 칸이다.">자극을 만들어낸 주체를 가리킨다</button>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 그건 대상(artifact)이 맡는 칸이다.">자극을 받는 부분을 특정해 준다</button>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 그건 응답 측정(measure)이 맡는 칸이다.">응답을 평가할 지표를 정해 준다</button>
+    <p class="answer" id="a3"></p>
+  </section>
+
+  <h2>§7 · 면접에서 이 어휘가 하는 일</h2>
+
+  <p>
+    "왜 이렇게 설계하셨나요"에 대한 답은 세 등급으로 갈린다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:14%">등급</th><th style="width:43%">답변</th><th>들리는 것</th></tr></thead>
+    <tbody>
+      <tr><td class="no">하</td><td>"MSA가 요즘 표준이라서요."</td><td>남이 정한 걸 따랐다.</td></tr>
+      <tr><td class="mid">중</td><td>"서비스를 독립 배포하고 싶었습니다."</td><td>이점은 안다. 대가를 계산했는지는 모르겠다.</td></tr>
+      <tr><td class="ok">상</td><td>"제약이 6주 마감에 팀 5명이었고, 품질 driver는 '이벤트 시작 시 10배 부하에서 p99 500ms 유지'였습니다.
+          MSA는 운영 복잡도 때문에 이 제약에서 비용을 못 감당한다고 봤고, 모듈러 모놀리스 + 큐로 부하를 평탄화하는 쪽을 택했습니다.
+          대신 독립 배포는 포기했습니다."</td><td>driver를 알고, <strong>포기한 것까지 말한다.</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    "대신 ○○는 포기했습니다"가 상급 답변의 결정적 부분이다.
+    트레이드오프를 말하지 않는 설계 설명은 아직 설계를 이해하지 못한 것으로 들린다 —
+    <a href="../reference/0020-architecture-design-map.html#s7">지도 §7</a>에 대표 상충쌍 목록이 있다.
+  </p>
+
+  <h2>§8 · 다음</h2>
+
+  <p>
+    이제 driver를 시나리오로 쓸 수 있다. 다음 질문은 자연스럽게 <strong>"그래서 이 시나리오를 무엇으로 달성하나"</strong>가 된다.
+    그 답이 <strong>전술(tactic)</strong>이고, 다음 레슨이 그것이다.
+    전술은 "다중화한다" 같은 막연한 말을 <strong>감지 · 복구 · 예방</strong>이라는 세 칸으로 쪼개서,
+    설계안에서 <em>비어 있는 칸</em>을 이름 붙여 지적할 수 있게 해 준다.
+  </p>
+
+  <p><strong>먼저 읽을 1차 출처</strong> (짧고, 이 레슨의 원본이다):</p>
+  <ul>
+    <li><a href="https://www.informit.com/articles/article.aspx?p=2738304&amp;seqNum=4">Cervantes &amp; Kazman, <em>Designing Software Architectures: A Practical Approach</em> — §2.4 Architectural Drivers</a>
+        — driver 5종의 정의와 &lt;C&gt; 버튼 시나리오 원문. <strong>이 레슨에서 딱 하나만 읽는다면 이것.</strong></li>
+    <li><a href="https://www.sei.cmu.edu/library/attribute-driven-design-method-collection/">SEI — Attribute-Driven Design Method Collection</a>
+        — driver가 ADD 절차의 입력으로 어디에 들어가는지.</li>
+    <li><a href="https://quality.arc42.org/standards/iso-25010">arc42 — ISO/IEC 25010 품질 모델</a>
+        — 품질 속성의 표준 어휘 9종. 시나리오를 쓸 때 "이건 무슨 속성이지"를 확인하는 용도.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="../reference/0020-architecture-design-map.html">레퍼런스 0020 — 아키텍처 설계 지도</a>
+    (<a href="../reference/0020-architecture-design-map.html#s1">§1 driver</a> ·
+     <a href="../reference/0020-architecture-design-map.html#s2">§2 품질 속성</a> ·
+     <a href="../reference/0020-architecture-design-map.html#s6">§6 전술·패턴·스타일 구분</a>).
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> 이 레슨에서 파고들 만한 곳:
+    <strong>가용성 시나리오는 왜 다른 품질과 형태가 다른가</strong>(자극이 "장애"다) ·
+    <strong>시나리오가 서로 충돌할 때 무엇을 기준으로 우선순위를 정하나</strong>(유틸리티 트리) ·
+    <strong>제약이 품질 속성과 충돌하면 어느 쪽이 이기나</strong>.
+    무엇이든 지금 물어보면 다음 레슨 전에 다룰 수 있다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

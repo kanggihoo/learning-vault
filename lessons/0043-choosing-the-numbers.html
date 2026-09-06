@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>숫자를 정하는 법 — 타임아웃·재시도·부하 차단</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .drill { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 16px 12px; margin: 14px 0; }
+    .drill p.q { font-weight: 700; margin-bottom: 6px; }
+    .quote { border-left: 4px solid #9aa5b1; padding: 8px 14px; margin: 12px 0; color: #3e4c59; font-size: 0.94rem; }
+    .quote cite { display: block; margin-top: 6px; font-size: 0.85rem; color: #6b7280; font-style: normal; }
+    .formula { text-align: center; font-size: 1.02rem; padding: 12px; background: #eef7f5; border-radius: 8px; margin: 14px 0; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">아키텍처 설계 · 7/N · 레슨 0043 · <a href="./0038-tactics-detect-recover-prevent.html">0038</a>이 남긴 질문</p>
+  <h1>숫자를 정하는 법 — 타임아웃·재시도·부하 차단</h1>
+
+  <p class="lead">
+    설계 문서에서 가장 조용히 지나가는 줄이 이런 것들이다 —
+    <em>"타임아웃 3초, 재시도 3회, 백오프 1초."</em>
+    이 숫자들은 어디서 왔나? <strong>대개 아무 데서도 안 왔다.</strong>
+    AI에게 맡기면 특히 그렇다. 근거를 안 물으면 그럴듯한 기본값이 채워지고,
+    그 숫자가 장애 때 정확히 잘못된 방향으로 작동한다.
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    ① 타임아웃을 <strong>관측된 분포</strong>에서 유도하고, 데드라인이 계층을 따라 줄어야 하는 이유를 말한다.
+    ② 재시도를 <strong>횟수가 아니라 예산</strong>으로 관리하고, 계층 하나에서만 해야 하는 이유를 안다.
+    ③ 수요 제어를 <strong>어느 계층</strong>에 둘지 판단한다.
+    ④ "무엇을 먼저 버릴지"를 <strong>장애 전에</strong> 정하는 방법을 안다.
+  </p>
+
+  <h2>§1 · 타임아웃 — 분포에서 나온다</h2>
+
+  <p>
+    타임아웃은 두 방향으로 틀릴 수 있고, <strong>양쪽 다 장애를 만든다.</strong>
+  </p>
+
+  <table>
+    <thead><tr><th style="width:20%">잘못</th><th style="width:36%">무슨 일</th><th>결과</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>너무 짧다</strong></td>
+        <td>정상적으로 처리 중이던 요청을 죽인다. 그리고 재시도가 붙어 있으면 <strong>같은 일을 다시 시킨다.</strong></td>
+        <td>부하가 늘고 성공률이 떨어진다 — <span class="no">타임아웃이 장애의 원인이 된다</span></td>
+      </tr>
+      <tr>
+        <td><strong>너무 길다</strong></td>
+        <td>죽은 의존을 기다리며 스레드·커넥션을 붙잡고 있는다.</td>
+        <td>스레드 고갈 → <strong>느린 의존 하나가 서비스 전체를 멈춘다</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="formula">
+    출발점: <strong>타임아웃 ≈ 정상 응답의 p99 × 2~3</strong><br>
+    <span class="sm">평균이 아니다. 평균 200ms인 시스템의 p99가 2초일 수 있고, 타임아웃 500ms는 정상 요청 1%를 죽인다.</span>
+  </p>
+
+  <p class="warn">
+    <strong>그래서 타임아웃은 관측 없이 정할 수 없다.</strong> "몇 초로 할까요?"에 대한 정직한 답은
+    <em>"이 호출의 정상 응답 분포가 어떻게 되죠?"</em>다. 모르면 <strong>먼저 재는 것</strong>이 설계 작업이다.
+    <a href="./0037-architecture-drivers-and-quality-attribute-scenarios.html">0037</a>의 응답 측정이 여기서 필요해진다.
+  </p>
+
+  <h3>계층이 있으면 타임아웃이 아니라 데드라인이다</h3>
+
+  <p>
+    각 계층이 자기 타임아웃을 따로 정하면, 상위가 이미 포기한 요청을 하위가 계속 처리하는 일이 생긴다.
+    <strong>일은 하는데 아무도 그 결과를 안 받는다</strong> — 과부하 상황에서 최악의 자원 낭비다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 248" role="img" aria-label="데드라인 예산이 계층을 따라 줄어드는 올바른 경우와, 각자 타임아웃을 정해 하위가 더 긴 잘못된 경우">
+    <defs>
+      <marker id="n1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+      </marker>
+      <marker id="n2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+      </marker>
+    </defs>
+
+    <text class="d-title" x="30" y="20">올바름 — 남은 예산을 전달한다 (데드라인 전파)</text>
+    <rect class="d-box-a" x="30" y="30" width="190" height="52"/>
+    <text class="d-label-sm" x="125" y="52" text-anchor="middle">클라이언트</text>
+    <text class="d-label" x="125" y="71" text-anchor="middle">예산 3000ms</text>
+    <path class="d-line-a" d="M220,56 L248,56" marker-end="url(#n1)"/>
+    <rect class="d-box-a" x="252" y="30" width="190" height="52"/>
+    <text class="d-label-sm" x="347" y="52" text-anchor="middle">게이트웨이</text>
+    <text class="d-label" x="347" y="71" text-anchor="middle">남은 2800ms</text>
+    <path class="d-line-a" d="M442,56 L470,56" marker-end="url(#n1)"/>
+    <rect class="d-box-a" x="474" y="30" width="190" height="52"/>
+    <text class="d-label-sm" x="569" y="52" text-anchor="middle">주문 서비스</text>
+    <text class="d-label" x="569" y="71" text-anchor="middle">남은 2500ms</text>
+    <path class="d-line-a" d="M664,56 L692,56" marker-end="url(#n1)"/>
+    <rect class="d-box-a" x="696" y="30" width="174" height="52"/>
+    <text class="d-label-sm" x="783" y="52" text-anchor="middle">결제 서비스</text>
+    <text class="d-label" x="783" y="71" text-anchor="middle">남은 2100ms</text>
+    <text class="d-label-sm" x="30" y="104">→ 예산이 소진되면 <tspan style="font-weight:700">모든 계층이 동시에</tspan> 포기한다. 낭비되는 일이 없다.</text>
+
+    <text class="d-title" x="30" y="146" style="fill:#b91c1c">틀림 — 계층마다 자기 타임아웃을 따로 정했다</text>
+    <rect class="d-box" x="30" y="156" width="190" height="52"/>
+    <text class="d-label-sm" x="125" y="178" text-anchor="middle">클라이언트</text>
+    <text class="d-label" x="125" y="197" text-anchor="middle">타임아웃 3s</text>
+    <path class="d-line" style="stroke:#b91c1c" d="M220,182 L248,182" marker-end="url(#n2)"/>
+    <rect class="d-box" x="252" y="156" width="190" height="52"/>
+    <text class="d-label-sm" x="347" y="178" text-anchor="middle">게이트웨이</text>
+    <text class="d-label" x="347" y="197" text-anchor="middle">타임아웃 5s</text>
+    <path class="d-line" style="stroke:#b91c1c" d="M442,182 L470,182" marker-end="url(#n2)"/>
+    <rect class="d-box" x="474" y="156" width="190" height="52"/>
+    <text class="d-label-sm" x="569" y="178" text-anchor="middle">주문 서비스</text>
+    <text class="d-label" x="569" y="197" text-anchor="middle">타임아웃 10s</text>
+    <path class="d-line" style="stroke:#b91c1c" d="M664,182 L692,182" marker-end="url(#n2)"/>
+    <rect class="d-box-b" x="696" y="156" width="174" height="52"/>
+    <text class="d-label-sm" x="783" y="178" text-anchor="middle">결제 서비스</text>
+    <text class="d-label" x="783" y="197" text-anchor="middle">30s째 작업 중</text>
+    <text class="d-label-sm" x="30" y="230" style="fill:#b91c1c">→ 클라이언트는 3초에 떠났는데 하위는 계속 일한다. 그동안 재시도까지 겹친다.</text>
+  </svg>
+  <figcaption>
+    타임아웃을 <strong>절대값</strong>이 아니라 <strong>남은 예산</strong>으로 다루면 이 문제가 사라진다.
+    gRPC의 deadline, HTTP의 커스텀 예산 헤더가 이걸 한다.
+    <a href="./0038-tactics-detect-recover-prevent.html">0038</a>의 "이전 값에 더하지 말고 절대 기준에서 다시 구한다"와 같은 형태의 결정이다.
+  </figcaption>
+  </figure>
+
+  <h2>§2 · 재시도 — 횟수가 아니라 예산으로</h2>
+
+  <p>
+    Google SRE 문서가 주는 숫자들은 <strong>세 층위</strong>로 되어 있다. 셋 다 필요하다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:22%">층위</th><th style="width:24%">권고 값</th><th>왜</th></tr></thead>
+    <tbody>
+      <tr><td><strong>요청당</strong></td><td class="num">최대 3회 시도</td><td>무한 재시도를 막는다. 가장 기본.</td></tr>
+      <tr><td><strong>클라이언트당</strong></td><td class="num">재시도 비율 10% 미만</td><td>정상 트래픽 대비 재시도가 차지하는 비율의 상한. 넘으면 뭔가 잘못된 것이다.</td></tr>
+      <tr><td><strong>프로세스 전역</strong></td><td class="num">예: 분당 60회</td><td>예산이 소진되면 <strong>재시도하지 않고 그냥 실패시킨다.</strong> 재시도 효과를 봉쇄하는 마지막 방벽.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>가장 중요한 규칙: 한 계층에서만 재시도한다</h3>
+
+  <div class="quote">
+    DB 프런트엔드의 실패한 요청은 <strong>바로 위 계층인 Backend B에서만</strong> 재시도해야 한다.
+    여러 계층이 재시도하면 <strong>조합적 폭발</strong>이 일어난다.
+    <cite>— Google SRE Book, <em>Handling Overload</em></cite>
+  </div>
+
+  <p>
+    <a href="./0038-tactics-detect-recover-prevent.html">0038</a>에서 본 숫자가 이것이다 —
+    3계층이 각각 4번 시도하면 사용자 요청 하나가 DB에 <strong>64번(4³)</strong> 도달한다.
+    그래서 설계 리뷰에서 물어야 할 것은 "재시도 몇 번이냐"가 아니라
+    <strong>"이 경로에서 재시도하는 계층이 몇 개냐"</strong>다.
+  </p>
+
+  <p class="sm">
+    보완책 하나 더 — <strong>클라이언트 측 적응형 스로틀링.</strong>
+    최근 요청 중 거부 비율이 높아지면 클라이언트가 <em>스스로</em> 유출량을 줄인다.
+    Google의 방식: 최근 2분간 <code>requests</code>와 <code>accepts</code>를 세고,
+    <code>requests &gt; K × accepts</code>가 되면 자체 차단을 시작한다(기본 <span class="num">K=2</span>, 더 공격적으로 하려면 1.1).
+    <strong>거부당한 요청조차 백엔드에 도달하지 않게</strong> 만드는 장치다.
+  </p>
+
+  <h2>§3 · 수요 제어를 어느 계층에 두나</h2>
+
+  <table>
+    <thead><tr><th style="width:18%">계층</th><th style="width:30%">무엇을 막나</th><th>한계</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>클라이언트</strong><br><span class="sm">적응형 스로틀링</span></td>
+        <td>거부될 게 뻔한 요청을 아예 안 보낸다 — 가장 싸다</td>
+        <td>우리가 통제하는 클라이언트에만 가능. 악의적 트래픽엔 무력.</td>
+      </tr>
+      <tr>
+        <td><strong>엣지 / 게이트웨이</strong><br><span class="sm">레이트 리밋, 쿼터</span></td>
+        <td>고객·테넌트별 상한. 한 고객이 전체를 잡아먹는 걸 막는다</td>
+        <td>내부 호출은 못 본다. 그리고 게이트웨이 자체가 병목이 될 수 있다.</td>
+      </tr>
+      <tr>
+        <td><strong>서비스 자신</strong><br><span class="sm">부하 차단(load shedding)</span></td>
+        <td><strong>자기 사용률을 보고</strong> 스스로 거부한다. 마지막 방어선.</td>
+        <td>거부도 비용이다. 그래도 죽는 것보다 낫다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="quote">
+    잘 만들어진 백엔드는 <strong>처리할 수 있는 요청만 받고 나머지는 우아하게 거부</strong>해야 한다 —
+    "다운되어 모든 트래픽을 안 받는" 것이 아니라.
+    <cite>— Google SRE Book, <em>Handling Overload</em></cite>
+  </div>
+
+  <p class="note">
+    <strong>핵심 설계 판단: 부하 차단은 로컬 신호로 한다.</strong>
+    태스크가 자기 CPU·큐 길이를 보고 즉시 판단한다. 전역 조율을 기다리면 이미 늦다.
+    <br>그리고 <strong>전역 과부하와 국소 과부하를 구분</strong>해야 한다 —
+    대부분의 백엔드가 과부하면 재시도가 무의미하므로 <strong>에러를 위로 올리고</strong>,
+    일부만 과부하면 <strong>다른 태스크로 즉시 재시도</strong>하는 게 맞다.
+    <span class="mid">같은 실패 응답이라도 원인에 따라 반대 행동을 해야 한다.</span>
+  </p>
+
+  <h2>§4 · 무엇을 먼저 버릴지 — 장애 전에 정한다</h2>
+
+  <p>
+    <a href="./0038-tactics-detect-recover-prevent.html">0038</a>에서 남긴 질문 —
+    <em>"우아한 성능 저하의 경계를 누가 어떻게 정하나."</em>
+    Google의 답은 명쾌하다. <strong>요청마다 중요도 등급을 미리 붙여 둔다.</strong>
+  </p>
+
+  <table>
+    <thead><tr><th style="width:24%">등급</th><th style="width:34%">의미</th><th>이커머스로 옮기면</th></tr></thead>
+    <tbody>
+      <tr><td><code>CRITICAL_PLUS</code></td><td>실패 시 사용자 영향이 가장 심각</td><td>결제 승인, 주문 접수</td></tr>
+      <tr><td><code>CRITICAL</code></td><td>프로덕션 요청의 기본값. 사용자에게 보이는 영향</td><td>상품 조회, 장바구니</td></tr>
+      <tr><td><code>SHEDDABLE_PLUS</code></td><td>배치 작업의 기본값. 부분 불가를 예상함</td><td>주문 통계 집계, 정산 배치</td></tr>
+      <tr><td><code>SHEDDABLE</code></td><td>잦은 부분 불가가 허용됨</td><td>추천, 최근 본 상품, 리뷰 요약</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>결정적인 부분은 자동 전파다.</strong> 요청 A가 처리 중에 B·C를 호출하면,
+    <strong>B·C가 A의 등급을 기본으로 물려받는다.</strong>
+    이게 없으면 "결제 요청이 부른 재고 조회"가 "추천 요청이 부른 재고 조회"와 구별되지 않아,
+    부하 차단이 결제를 버릴 수 있다.
+    <br><span class="mid">그리고 사용률 임계도 등급별로 다르게 잡는다 — 높은 등급일수록 높은 임계에서 버린다.</span>
+  </p>
+
+  <p class="sm">
+    이 설계의 진짜 가치: <strong>"무엇을 버릴까"를 장애 중에 결정하지 않는다.</strong>
+    등급은 평상시에, 기획과 합의해서, 코드에 적어 둔다. 새벽 3시에 당직자가 판단할 일이 아니다.
+  </p>
+
+  <h2>§5 · 흐름 추적 — 무엇을 로그에 싣나</h2>
+
+  <p>
+    <a href="./0039-architecture-styles-constraints-and-the-microservice-premium.html">0039</a>에서 이벤트 기반의 대가로 지목한 것 —
+    <strong>흐름을 볼 수 없다.</strong> 표준 해법은 <strong>W3C Trace Context</strong>다.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:22%">필드</th><th style="width:18%">크기</th><th>역할</th></tr></thead>
+    <tbody>
+      <tr><td><code>version</code></td><td class="num">1바이트</td><td>현재 <code>00</code></td></tr>
+      <tr><td><code>trace-id</code></td><td class="num">16바이트</td><td><strong>전체 트레이스를 식별</strong> — 요청 하나가 시스템을 도는 여정 전부</td></tr>
+      <tr><td><code>parent-id</code></td><td class="num">8바이트</td><td>현재 구간(span)을 식별 — 다음 홉의 부모가 된다</td></tr>
+      <tr><td><code>trace-flags</code></td><td class="num">1바이트</td><td>샘플링 비트 등</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">
+    헤더 예: <code>traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01</code>.
+    벤더별 부가 정보는 <code>tracestate</code>에 최대 32개 항목까지 싣는다.
+    이 표준이 푸는 문제는 <em>"서로 다른 추적 도구가 수집한 트레이스를 이을 공용 식별자가 없다"</em>는 것이었다.
+  </p>
+
+  <p class="note">
+    <strong>세 가지 ID를 혼동하지 말 것.</strong> 이름이 비슷해서 계속 섞인다.
+  </p>
+  <table>
+    <thead><tr><th style="width:22%">ID</th><th style="width:34%">무엇을 식별</th><th>쓰는 곳</th></tr></thead>
+    <tbody>
+      <tr><td><strong>trace-id</strong></td><td>요청 하나의 전체 여정</td><td>로그·메트릭 상관, 장애 추적. <strong>모든 로그에 싣는다.</strong></td></tr>
+      <tr><td><strong>상관관계 ID</strong><br><span class="sm">saga ID 등</span></td><td>비즈니스 흐름 하나 (여러 요청에 걸침)</td><td>"3번 주문이 어디까지 갔나"에 답하기</td></tr>
+      <tr><td><strong>멱등 키</strong></td><td><strong>논리적 연산 하나</strong></td><td>중복 제거. <span class="no">앞의 둘을 여기 쓰면 안 된다</span> — <a href="./0042-idempotency-the-shared-part.html">0042 §3</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>§6 · 진단 연습</h2>
+
+  <div class="drill">
+    <p class="q">① "외부 결제 API 타임아웃을 1초로 잡았습니다. 빠르게 실패하는 게 좋으니까요."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>분포를 안 봤다.</strong> 결제 승인은 카드사를 거치므로 정상 응답이 수 초까지 가는 게 흔하다.
+      1초 타임아웃은 <strong>성공했을 결제를 죽이고</strong>, 재시도가 붙어 있으면 같은 결제를 다시 시도한다.</p>
+      <p>더 나쁜 건 <strong>결과를 모른 채 끊는다</strong>는 것 — 카드사에서는 승인이 났는데 우리는 실패로 안다.
+      <a href="./0042-idempotency-the-shared-part.html">0042</a>의 <code>IN_PROGRESS</code> + 조회 경로가 필요한 이유다.</p>
+      <p class="sm">물을 것: "이 호출의 p99가 얼마입니까?" 그리고 "타임아웃 났을 때 승인 여부를 확인할 조회 API가 있나요?"</p>
+    </details>
+
+    <p class="q">② "안정성을 위해 프런트, 게이트웨이, 서비스 모두에 재시도 3회를 넣었습니다."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>조합적 폭발.</strong> 3계층 × 3회 = 최하위가 최대 <strong>27번</strong> 호출된다.
+      장애 상황에서 이건 "안정성"이 아니라 <strong>회복을 막는 장치</strong>다.</p>
+      <p>규칙: <strong>재시도는 한 계층에서만.</strong> 대개 실패하는 의존에 가장 가까운 계층이다.
+      나머지 계층은 실패를 그대로 위로 올린다.</p>
+      <p class="sm">그리고 재시도하는 그 계층에도 <strong>전역 예산</strong>을 둔다 — 예산이 마르면 재시도 없이 실패시킨다.</p>
+    </details>
+
+    <p class="q">③ "부하가 몰리면 중요하지 않은 기능부터 끄기로 했습니다. 상황 봐서 판단하려고요."</p>
+    <details class="reveal"><summary>확인</summary>
+      <p><strong>"상황 봐서"가 문제다.</strong> 부하가 몰리는 순간은 판단하기 가장 나쁜 때다 —
+      새벽이고, 정보가 부족하고, 되돌리기 어렵다.</p>
+      <p>필요한 것: <strong>요청마다 중요도 등급을 미리 붙이고</strong>, 사용률 임계를 등급별로 설정해
+      <strong>자동으로</strong> 버리게 한다. 그리고 등급은 <strong>호출 체인을 따라 전파</strong>돼야 한다.</p>
+      <p class="sm">기획과 합의할 문장: "부하가 임계를 넘으면 추천·리뷰 요약은 빈 값으로 응답합니다. 결제·주문은 마지막까지 지킵니다."
+      — 이건 기술 결정이 아니라 <strong>비즈니스 결정</strong>이라 미리 합의해야 한다.</p>
+    </details>
+  </div>
+
+  <h2>§7 · 확인 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> 타임아웃 값을 정하는 출발점으로 옳은 것은?</p>
+    <button type="button" data-target="g1" data-answer="correct">관측된 p99 응답 분포에서 유도</button>
+    <button type="button" data-target="g1" data-answer="wrong" data-hint="오답. 평균은 꼬리를 숨긴다. 평균의 두 배가 p99보다 짧을 수 있다.">평균 응답 시간의 두 배를 잡음</button>
+    <button type="button" data-target="g1" data-answer="wrong" data-hint="오답. 다른 팀의 의존은 응답 분포가 다르다.">다른 팀이 쓰는 값을 그대로 씀</button>
+    <button type="button" data-target="g1" data-answer="wrong" data-hint="오답. 기본값은 우리 의존의 분포를 모른다.">라이브러리 기본값을 그대로 둔다</button>
+    <p class="answer" id="g1"></p>
+
+    <p><strong>Q2.</strong> 여러 계층이 각각 재시도하면 생기는 일은?</p>
+    <button type="button" data-target="g2" data-answer="correct">시도 횟수가 곱해져 폭증한다</button>
+    <button type="button" data-target="g2" data-answer="wrong" data-hint="오답. 지연이 아니라 최하위 호출량이 지수적으로 는다.">응답 시간이 조금 길어진다</button>
+    <button type="button" data-target="g2" data-answer="wrong" data-hint="오답. 로그 가독성은 부수적인 문제다.">로그가 읽기 어려워진다</button>
+    <button type="button" data-target="g2" data-answer="wrong" data-hint="오답. 메모리보다 훨씬 앞서 하위 서비스가 무너진다.">메모리 사용량이 증가한다</button>
+    <p class="answer" id="g2"></p>
+
+    <p><strong>Q3.</strong> 과부하 때 무엇을 먼저 버릴지 언제 정하나?</p>
+    <button type="button" data-target="g3" data-answer="correct">미리 요청마다 등급을 붙여 둔다</button>
+    <button type="button" data-target="g3" data-answer="wrong" data-hint="오답. 장애 중에는 판단할 정보도 시간도 없다.">장애가 났을 때 당직자가 정한다</button>
+    <button type="button" data-target="g3" data-answer="wrong" data-hint="오답. 부하가 높은 것이 덜 중요한 것은 아니다.">부하가 높은 순서대로 버리게 함</button>
+    <button type="button" data-target="g3" data-answer="wrong" data-hint="오답. 느린 요청이 결제처럼 중요한 것일 수 있다.">가장 느린 요청부터 버리게 한다</button>
+    <p class="answer" id="g3"></p>
+  </section>
+
+  <h2>§8 · 이 레슨이 주는 문장</h2>
+
+  <table>
+    <thead><tr><th style="width:26%">상황</th><th>쓰는 문장</th></tr></thead>
+    <tbody>
+      <tr><td>타임아웃 값 리뷰</td><td>"이 호출의 <strong>p99가 얼마입니까?</strong> 그 숫자에서 타임아웃을 유도하죠."</td></tr>
+      <tr><td>재시도 리뷰</td><td>"이 경로에서 <strong>재시도하는 계층이 몇 개</strong>입니까? 하나만 남겨야 합니다."</td></tr>
+      <tr><td>부하 대비 설계</td><td>"부하 차단은 <strong>로컬 사용률</strong>로 하고, 무엇을 버릴지는 <strong>지금</strong> 등급으로 정해 둡시다."</td></tr>
+      <tr><td>추적 설계</td><td>"<strong>trace-id · saga ID · 멱등 키</strong>는 서로 다른 것입니다. 각각 무엇으로 잡을지 정하죠."</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>먼저 읽을 1차 출처:</strong></p>
+  <ul>
+    <li><a href="https://sre.google/sre-book/handling-overload/">Google SRE Book — Handling Overload</a>
+        — §2~§4 전부의 원문. 중요도 4등급과 자동 전파, 적응형 스로틀링(K=2), 재시도 예산(3회·10%). <strong>하나만 읽는다면 이것.</strong></li>
+    <li><a href="https://sre.google/sre-book/addressing-cascading-failures/">Google SRE Book — Addressing Cascading Failures</a>
+        — 프로세스 전역 재시도 예산(분당 60회)과 재시도 증폭 계산.</li>
+    <li><a href="https://www.w3.org/TR/trace-context/">W3C — Trace Context</a>
+        — <code>traceparent</code> 형식의 표준 명세. §5의 출처.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="./0038-tactics-detect-recover-prevent.html">0038 — 전술</a> ·
+    <a href="./0042-idempotency-the-shared-part.html">0042 — 멱등성</a> ·
+    <a href="./0040-patterns-never-come-alone.html">0040 — 패턴 조합</a>.
+  </p>
+
+  <p class="note">
+    <strong>다음:</strong> <a href="./0044-evaluate-enforce-record.html">0044 — 검증하고, 강제하고, 남기기</a>.
+    유틸리티 트리로 우선순위를 정하고, ATAM으로 트레이드오프를 드러내고,
+    적합성 함수로 결정을 자동으로 지키고, ADR과 C4로 남긴다.
+    <strong>AI가 코드를 쓰는 환경에서 사람이 담당해야 하는 부분</strong>이 정확히 여기다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

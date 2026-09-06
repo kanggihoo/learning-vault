@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>실전 리뷰 — 배운 어휘로 실제 문서 읽기</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+    th, td { border: 1px solid #deded6; padding: 7px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .quote { border-left: 4px solid #9aa5b1; padding: 8px 14px; margin: 10px 0; color: #3e4c59; font-size: 0.92rem; }
+    .quote cite { display: block; margin-top: 5px; font-size: 0.83rem; color: #6b7280; font-style: normal; }
+    .finding { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 4px 18px 14px; margin: 16px 0; }
+    .finding h3 { margin-top: 14px; }
+    .finding.risk { border-left: 5px solid #b91c1c; }
+    .finding.nonrisk { border-left: 5px solid #047857; }
+    .finding.trade { border-left: 5px solid #b45309; }
+    .tag { display: inline-block; font-size: 0.74rem; font-weight: 700; padding: 2px 7px;
+           border-radius: 4px; vertical-align: middle; margin-left: 6px; }
+    .tag-r { background: #fee2e2; color: #991b1b; }
+    .tag-n { background: #d1fae5; color: #065f46; }
+    .tag-t { background: #ffedd5; color: #9a3412; }
+    .src { font-size: 0.82rem; color: #6b7280; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">아키텍처 설계 · 부록 · 레슨 0045 · <a href="../reference/0021-architecture-review-questions.html">질문 카드 0021</a>을 실제 문서에 적용</p>
+  <h1>실전 리뷰 — 배운 어휘로 실제 문서 읽기</h1>
+
+  <p class="lead">
+    여덟 레슨이 끝난 뒤 남는 유일한 질문은 이것이다 —
+    <strong>이 어휘가 실제로 도구가 되는가.</strong> 그래서 마켓 리플레이(S15P21A605)의 백엔드 설계 문서를
+    <a href="../reference/0021-architecture-review-questions.html">질문 카드</a>로 읽고,
+    <a href="./0044-evaluate-enforce-record.html">0044 §2</a>의 네 산출물
+    — <strong>비위험 · 위험 · 민감점 · 절충점</strong> — 으로 정리했다.
+  </p>
+
+  <p class="note">
+    <strong>먼저 정직하게.</strong> 이 문서들은 <strong>좋다.</strong> ADR 네 편은 문맥·대안 비교·기각 사유·
+    <em>감수하는 것</em>까지 갖췄고, <code>CONTEXT.md</code>는 사실상 보편 언어 사전이다.
+    그래서 이 리뷰의 절반은 <strong>이미 맞는 결정에 이름을 붙이는 일</strong>이다.
+    지적 목록만 있는 리뷰는 방어를 부르고, 무엇보다 <strong>좋은 결정에 이름이 없으면 나중에 누가 바꾸려 할 때 지킬 수 없다.</strong>
+  </p>
+
+  <h2>§0 · 읽은 범위</h2>
+  <p class="sm">
+    <code>backend/docs/architecture/overview.md</code> · <code>backend/docs/CONTEXT.md</code> ·
+    <code>backend/docs/decisions-later.md</code> · <code>backend/docs/adr/0001~0004</code> ·
+    <code>docs/projects/market-replay-api/{ord,acc,ipo}.md</code>의 관련 절.
+    <strong>읽지 않은 것:</strong> 기능명세서, ERD, 나머지 API 문서 15편, 실제 코드.
+    따라서 아래 발견은 <strong>문서에 근거한 것</strong>이고, 코드에 이미 반영돼 있다면 그 자체가 답이다.
+  </p>
+
+  <h2>§1 · 비위험 — 이미 맞는 결정들 <span class="tag tag-n">NONRISK</span></h2>
+
+  <div class="finding nonrisk">
+    <h3>N1. <code>CONTEXT.md</code>는 보편 언어 사전이다 <span class="sm">— 0041 §2</span></h3>
+    <div class="quote">
+      <strong>Account (계좌)</strong>: 한 User 가 한 시즌에서 갖는 자산 전체 (…)
+      <strong>로그인 계정의 뜻으로 쓰지 않는다</strong> (그쪽은 User · OAuth Account).
+      <cite>— backend/docs/CONTEXT.md</cite>
+    </div>
+    <p>
+      Fowler가 <em>BoundedContext</em>에서 지목한 다의어 문제 — 같은 단어가 집단마다 다른 뜻을 갖는 것 — 를
+      <strong>회피어(<em>Avoid</em>) 목록까지 붙여서</strong> 정면으로 닫았다.
+      "Tick" 항목이 <em>"Candle·캔들·봉 — 고가·저가·시가를 쓰지 않는 단일 가격 모델과 정면으로 충돌한다"</em>고
+      적은 것은 <strong>용어가 데이터 모델의 제약을 실어 나른다</strong>는 걸 알고 쓴 문장이다.
+    </p>
+    <p class="sm">
+      이름 붙이기: 이건 <strong>경계 컨텍스트의 보편 언어</strong>이고, 나중에 서비스를 나눌 일이 생기면
+      <strong>이 사전이 그대로 경계 후보 목록</strong>이 된다. 지금 당장 쓰는 문서가 아니라 <em>미래의 자산</em>이다.
+    </p>
+  </div>
+
+  <div class="finding nonrisk">
+    <h3>N2. IPO 청약이 자연 멱등이다 <span class="sm">— 0042 §2</span></h3>
+    <div class="quote">
+      단수 리소스라 <code>POST</code>가 <strong>멱등</strong>이 된다. 두 번 눌러도 증거금이 두 번 잠기지 않고 같은 청약을 반환한다.
+      <strong>컬렉션이었다면 중복 방지를 위한 상태 검사가 별도로 필요했다.</strong>
+      <cite>— docs/projects/market-replay-api/ipo.md</cite>
+    </div>
+    <p>
+      <strong>멱등 키도 중복 제거 저장소도 없이</strong> 자원 모델만으로 멱등을 만들었다.
+      0042 §2가 "자연 멱등을 먼저 설계하고, 안 되는 것에만 중복 제거 기법을 더하라"고 한 것의 정확한 실행이다.
+      <code>DELETE</code>가 청약하지 않은 공모에도 204를 주는 것도 같은 원리다.
+    </p>
+  </div>
+
+  <div class="finding nonrisk">
+    <h3>N3. <code>lastAckedTickSeq</code>를 <code>max()</code>로 갱신한다 <span class="sm">— 0042 §2</span></h3>
+    <div class="quote">
+      <code>max()</code>인 이유: <strong>재시도나 지연으로 낡은 값이 도착해도 뒤로 가지 않는다.</strong>
+      같은 값을 여러 번 보내도 결과가 같다.
+      <cite>— docs/projects/market-replay-api/acc.md</cite>
+    </div>
+    <p>
+      0042 §2에서 경고한 것 — "절대 상태로 바꾸면 <strong>순서</strong> 문제가 생긴다" — 을
+      <code>max()</code>가 통째로 막는다. 멱등이면서 <strong>순서에도 무관</strong>하다.
+      이건 Azure가 말한 <strong>교환 가능한 갱신(commutative update)</strong>이고,
+      분산 시스템에서 가장 안전한 형태의 쓰기다.
+    </p>
+    <p class="sm">
+      게다가 <code>CONTEXT.md</code>가 <em>"lastSeenAt·마지막 접속을 쓰지 않는다 — 연결 기반 신호는 자동 재연결과
+      백그라운드 탭에서 전부 깨진다"</em>고 이유까지 적어 뒀다. 워터마크를 시각이 아니라 순번으로 잡은 것 자체가 결정이다.
+    </p>
+  </div>
+
+  <div class="finding nonrisk">
+    <h3>N4. ADR에 "감수하는 것"이 실제로 적혀 있다 <span class="sm">— 0044 §4</span></h3>
+    <p>
+      0044 §4에서 <strong>"Consequences가 장점뿐이면 트레이드오프를 계산하지 않은 것"</strong>이라고 했다.
+      ADR-0003은 감수하는 것을 <strong>여덟 줄</strong> 적었다 — 더미 ID 토큰, <code>UserRepository</code> 직접 참조,
+      "유일한 격리 누출점"까지 스스로 이름 붙였다. ADR-0001은 <em>"Redis 장애 시 전원 로그아웃"</em>을 영향에 그대로 남겼다.
+    </p>
+    <p class="sm">
+      리뷰어로서 할 말: <strong>이 칸이 채워져 있으면 그 결정은 논쟁할 필요가 없다.</strong>
+      대가를 알고 낸 결정이기 때문이다. 논쟁해야 하는 건 이 칸이 빈 결정이다.
+    </p>
+  </div>
+
+  <div class="finding nonrisk">
+    <h3>N5. fail-closed가 기본값이다 <span class="sm">— 0038 §3 보안 전술</span></h3>
+    <div class="quote">
+      인증 우회 기본값 fail-closed: <strong>프로파일(미지정 시 켜짐) vs 프로퍼티(미지정 시 꺼짐).</strong>
+      <cite>— ADR-0003</cite>
+    </div>
+    <p>
+      보안 전술 목록의 <strong>"기본 설정 변경"</strong>과 <strong>"노출 제한"</strong>을 동시에 만족한다.
+      게다가 <em>"빈 미생성이 경로 차단보다 안전"</em>은 인가 설정 실수라는 <strong>결함 자체를 예방</strong>하는 선택이다 —
+      감지·복구가 아니라 <strong>예방</strong> 칸이다.
+    </p>
+  </div>
+
+  <div class="finding nonrisk">
+    <h3>N6. 리소스를 화면이 아니라 생명주기로 잘랐다 <span class="sm">— 0041 §1</span></h3>
+    <div class="quote">
+      <strong>생명주기가 반대다.</strong> 미체결은 수정·취소되고 폐장에 소멸한다. 체결은 영구 불변이며
+      복기·시즌 리포트·MDD·승률의 원천이다.
+      <cite>— ord.md, <code>orders</code>와 <code>executions</code>를 나눈 이유</cite>
+    </div>
+    <p>
+      0041 §1의 "잘못된 경계 기준 세 가지"(화면·테이블·계층)를 전부 피했다.
+      <strong>필드가 겹치지 않고, 생명주기가 반대고, 조회 패턴이 다르다</strong>는 세 근거는
+      그대로 <strong>경계가 맞는지 검사하는 질문</strong>이다.
+    </p>
+  </div>
+
+  <h2>§2 · 위험 <span class="tag tag-r">RISK</span></h2>
+
+  <div class="finding risk">
+    <h3>R1. 품질 속성 시나리오가 하나도 없다 <span class="sm">— 0037 §3</span></h3>
+    <p>
+      읽은 문서 전체에서 <strong>숫자로 된 응답 측정을 하나도 못 찾았다.</strong>
+      가용성 목표도, 응답 시간 목표도, 동시 접속 규모도 없다.
+      ADR-0004는 이걸 <strong>정직하게 인정</strong>한다:
+    </p>
+    <div class="quote">
+      <code>clientOutboundChannel</code> 스레드풀·버퍼는 기본값이다. <strong>부하 데이터 없이 정하면 추측이다.</strong>
+      <cite>— ADR-0004, 결과</cite>
+    </div>
+    <p>
+      태도는 맞다. 문제는 <strong>부하 데이터를 언제 얻을지</strong>다.
+      <code>decisions-later.md</code>에서 "부하 테스트 시나리오 파일"은 <strong>P3</strong>이고,
+      미룬 이유는 <em>"부하를 걸 대상 도메인 API가 아직 없어 지금 쓰면 곧 버린다"</em>다.
+      그런데 지금은 <code>ord</code>·<code>acc</code>·<code>ipo</code> API 계약이 다 나와 있다.
+    </p>
+    <p>
+      <strong>"추측하지 않겠다"가 "영원히 정하지 않는다"로 굳는 경로가 여기다.</strong>
+      숫자가 없으면 <a href="./0044-evaluate-enforce-record.html">적합성 함수</a>도 못 만들고,
+      발표 당일에 "이 정도면 되는 건가"를 판정할 기준도 없다.
+    </p>
+    <p class="sm">
+      <strong>제안:</strong> 시나리오 <strong>세 개만</strong> 6부로 쓴다. 30분이면 된다.
+      ① 심사 중 동시 접속 N명에서 <code>POST /orders</code> p99 · ② 한 틱에서 메시지 19종이
+      전 접속자에게 나가는 데 걸리는 시간 · ③ Redis가 죽었을 때 무엇이 어떻게 되는지.
+      셋 다 <strong>이미 아는 값</strong>으로 채울 수 있다 — N은 심사 인원, 틱 간격은 31~36초.
+    </p>
+  </div>
+
+  <div class="finding risk">
+    <h3>R2. 선언된 스타일이 강제되지 않는다 — 그리고 첫 균열이 이미 기록돼 있다 <span class="sm">— 0039 §4 · 0044 §3</span></h3>
+    <p><code>overview.md</code>는 계층형의 제약을 명확히 선언한다.</p>
+    <div class="quote">
+      단방향 흐름: <code>Controller → Service → Repository → Entity</code> ·
+      <code>global</code> → <code>domain</code> 역참조 금지 ·
+      도메인 간 협력: 엔티티 직접 참조 <strong>지양</strong>, Service 호출로 협력.
+      <cite>— backend/docs/architecture/overview.md</cite>
+    </div>
+    <p>
+      그런데 <strong>이걸 검사하는 장치가 문서 어디에도 없다.</strong>
+      그리고 ADR-0003이 첫 균열을 <em>스스로</em> 기록했다:
+    </p>
+    <div class="quote">
+      <code>UserRepository</code> 직접 참조: 테스트 지원 서비스에서 (…) 저장소 직접 호출
+      (<strong>의도적 Service 우회</strong>, 기능 제거 시 함께 제거).
+      <cite>— ADR-0003, 감수하는 것</cite>
+    </div>
+    <p>
+      <strong>문서화된 예외 하나는 문제가 아니다.</strong> 문제는 두 번째다 —
+      검사가 없으면 두 번째 우회는 ADR에 적히지 않는다. 그리고 <strong>"지양"은 강제가 아니다.</strong>
+      0039의 문장 그대로: <em>제약을 자동으로 강제하지 않는 스타일은 스타일이 아니라 희망이다.</em>
+    </p>
+    <p class="sm">
+      <strong>제안:</strong> 아키텍처 테스트 <strong>세 줄</strong>이면 시작된다 —
+      ① <code>global</code>이 <code>domain</code>을 참조하면 실패 ② <code>controller</code>가
+      <code>repository</code>를 직접 참조하면 실패 ③ 도메인 패키지 간 순환 의존이 있으면 실패.
+      난도가 낮고 효과가 즉시라 <strong>가장 먼저 할 일 후보</strong>다(§4).
+    </p>
+  </div>
+
+  <div class="finding risk">
+    <h3>R3. <code>POST /orders</code>가 멱등하지 않다 <span class="sm">— 0042 §2·§3</span></h3>
+    <p>
+      이 프로젝트는 IPO 청약을 <strong>일부러 멱등하게</strong> 설계했다(N2). 그리고 그 문서가
+      바로 옆에 이렇게 적었다 — <em>"컬렉션이었다면 중복 방지를 위한 상태 검사가 별도로 필요했다."</em>
+    </p>
+    <p>
+      <strong><code>POST /api/v1/orders</code>가 정확히 그 컬렉션이다.</strong>
+      그리고 <code>ord.md</code>의 검증 표(기획서 6.5)에는 <strong>중복 방지 항목이 없다</strong> —
+      수량·지정가·phase·잔고·수량·휴장·<code>UPCOMING</code>까지 일곱 줄인데 중복이 없다.
+    </p>
+    <table>
+      <thead><tr><th style="width:34%">중복이 생기는 경로</th><th>결과</th></tr></thead>
+      <tbody>
+        <tr><td>사용자가 버튼을 두 번 누른다</td><td>시장가 매수 2회 — 즉시 전량 체결이므로 되돌릴 수 없다</td></tr>
+        <tr><td>응답이 늦어 클라이언트가 재시도한다</td><td>같은 주문 2건. 사용자는 왜 그런지 모른다</td></tr>
+        <tr><td>모바일에서 연결이 끊긴 채 성공했다</td><td>재전송 → 2회 체결</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <strong>"모의투자라 돈이 아니잖아"가 반론이 되지 않는다.</strong>
+      이 게임에서 <strong>잔고가 곧 점수</strong>다. 중복 매수는 순위를 바꾸고,
+      사용자는 "내가 두 번 눌렀나?"라고만 생각하고 신고하지 않는다 —
+      <a href="./0038-tactics-detect-recover-prevent.html">감지되지 않는 결함</a>이다.
+    </p>
+    <p class="sm">
+      <strong>제안 두 가지.</strong> ⓐ 클라이언트 생성 멱등 키를 헤더로 받고
+      (<a href="./0042-idempotency-the-shared-part.html">Stripe 방식</a>) 키 컬럼에 유니크 제약 —
+      가장 확실하지만 프론트 계약이 바뀐다. ⓑ 짧은 시간 창 안의 <strong>동일 조건 주문</strong>을
+      409로 거부 — 계약 변경이 없지만 <em>정당한 연속 주문</em>도 막을 수 있다.
+      <strong>어느 쪽이든 지금 정하는 게 낫다</strong> — 체결이 붙은 뒤에는 되돌리는 코드가 필요해진다.
+    </p>
+  </div>
+
+  <div class="finding risk">
+    <h3>R4. 감지 전술이 비어 있다 <span class="sm">— 0038 §2·§3</span></h3>
+    <p>
+      복구와 예방은 있다 — fail-closed 플래그, 세션 즉시 무효화, 구독 검증 인터셉터, 재연결 백오프.
+      <strong>감지는 없다.</strong> 특히 두 곳이 조용히 실패한다.
+    </p>
+    <table>
+      <thead><tr><th style="width:32%">어디</th><th style="width:34%">조용히 실패하는 방식</th><th>필요한 감지</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>clientOutboundChannel</code> 기본값</td>
+          <td>버퍼가 넘치면 <strong>메시지가 버려진다.</strong> 사용자는 "가끔 틱이 안 온다"만 겪고, 서버는 정상이다</td>
+          <td>드롭 카운터 · 전송 지연 지표. 틱은 절대시각 스케줄이라 <strong>"예정 − 실제"가 그대로 지표</strong>가 된다</td>
+        </tr>
+        <tr>
+          <td><code>orders.lockedAmount</code> ↔ <code>accounts.lockedKrw</code></td>
+          <td>같은 사실을 두 곳에 적는다(<code>ord.md</code> 열린 질문 1이 "저장"으로 표기). <strong>어긋나도 아무도 모른다</strong></td>
+          <td>정합성 검사 — 미체결 예약 합계와 계좌 잠금액이 같은지 주기 대조</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="sm">
+      두 번째가 특히 <a href="./0042-idempotency-the-shared-part.html">0042 §6 ③</a>과 같은 형태다 —
+      <strong>보상·복구 체계에 감지가 없으면 어긋난 상태가 조용히 남는다.</strong>
+      그리고 이 게임에서 잠금액이 어긋나면 사용자가 "왜 주문이 안 되지"를 겪고 원인은 안 나온다.
+    </p>
+  </div>
+
+  <h2>§3 · 민감점과 절충점 <span class="tag tag-t">SENSITIVITY / TRADEOFF</span></h2>
+
+  <div class="finding trade">
+    <h3>T1. <code>messageBrokerTaskScheduler</code> 공유 — 진짜 절충점 <span class="sm">— 0044 §2</span></h3>
+    <div class="quote">
+      <code>TaskScheduler</code>가 둘이 되면 나중에 붙는 <code>@Scheduled</code>의 스케줄러 선택이 모호해진다.
+      <strong>역으로, 이 빈이 있으면 Boot는 <code>taskScheduler</code>를 만들지 않으므로
+      게임 시계의 <code>@Scheduled</code>가 이 스케줄러 풀을 함께 쓴다</strong> — 부하 데이터가 생기면 그 시점에 분리를 판단한다.
+      <cite>— ADR-0004, 결과</cite>
+    </div>
+    <p>
+      ADR이 <strong>이미 정확히 짚었다.</strong> 이름을 붙이면 이건 교과서적 <strong>절충점</strong>이다 —
+      하나의 결정이 두 품질에 <strong>반대 방향</strong>으로 작용한다.
+    </p>
+    <table>
+      <thead><tr><th style="width:30%">축</th><th>빈 하나(현재)</th><th>빈 둘로 분리</th></tr></thead>
+      <tbody>
+        <tr><td><strong>변경 용이성</strong></td><td class="ok">모호함 없음. <code>@Scheduled</code>가 어디로 갈지 명확</td><td class="no">스케줄러 선택을 매번 명시해야 함</td></tr>
+        <tr><td><strong>격리성 / 시간 정확도</strong></td><td class="no">브로커 전송이 밀리면 <strong>틱 스케줄이 함께 밀린다</strong></td><td class="ok">틱 시계가 브로커 부하와 무관해짐</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <strong>여기 하나가 비어 있다 — 분리 판단의 트리거.</strong>
+      "부하 데이터가 생기면"은 조건이 아니라 희망이다.
+      그런데 이 프로젝트에는 <strong>트리거로 쓸 수 있는 지표가 이미 설계상 존재한다</strong> —
+      틱을 절대시각으로 스케줄하므로 <strong>"예정 시각 − 실제 발행 시각"</strong>이 그대로 관측된다
+      (<a href="./0036-tick-clock-720s-grid.html">0036</a>).
+    </p>
+    <p class="sm">
+      <strong>제안:</strong> ADR-0004에 한 줄 추가 — <em>"틱 지연이 N ms를 넘는 일이 관측되면 스케줄러를 분리한다."</em>
+      숫자를 넣는 순간 이 미결이 <strong>결정</strong>이 된다.
+    </p>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:26%">민감점</th><th style="width:38%">무엇에 민감한가</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>clientOutboundChannel</code> 스레드풀·버퍼</td>
+        <td>실시간 전달의 신뢰성 — 넘치면 메시지 유실</td>
+        <td class="no">기본값 + 관측 없음 (R1·R4와 같은 뿌리)</td>
+      </tr>
+      <tr>
+        <td>세션 유휴 만료 1일</td>
+        <td>Redis 메모리 ↔ 탈취 세션의 생존 기간</td>
+        <td class="mid"><code>decisions-later</code>에 "절대 만료" 항목으로 미정</td>
+      </tr>
+      <tr>
+        <td>STOMP 하트비트 10초 ↔ nginx <code>proxy_read_timeout</code></td>
+        <td>연결 유지 — 타임아웃이 하트비트보다 짧으면 주기적으로 끊긴다</td>
+        <td class="ok"><strong>이미 스스로 찾아 <code>decisions-later</code>에 적어 뒀다.</strong> 민감점 식별의 모범 사례</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    세 번째 줄이 이 리뷰에서 가장 인상적인 항목이다.
+    <em>"기본값(60s)으로도 동작하지만 <strong>명시하지 않으면 나중에 값을 줄인 사람이 연결이 주기적으로 끊기는 이유를 찾지 못한다</strong>"</em>
+    — 민감점의 정의를 그대로 쓴 문장이고, 어휘를 몰라도 개념은 이미 쓰고 있었다는 뜻이다.
+  </p>
+
+  <h2>§4 · 무엇부터 하나 — 두 축으로</h2>
+
+  <p>
+    <a href="./0044-evaluate-enforce-record.html">0044 §1</a>의 방식대로 발견을
+    <strong>(비즈니스 중요도, 기술 난도)</strong> 두 축에 놓는다.
+    <strong>중요도가 높은 것 중 난도가 낮은 것</strong>이 먼저다.
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 900 330" role="img" aria-label="발견들을 중요도와 난도 두 축에 배치한 우선순위 도표">
+    <defs>
+      <marker id="v1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+    </defs>
+
+    <path class="d-line-d" d="M120,170 L860,170"/>
+    <path class="d-line-d" d="M480,40 L480,290"/>
+    <path class="d-line" d="M120,290 L870,290" marker-end="url(#v1)"/>
+    <path class="d-line" d="M120,290 L120,34" marker-end="url(#v1)"/>
+
+    <text class="d-label-sm" x="500" y="312" text-anchor="middle">기술 난도 →</text>
+    <text class="d-label-sm" x="140" y="30">↑ 비즈니스 중요도</text>
+    <text class="d-label-sm" x="300" y="60" text-anchor="middle" style="fill:#b91c1c;font-weight:700">먼저 — 중요하고 쉽다</text>
+    <text class="d-label-sm" x="680" y="60" text-anchor="middle">다음 — 중요하지만 준비가 든다</text>
+
+    <rect class="d-box-b" x="150" y="80" width="280" height="34" style="stroke:#b91c1c;stroke-width:2"/>
+    <text class="d-label-sm" x="290" y="102" text-anchor="middle">R2 아키텍처 테스트 3줄</text>
+    <rect class="d-box-b" x="150" y="122" width="280" height="34" style="stroke:#b91c1c;stroke-width:2"/>
+    <text class="d-label-sm" x="290" y="144" text-anchor="middle">R3 주문 중복 방지</text>
+
+    <rect class="d-box" x="530" y="80" width="280" height="34"/>
+    <text class="d-label-sm" x="670" y="102" text-anchor="middle">R1 품질 속성 시나리오 3개</text>
+    <rect class="d-box" x="530" y="122" width="280" height="34"/>
+    <text class="d-label-sm" x="670" y="144" text-anchor="middle">R4 감지 — 정합성 검사·드롭 지표</text>
+
+    <rect class="d-box-c" x="530" y="196" width="280" height="34"/>
+    <text class="d-label-sm" x="670" y="218" text-anchor="middle">T1 스케줄러 분리 — 관측 후</text>
+    <rect class="d-box-c" x="150" y="196" width="280" height="34"/>
+    <text class="d-label-sm" x="290" y="218" text-anchor="middle">ADR-0004에 분리 트리거 한 줄</text>
+
+    <text class="d-label-sm" x="290" y="262" text-anchor="middle">— 지금 해도 되는 것</text>
+    <text class="d-label-sm" x="670" y="262" text-anchor="middle">— 관측 데이터가 나온 뒤</text>
+  </svg>
+  <figcaption>
+    <strong>R2와 R3가 왼쪽 위에 있는 게 핵심이다.</strong> 둘 다 <strong>지금 하면 몇 줄</strong>이고,
+    나중에 하면 각각 "이미 무너진 계층을 되돌리는 일"과 "이미 체결된 중복 주문을 정정하는 일"이 된다.
+    난도가 <em>시간이 지나면 오르는</em> 항목을 먼저 하는 것이 이 도표의 실제 용도다.
+  </figcaption>
+  </figure>
+
+  <h2>§5 · 이 실험에서 확인된 것</h2>
+
+  <table>
+    <thead><tr><th style="width:34%">가설</th><th>결과</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>어휘가 <strong>없던 발견</strong>을 만들어낸다</td>
+        <td class="ok">그렇다. R3(주문 멱등성)와 T1(스케줄러 절충점)은 문서를 그냥 읽어서는 안 나온다.
+            R3는 "IPO는 멱등인데 주문은?"이라는 <strong>대조 질문</strong>에서 나왔고,
+            T1은 ADR이 이미 서술한 것에 <strong>이름을 붙이자</strong> 결론(트리거 부재)이 따라 나왔다.</td>
+      </tr>
+      <tr>
+        <td>어휘가 <strong>좋은 결정을 방어</strong>하게 해 준다</td>
+        <td class="ok">그렇다. N1~N6은 전부 "왜 이게 좋은가"에 <strong>일반명사로</strong> 답할 수 있게 됐다.
+            "이거 잘했네요"와 "이건 자연 멱등이라 중복 제거 저장소가 필요 없습니다"는 다른 문장이다.</td>
+      </tr>
+      <tr>
+        <td>어휘가 <strong>지적 목록</strong>이 되지 않는다</td>
+        <td class="mid">주의가 필요하다. 이 문서에서 비위험을 <strong>먼저</strong> 쓴 것은 의도적이다.
+            네 산출물 중 <strong>비위험을 빼면</strong> 어떤 리뷰든 공격으로 읽힌다.</td>
+      </tr>
+      <tr>
+        <td>문서가 어휘를 <strong>모르고도</strong> 개념은 쓰고 있었다</td>
+        <td class="ok">여러 곳에서. nginx 타임아웃 항목은 민감점의 정의를 그대로 썼고,
+            IPO 단수 리소스는 자연 멱등이며, <code>max()</code>는 교환 가능한 갱신이다.
+            <strong>어휘의 값은 없던 걸 만드는 게 아니라, 흩어진 판단을 같은 이름으로 묶어 재사용하게 하는 것</strong>이다.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    <strong>가장 중요한 발견은 R3의 발견 방식이다.</strong>
+    나는 주문 문서를 먼저 읽고 "멱등성이 없네"라고 판단한 게 아니다.
+    <strong>IPO 문서가 스스로 쓴 문장</strong>(<em>"컬렉션이었다면 중복 방지가 별도로 필요했다"</em>)을 읽고,
+    그 조건이 성립하는 다른 엔드포인트를 찾은 것이다.
+    <strong>같은 팀이 한 곳에서 내린 좋은 판단을 다른 곳에 적용했는지 확인하는 것</strong> —
+    이게 어휘를 가진 리뷰어가 할 수 있는 가장 값싼 고품질 리뷰다.
+  </p>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="../reference/0021-architecture-review-questions.html">질문 카드 0021</a> ·
+    <a href="../reference/0020-architecture-design-map.html">지도 0020</a> ·
+    <a href="./0044-evaluate-enforce-record.html">0044 — 평가 4산출물</a> ·
+    <a href="./0042-idempotency-the-shared-part.html">0042 — 멱등성</a> ·
+    <a href="./0036-tick-clock-720s-grid.html">0036 — 틱 시계</a> ·
+    <a href="../reference/0019-market-replay-project-map.html">0019 — 프로젝트 지도</a>.
+  </p>
+
+  <p class="note">
+    <strong>다음으로 할 만한 것.</strong>
+    ① R1의 <strong>시나리오 3개를 같이 써 보기</strong> — 30분이고, 쓰고 나면 R4의 지표가 저절로 정해진다.
+    ② R3의 두 안(멱등 키 vs 시간 창) 중 <strong>어느 쪽인지 결정하고 ADR로 남기기</strong>.
+    ③ 안 읽은 API 문서 15편에 <strong>같은 대조 질문</strong>을 돌리기 — "여기도 컬렉션 POST인가?"
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
