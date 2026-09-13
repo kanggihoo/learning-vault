@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>점진적 도구 로딩은 어디서 일어나나 — MCP와 컨텍스트</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .terms { display: grid; grid-template-columns: 170px 1fr; gap: 4px 14px; background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 12px 16px; font-size: 0.93rem; }
+    .terms b { color: #0f766e; }
+    pre { font-size: 0.86rem; }
+    .bar { display: grid; gap: 3px; margin: 10px 0; }
+    .bar .row { display: grid; grid-template-columns: 150px 1fr 90px; align-items: center; gap: 8px; font-size: 0.88rem; }
+    .bar .fill { height: 18px; border-radius: 3px; background: #b45309; }
+    .bar .fill.ok { background: #0f766e; }
+    @media (max-width: 640px) { .terms { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="d-label-sm">MCP 2026-07-28 · 2/2 · 레슨 0048 · <a href="../reference/0023-mcp-glossary-and-change-map.html#s3">용어집·변경 지도(레퍼런스 0023)</a>의 §3·§5를 판다</p>
+  <h1>점진적 도구 로딩은 어디서 일어나나</h1>
+
+  <p class="lead">
+    "MCP가 이제 모든 도구를 한 번에 세션에 불러오지 않고 필요한 것만 점진적으로 가져온다더라."
+    이 문장은 <strong>절반은 정확하고, 절반은 층이 다르다.</strong> 점진적 로딩은 실제로 있고 MCP 공식 문서에도 이름이 있다(<em>Progressive Tool Discovery</em>).
+    그러나 그것은 <strong>서버가 보내는 것</strong>이 바뀐 게 아니라 <strong>호스트가 모델에게 보여 주는 것</strong>이 바뀐 것이다.
+    이 레슨은 그 내부 동작을 층별로 열어 본다 — 무엇이 어디에 저장되고, 무엇이 언제 모델의 컨텍스트에 들어가는가.
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    ① "세션에 불러온다"의 세션이 프로토콜 세션이 아니라 <strong>LLM 컨텍스트 창</strong>임을 구분한다.
+    ② 카탈로그 → 상세 → 실행의 3계층 흐름을 시퀀스로 그릴 수 있다.
+    ③ Anthropic API의 <code>defer_loading</code>·<code>tool_reference</code>가 <strong>프롬프트 캐시를 깨지 않고</strong> 정의를 끼워 넣는 방법을 설명할 수 있다.
+    ④ 2026-07-28 스펙이 이 패턴을 <em>돕는</em> 세 장치를 짚을 수 있다.
+  </p>
+
+  <h2>§0 · 이 레슨에서 쓰는 용어 여섯 개</h2>
+  <div class="terms">
+    <b>컨텍스트 창</b><div>모델이 한 호출에서 읽는 토큰 총량. 시스템 프롬프트·<em>도구 정의</em>·대화·도구 결과가 여기서 자리를 다툰다.</div>
+    <b>도구 정의</b><div>이름 + 설명 + 입력 JSON Schema. 하나에 수백 토큰. 서버 5개면 수만 토큰.</div>
+    <b>호스트</b><div>Claude Code 같은 AI 앱. 서버에서 받은 도구 전부를 <em>보유</em>하지만 모델에게는 <em>골라서</em> 보여 줄 수 있다.</div>
+    <b>메타툴</b><div>도구를 찾거나 부르기 위한 도구. <code>search_tools</code>, <code>get_tool_details</code>, Claude Code의 <code>ToolSearch</code>.</div>
+    <b><code>defer_loading</code></b><div>Anthropic API 옵션. 정의를 요청에 <em>보내되</em> 컨텍스트에 <em>넣지 않음</em>. 검색으로 찾을 때만 들어감.</div>
+    <b>프롬프트 캐시</b><div>같은 프롬프트 앞부분(프리픽스)을 재사용해 비용·지연을 줄이는 기능. <em>도구 배열이 바뀌면 깨진다.</em></div>
+  </div>
+  <p class="sm">전체 용어는 <a href="../reference/0023-mcp-glossary-and-change-map.html#s1">레퍼런스 0023 §1</a>의 "점진적 도구 로딩의 말들".</p>
+
+  <h2>§1 · 문제 — 사용자가 한 글자 치기 전에 사라지는 토큰</h2>
+
+  <p>
+    호스트의 순진한 구현은 이렇다. 시작할 때 연결된 모든 서버에 <code>tools/list</code>를 보내고, 받은 정의를 <strong>전부</strong> 모델의 <code>tools</code> 배열에 넣는다.
+    도구가 열 개면 괜찮다. 서버가 다섯 개면 이렇게 된다 (Anthropic 실측):
+  </p>
+  <div class="bar">
+    <div class="row"><span>GitHub (35 tools)</span><div class="fill" style="width:100%"></div><span>~26K</span></div>
+    <div class="row"><span>Slack (11 tools)</span><div class="fill" style="width:81%"></div><span>~21K</span></div>
+    <div class="row"><span>Sentry (5)</span><div class="fill" style="width:12%"></div><span>~3K</span></div>
+    <div class="row"><span>Grafana (5)</span><div class="fill" style="width:12%"></div><span>~3K</span></div>
+    <div class="row"><span>Splunk (2)</span><div class="fill" style="width:8%"></div><span>~2K</span></div>
+    <div class="row"><span><strong>합계</strong></span><div></div><span><strong>~55K</strong></span></div>
+  </div>
+  <p class="sm">
+    출처: <a href="https://www.anthropic.com/engineering/advanced-tool-use">Anthropic Engineering — Advanced tool use</a>. 같은 글에서 내부 최적화 전 134K 토큰 사례도 보고한다.
+    MCP 공식 문서의 그림은 더 극단적으로 "전부 선로딩 ~150,000 vs 점진 발견 ~2,000"을 대비시킨다.
+  </p>
+
+  <p>토큰만 문제가 아니다. 두 번째 문제가 더 아프다.</p>
+  <ul>
+    <li><strong>선택 정확도.</strong> 도구가 30~50개를 넘으면 모델이 <em>비슷한 이름</em> 사이에서 잘못 고르기 시작한다. 정의가 많을수록 나쁘다.</li>
+    <li><strong>지연·비용.</strong> 매 턴 55K 토큰을 다시 읽는다(프롬프트 캐시가 없으면).</li>
+  </ul>
+  <p class="sm">Anthropic의 MCP 평가에서 tool search 적용 후 정확도가 Opus 4 기준 49% → 74%, Opus 4.5 기준 79.5% → 88.1%로 올랐다. 정의를 <em>줄였는데</em> 정확도가 <em>올랐다</em> — 모델이 볼 게 적어졌기 때문.</p>
+
+  <h2>§2 · 핵심 구분 — 서버는 그대로, 바뀐 건 호스트의 "주입"</h2>
+
+  <p>MCP 공식 문서(<a href="https://modelcontextprotocol.io/docs/2026-07-28/develop/clients/client-best-practices">Client Best Practices</a>)의 정의를 그대로 옮긴다:</p>
+  <p class="note">
+    "호스트는 평소처럼 <code>tools/list</code>로 도구 정의를 <strong>가져오지만</strong>, 모델 컨텍스트에 <strong>주입하는 것은 미룬다.</strong>
+    호스트는 모델에게 가벼운 <code>search_tools</code> 메타툴을 제공한다. 호스트는 필요할 때만 전체 정의를 컨텍스트에 로드한다."
+  </p>
+
+  <p>세 문장에 세 층이 다 있다. 그림으로 놓으면:</p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 960 250" role="img" aria-label="서버·호스트·모델 컨텍스트 사이의 도구 정의 흐름">
+    <defs><marker id="p1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#52606d"/></marker>
+    <marker id="p1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/></marker></defs>
+    <rect class="d-box-c" x="20" y="60" width="200" height="130"/>
+    <text class="d-title" x="120" y="84" text-anchor="middle">① 서버들 (와이어)</text>
+    <text class="d-label-sm" x="120" y="106" text-anchor="middle">tools/list → 정의 58개 전부</text>
+    <text class="d-label-sm" x="120" y="124" text-anchor="middle">(cursor로 페이지, ttlMs 붙여서)</text>
+    <text class="d-label-sm" x="120" y="150" text-anchor="middle">누가 무엇을 볼지 모름</text>
+    <text class="d-label-sm" x="120" y="168" text-anchor="middle" style="fill:#b45309">2026-07-28에도 여기는 "전부"</text>
+
+    <path class="d-line" d="M224,125 L296,125" marker-end="url(#p1)"/><text class="d-label-sm" x="260" y="115" text-anchor="middle">전부</text>
+
+    <rect class="d-box" x="300" y="40" width="300" height="170"/>
+    <text class="d-title" x="450" y="64" text-anchor="middle">② 호스트</text>
+    <rect class="d-box-a" x="320" y="76" width="260" height="46"/>
+    <text class="d-label" x="450" y="95" text-anchor="middle">카탈로그 (58개 보유, 캐시)</text>
+    <text class="d-label-sm" x="450" y="112" text-anchor="middle">이름·설명 인덱스 (BM25/regex/임베딩)</text>
+    <rect class="d-box" x="320" y="130" width="260" height="66"/>
+    <text class="d-label" x="450" y="150" text-anchor="middle">주입 정책</text>
+    <text class="d-label-sm" x="450" y="167" text-anchor="middle">정의 총량 &lt; 임계값 → 전부 넣음</text>
+    <text class="d-label-sm" x="450" y="183" text-anchor="middle">≥ 임계값 → 메타툴만 넣고 지연</text>
+
+    <path class="d-line-a" d="M604,125 L676,125" marker-end="url(#p1a)"/><text class="d-label-sm" x="640" y="115" text-anchor="middle">3~5개</text>
+
+    <rect class="d-box-b" x="680" y="40" width="260" height="170"/>
+    <text class="d-title" x="810" y="64" text-anchor="middle">③ 모델 컨텍스트 창</text>
+    <rect class="d-box" x="700" y="76" width="220" height="30"/><text class="d-label-sm" x="810" y="96" text-anchor="middle">search_tools / ToolSearch (상주)</text>
+    <rect class="d-box" x="700" y="112" width="220" height="30"/><text class="d-label-sm" x="810" y="132" text-anchor="middle">핫툴 3~5개 (상주)</text>
+    <rect class="d-box-a" x="700" y="148" width="220" height="48"/><text class="d-label-sm" x="810" y="167" text-anchor="middle">검색으로 찾은 정의 (대화 중간에 추가)</text><text class="d-label-sm" x="810" y="185" text-anchor="middle">컴팩션되면 다시 검색</text>
+    <text class="d-label-sm" x="480" y="238" text-anchor="middle">"세션에 한 번에 불러온다"의 세션 = ③. 스펙이 없앤 세션(레슨 0047)은 ①과 ② 사이의 연결 기억. 다른 것이다.</text>
+  </svg>
+  <figcaption>
+    ①→② 화살표는 스펙이 정한다(<code>tools/list</code>, 전부). ②→③ 화살표는 호스트가 정한다(정책). 점진 로딩은 <strong>두 번째 화살표</strong>의 이야기다.
+  </figcaption>
+  </figure>
+
+  <h2>§3 · 내부 동작 — 카탈로그 → 상세 → 실행</h2>
+
+  <p>MCP 문서가 "가장 흔한 구현"으로 드는 3계층을, 모델 입장의 시퀀스로 그리면 이렇다.</p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 960 360" role="img" aria-label="점진적 도구 발견 3계층 시퀀스">
+    <defs><marker id="p2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#52606d"/></marker>
+    <marker id="p2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/></marker></defs>
+    <text class="d-actor" x="120" y="28" text-anchor="middle">Model</text>
+    <text class="d-actor" x="480" y="28" text-anchor="middle">Host (카탈로그 보유)</text>
+    <text class="d-actor" x="840" y="28" text-anchor="middle">MCP Server</text>
+    <line class="d-life" x1="120" y1="40" x2="120" y2="350"/><line class="d-life" x1="480" y1="40" x2="480" y2="350"/><line class="d-life" x1="840" y1="40" x2="840" y2="350"/>
+
+    <rect class="d-note" x="330" y="46" width="300" height="28"/><text class="d-label-sm" x="480" y="65" text-anchor="middle">시작 시: tools/list 전부 수신 → 인덱스 구축 (모델엔 안 보임)</text>
+    <path class="d-line-d" d="M484,88 L836,88" marker-end="url(#p2)"/><text class="d-msg" x="660" y="80" text-anchor="middle">tools/list (cursor…) → 58개, ttlMs 300000</text>
+
+    <text class="d-title" x="20" y="125" style="fill:#0f766e">Layer 1 · Catalog</text>
+    <path class="d-line-a" d="M124,140 L476,140" marker-end="url(#p2a)"/><text class="d-msg-a" x="300" y="132" text-anchor="middle">search_tools({ query: "update salesforce record" })</text>
+    <path class="d-line" d="M476,168 L124,168" marker-end="url(#p2)"/><text class="d-msg" x="300" y="160" text-anchor="middle">[{ salesforce_updateRecord, "한 줄 설명" }, { salesforce_upsertRecord, "…" }]</text>
+    <text class="d-label-sm" x="300" y="186" text-anchor="middle">이름 + 한 줄 설명만. 스키마 없음. 서버 왕복 없음(호스트 캐시).</text>
+
+    <text class="d-title" x="20" y="215" style="fill:#0f766e">Layer 2 · Inspect</text>
+    <path class="d-line-a" d="M124,230 L476,230" marker-end="url(#p2a)"/><text class="d-msg-a" x="300" y="222" text-anchor="middle">get_tool_details({ name: "salesforce_updateRecord" })</text>
+    <path class="d-line" d="M476,258 L124,258" marker-end="url(#p2)"/><text class="d-msg" x="300" y="250" text-anchor="middle">{ name, description, inputSchema: { objectType, recordId, data … } }</text>
+    <text class="d-label-sm" x="300" y="276" text-anchor="middle">이 도구 하나의 전체 정의만 컨텍스트에 들어온다.</text>
+
+    <text class="d-title" x="20" y="305" style="fill:#0f766e">Layer 3 · Execute</text>
+    <path class="d-line-a" d="M124,320 L476,320" marker-end="url(#p2a)"/><text class="d-msg-a" x="300" y="312" text-anchor="middle">salesforce_updateRecord({ objectType, recordId, data })</text>
+    <path class="d-line" d="M484,320 L836,320" marker-end="url(#p2)"/><text class="d-msg" x="660" y="312" text-anchor="middle">tools/call { name, arguments, _meta }</text>
+    <path class="d-line" d="M836,344 L124,344" marker-end="url(#p2)"/><text class="d-msg" x="480" y="338" text-anchor="middle">{ resultType: "complete", content }</text>
+  </svg>
+  <figcaption>
+    서버와의 와이어 대화는 시작 시 <code>tools/list</code> 한 번과 마지막 <code>tools/call</code>뿐이다. 가운데 두 층은 <strong>호스트 안에서</strong> 끝난다.
+    출처: <a href="https://modelcontextprotocol.io/docs/2026-07-28/develop/clients/client-best-practices">Client Best Practices §Using Progressive Discovery</a>.
+  </figcaption>
+  </figure>
+
+  <p>문서가 함께 적어 둔 구현 지침 넷은 백엔드의 캐시 설계 그대로다.</p>
+  <table>
+    <thead><tr><th style="width:28%">지침</th><th>이유</th></tr></thead>
+    <tbody>
+      <tr><td><strong>상세 수준을 여러 단계로</strong></td><td>이름만 / 이름+설명 / 전체 스키마 중 모델이 고르게. Layer 1·2가 그 두 단계.</td></tr>
+      <tr><td><strong>정의를 호스트에 캐시</strong></td><td>한 번 받은 정의는 메모이즈. 나중에 다시 주입할 때 <code>tools/list</code> 왕복이 없다. <em>"모델 컨텍스트에 있는 것"과는 별개의 저장소.</em></td></tr>
+      <tr><td><strong><code>list_changed</code>에 재색인</strong></td><td>서버가 도구 목록 변경을 알리면 검색 인덱스를 다시 만든다.</td></tr>
+      <tr><td><strong>서버별로 묶어 제시</strong></td><td>모델이 "관련 기능 묶음"으로 추론할 수 있게. 이름 접두어(<code>github_</code>, <code>slack_</code>)가 검색 한 번에 묶음을 잡게 해 준다.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm">
+    한 단계 더 나간 것이 <strong>동적 서버 관리</strong>다 — 시작 때 모든 서버에 연결하지 않고, 모델이 <code>enable_server("salesforce")</code>를 부르면 그때 <code>server/discover</code> → <code>tools/list</code>를 하고, 끝나면 연결을 내려 컨텍스트를 비운다.
+    도구 단위 지연이 서버 단위 지연으로 확장된 것. 같은 문서 §Dynamic Server Management.
+  </p>
+
+  <h2>§4 · Anthropic API에서는 이렇게 구현됐다 — <code>defer_loading</code>과 <code>tool_reference</code></h2>
+
+  <p>
+    위 3계층을 호스트가 직접 짜도 되지만, 제공자가 내장한 것을 쓸 수도 있다. Claude API의 <em>tool search tool</em>은 이렇게 동작한다
+    (<a href="https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool">플랫폼 문서</a>):
+  </p>
+  <ol>
+    <li><code>tools</code> 배열에 검색 도구(<code>tool_search_tool_regex_20251119</code> 또는 <code>_bm25_</code>)를 넣는다.</li>
+    <li><strong>모든 도구 정의를 여전히 배열에 넣되</strong>, 미룰 것에 <code>"defer_loading": true</code>를 붙인다. 최소 하나(보통 검색 도구)는 미루지 않는다.</li>
+    <li>처음 모델의 컨텍스트에는 검색 도구와 비지연 도구만 있다.</li>
+    <li>모델이 검색하면 API가 <strong>서버 쪽에서</strong> 매칭을 돌려 <code>tool_reference</code> 블록(기본 최대 5개)을 돌려준다.</li>
+    <li>API가 그 참조를 <strong>전체 정의로 펼쳐</strong> 모델에게 보여 준다. 모델이 그중 하나를 부른다.</li>
+  </ol>
+
+<pre><code>"tools": [
+  { "type": "tool_search_tool_regex_20251119", "name": "tool_search_tool_regex" },   // 항상 상주
+  { "name": "get_weather", "description": "…", "input_schema": {…}, "defer_loading": true },
+  { "name": "search_files", "description": "…", "input_schema": {…}, "defer_loading": true }
+]</code></pre>
+
+  <p class="note">
+    <strong>여기가 "내부적으로 어떻게"의 핵심이다.</strong> 문서 원문: "<code>defer_loading</code>은 <strong>컨텍스트 창에 무엇이 들어가는지</strong>를 제어하고, <strong>요청에 무엇을 보내는지</strong>를 제어하지 않는다."
+    정의는 매 요청 전부 전송된다(API가 검색을 돌리려면 갖고 있어야 하니까). 다만 "API는 지연된 도구를 <strong>시스템 프롬프트 프리픽스에서 제외</strong>한다. 모델이 검색으로 찾으면 API가 <code>tool_reference</code> 블록을 <strong>대화 중간에 인라인으로</strong> 덧붙이고 전체 정의로 펼친다.
+    <strong>프리픽스는 건드리지 않으므로 프롬프트 캐시가 보존된다.</strong>"
+  </p>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 960 200" role="img" aria-label="프리픽스 보존과 인라인 확장">
+    <text class="d-title" x="20" y="24">모델이 보는 프롬프트의 모양</text>
+    <rect class="d-box-a" x="20" y="40" width="300" height="50"/><text class="d-label" x="170" y="60" text-anchor="middle">프리픽스 (캐시됨)</text><text class="d-label-sm" x="170" y="78" text-anchor="middle">시스템 · 검색툴 · 비지연 도구 3~5개</text>
+    <rect class="d-box" x="324" y="40" width="160" height="50"/><text class="d-label-sm" x="404" y="60" text-anchor="middle">user: "SF 레코드 갱신"</text>
+    <rect class="d-box" x="488" y="40" width="170" height="50"/><text class="d-label-sm" x="573" y="60" text-anchor="middle">server_tool_use: 검색</text><text class="d-label-sm" x="573" y="78" text-anchor="middle">tool_search_tool_result</text>
+    <rect class="d-box-b" x="662" y="40" width="150" height="50"/><text class="d-label" x="737" y="60" text-anchor="middle">tool_reference</text><text class="d-label-sm" x="737" y="78" text-anchor="middle">→ 전체 정의로 펼침</text>
+    <rect class="d-box" x="816" y="40" width="124" height="50"/><text class="d-label-sm" x="878" y="60" text-anchor="middle">tool_use →</text><text class="d-label-sm" x="878" y="78" text-anchor="middle">실행</text>
+    <text class="d-label-sm" x="170" y="120" text-anchor="middle" style="fill:#0f766e">▲ 여기가 안 바뀌니 캐시 히트</text>
+    <text class="d-label-sm" x="737" y="120" text-anchor="middle" style="fill:#b45309">▲ 정의는 앞이 아니라 "여기"에 끼어든다</text>
+    <text class="d-label-sm" x="480" y="160" text-anchor="middle">순진하게 tools 배열을 고쳐 넣으면 프리픽스가 바뀌어 캐시가 깨진다 — "그 미스가 뺀 정의보다 더 비쌀 수 있다" (MCP docs)</text>
+    <text class="d-label-sm" x="480" y="182" text-anchor="middle">MCP docs의 대안: 새 정의를 캐시 경계 뒤에 덧붙이거나, 단일 call_tool({name, args}) 메타툴로 배열을 고정한다.</text>
+  </svg>
+  <figcaption>이후 턴에서도 API가 대화 기록의 <code>tool_reference</code>를 계속 펼치므로 <strong>재검색 없이</strong> 그 도구를 다시 쓸 수 있다. MCP 서버의 도구라면 개별 정의가 아니라 <code>mcp_toolset</code>의 <code>default_config</code>에 <code>defer_loading</code>을 한 번 준다.</figcaption>
+  </figure>
+
+  <h3>Claude Code에서는</h3>
+  <table>
+    <thead><tr><th style="width:22%">항목</th><th>동작 (Agent SDK 문서)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>기본</strong></td><td>tool search <strong>켜짐</strong>. 도구 정의는 컨텍스트에서 보류되고, 모델은 "사용 가능한 도구 요약"을 받은 뒤 필요할 때 <code>ToolSearch</code>로 찾는다. 검색당 기본 5개 로드.</td></tr>
+      <tr><td><code>ENABLE_TOOL_SEARCH</code></td><td><code>true</code> 항상 / <code>false</code> 전부 선로딩 / <code>auto</code> 지연 가능한 정의 합계가 <strong>컨텍스트의 10%</strong>에 닿으면 전환 / <code>auto:5</code> 5%.</td></tr>
+      <tr><td><strong>계산에서 빼는 것</strong></td><td>Bash·Read·Edit 같은 핵심 내장 도구는 항상 선로딩, 임계값 계산에 안 들어감. MCP 서버에 <code>alwaysLoad</code>를 주면 그 서버도 제외.</td></tr>
+      <tr><td><strong>비용</strong></td><td>검색마다 <strong>왕복 1회 추가</strong>. 도구 ~10개 미만이면 선로딩이 더 빠르다. 컴팩션이 "발견한 메시지"를 지우면 다시 검색한다.</td></tr>
+      <tr><td><strong>꺼지는 경우</strong></td><td>비-1st-party <code>ANTHROPIC_BASE_URL</code>(프록시가 <code>tool_reference</code>를 안 넘김), 일부 클라우드 배포.</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">
+    참고: 지금 이 대화를 진행하는 Claude Code 세션도 같은 구조다 — MCP 도구들이 이름만 "deferred"로 나열되고, 필요할 때 <code>ToolSearch</code>로 스키마를 가져와야 호출할 수 있다. 위 그림 ③의 실물이다.
+  </p>
+
+  <h2>§5 · 그래서 2026-07-28 스펙은 무엇을 했나 — "돕는" 세 장치</h2>
+
+  <p>
+    다시 첫 문장으로. 스펙이 점진 로딩을 <em>도입</em>한 건 아니다. 그러나 호스트가 이 패턴을 <strong>싸고 안전하게</strong> 구현하도록 세 가지를 넣었다.
+    전부 <code>tools/list</code> 주변이다.
+  </p>
+  <table>
+    <thead><tr><th style="width:24%">스펙 장치</th><th style="width:40%">무엇</th><th>점진 로딩에서 하는 일</th></tr></thead>
+    <tbody>
+      <tr><td><strong><code>ttlMs</code> + <code>cacheScope</code></strong><br><span class="sm">SEP-2549 · 필수</span></td><td>"이 목록은 300000ms 동안 신선하다", <code>public</code>(공유 가능) / <code>private</code>(같은 토큰만). HTTP <code>Cache-Control: max-age</code> · <code>public/private</code>과 같은 의미.</td><td><strong>호스트 카탈로그의 캐시 정책.</strong> 재주입할 때 서버에 다시 안 묻는다. TTL은 폴링 간격이 아니라 신선도 힌트 — "필요할 때 확인, 지났으면 재요청". 알림이 오면 TTL이 남아도 즉시 무효.</td></tr>
+      <tr><td><strong>결정적 순서</strong><br><span class="sm">SHOULD</span></td><td>도구 집합이 안 바뀌었으면 <code>tools/list</code>는 <strong>같은 순서</strong>로 돌려준다.</td><td>스펙 원문: "클라이언트가 목록을 안정적으로 캐시하고, 도구가 모델 컨텍스트에 포함될 때 <strong>LLM 프롬프트 캐시 히트율</strong>을 높인다." 순서가 바뀌면 같은 도구라도 프리픽스가 달라져 캐시가 깨진다.</td></tr>
+      <tr><td><strong><code>subscriptions/listen</code></strong><br><span class="sm">SEP-2575</span></td><td><code>toolsListChanged: true</code>로 옵트인하면 서버가 <code>notifications/tools/list_changed</code>를 보낸다.</td><td><strong>캐시 무효화 신호.</strong> 받으면 <code>tools/list</code> 재요청 → 인덱스 재구축. MCP docs: "<code>list_changed</code>가 오면 TTL 전이라도 stale로 취급."</td></tr>
+      <tr><td><strong>페이지네이션</strong><br><span class="sm">기존</span></td><td><code>cursor</code>(불투명) / <code>nextCursor</code>. 페이지 크기는 서버가 정함.</td><td>큰 카탈로그를 조각으로 받는다. 페이지마다 독립 <code>ttlMs</code>. 커서가 무효가 되면 전부 버리고 처음부터.</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    <strong>한 번 더 층을 확인하자.</strong> 위 넷은 모두 <strong>①서버 → ②호스트</strong> 화살표의 효율·정합성을 위한 것이다.
+    <strong>②호스트 → ③모델</strong> 화살표(무엇을 언제 주입하나)는 스펙이 규정하지 않는다 — 그건 docs의 "best practice"이고, 제공자별 구현(<code>defer_loading</code>, <code>ENABLE_TOOL_SEARCH</code>)이다.
+    "스펙이 점진 로딩으로 바뀌었다"고 말하면 리뷰에서 반박당한다. "스펙이 <em>호스트의</em> 점진 로딩을 <em>돕는</em> 캐시·순서·알림 장치를 넣었다"가 정확하다.
+  </p>
+
+  <h2>§6 · 서버 개발자인 나는 무엇을 하면 되나</h2>
+  <ul>
+    <li><strong>이름·설명이 곧 검색 인덱스다.</strong> 두 변형(regex·BM25) 모두 이름·설명·인자명·인자 설명을 검색한다. <code>query_slack</code>보다 <code>search_slack_messages</code>가, "Query Slack"보다 "Search Slack messages by keyword, channel, or date range"가 더 많은 질의에 걸린다.</li>
+    <li><strong>접두어로 묶어라.</strong> <code>github_*</code>, <code>slack_*</code>. 검색 한 번에 묶음이 잡히고 서버별 그룹화도 쉬워진다. 서버 간 이름 충돌은 호스트가 접두어로 풀어야 하니 애초에 구체적인 이름이 좋다.</li>
+    <li><strong><code>ttlMs</code>를 정직하게.</strong> 정적 도구 집합이면 길게(수 분~시간), 권한별로 달라지면 <code>cacheScope: "private"</code>. <code>public</code>은 다른 토큰의 캐시와 공유될 수 있음을 기억.</li>
+    <li><strong>순서를 고정하라.</strong> DB에서 읽어 내놓는다면 <code>ORDER BY name</code> 하나가 상대편 프롬프트 캐시를 살린다.</li>
+    <li><strong><code>outputSchema</code>를 주면</strong> 호스트가 "코드 모드"(모델이 도구를 호출하는 코드를 써서 중간 결과를 컨텍스트 밖에서 처리)에 정확한 타입을 만들 수 있다 — 같은 문서의 두 번째 패턴.</li>
+  </ul>
+
+  <h2>§7 · 확인 퀴즈</h2>
+  <section class="quiz">
+    <p><strong>Q1.</strong> 점진적 도구 로딩이 켜져 있을 때 서버가 <code>tools/list</code>에 돌려주는 것은?</p>
+    <button type="button" data-target="a1" data-answer="correct">지금까지와 같이 서버가 아는 도구 전부 (페이지 단위)</button>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. 서버는 모델의 컨텍스트 사정을 모른다. 고르는 건 호스트다.">모델이 지금 필요로 할 것 같은 도구만 골라서</button>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. 그런 요청 형식은 스펙에 없다. 이름·설명만 뽑는 건 호스트 카탈로그(Layer 1)가 한다.">이름과 설명만, 스키마는 요청이 오면 별도로</button>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. tools/list의 내용 자체는 이번 판에서 안 바뀌었다. 붙은 건 ttlMs·cacheScope다.">이번 판부터는 검색 인덱스 파일을 대신 돌려준다</button>
+    <p class="answer" id="a1"></p>
+
+    <p><strong>Q2.</strong> Anthropic API에서 <code>defer_loading: true</code>인 도구 정의는 요청에 어떻게 실리나?</p>
+    <button type="button" data-target="a2" data-answer="correct">매 요청 전부 전송되지만 모델 컨텍스트에는 안 들어간다</button>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. API가 검색을 돌리고 tool_reference를 펼치려면 정의를 서버 쪽에서 갖고 있어야 한다. 빼면 'not found' 400이다.">검색으로 찾기 전까지는 요청에서 빠진다</button>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. 프리픽스에서 제외하는 것이 핵심이다. 프리픽스에 들어가면 캐시가 깨진다.">시스템 프롬프트 프리픽스 맨 뒤에 붙는다</button>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. 별도 등록 API는 없다. 같은 tools 배열에 플래그만 붙인다.">별도 등록 엔드포인트에 미리 올려 둔다</button>
+    <p class="answer" id="a2"></p>
+
+    <p><strong>Q3.</strong> 스펙이 "<code>tools/list</code>를 결정적 순서로 돌려주라"고 권고하는 이유는?</p>
+    <button type="button" data-target="a3" data-answer="correct">순서가 바뀌면 프롬프트 프리픽스가 달라져 캐시가 깨진다</button>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 정렬은 전송량과 무관하다. 목적은 상대편 캐시(호스트 캐시와 LLM 프롬프트 캐시)다.">정렬된 목록이 압축이 잘 돼 전송량이 줄어든다</button>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 페이지 경계는 cursor가 맡는다. 순서 권고의 명시된 이유는 캐시 히트율이다.">페이지네이션 커서가 순서에 의존하기 때문이다</button>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 모델은 이름으로 고른다. 순서를 우선순위로 해석하라는 규정은 없다.">모델이 앞에 있는 도구를 더 우선해서 고르기 때문</button>
+    <p class="answer" id="a3"></p>
+
+    <p><strong>Q4.</strong> "MCP 스펙이 점진적 도구 로딩으로 바뀌었다"를 리뷰에서 가장 정확하게 고쳐 말하면?</p>
+    <button type="button" data-target="a4" data-answer="correct">호스트의 점진 로딩을 돕는 캐시·순서·알림 장치가 스펙에 들어갔다</button>
+    <button type="button" data-target="a4" data-answer="wrong" data-hint="오답. 서버가 보내는 것은 바뀌지 않았다. 서버는 여전히 전부를 준다.">서버가 필요한 도구만 골라 보내도록 스펙이 바뀌었다</button>
+    <button type="button" data-target="a4" data-answer="wrong" data-hint="오답. search_tools는 docs의 best practice 예시이자 호스트 구현이다. 스펙 메서드가 아니다.">스펙에 <code>search_tools</code> RPC가 새로 추가되었다</button>
+    <button type="button" data-target="a4" data-answer="wrong" data-hint="오답. 그건 레슨 0047의 프로토콜 세션 제거다. 층이 다르다.">세션이 없어져서 도구를 한 번에 못 불러오게 되었다</button>
+    <p class="answer" id="a4"></p>
+  </section>
+
+  <h2>§8 · 다음</h2>
+  <p>
+    두 레슨으로 2026-07-28의 두 이야기가 각자 자리를 찾았다 — 와이어의 무상태(0047), 호스트·컨텍스트의 점진 로딩(0048).
+    이어서 팔 만한 곳은 셋이다. <strong>코드 모드(programmatic tool calling)</strong>: 모델이 도구를 부르는 코드를 써서 중간 결과를 컨텍스트 밖에서 처리하는 두 번째 패턴.
+    <strong>Tasks 확장</strong>: 장기 실행 작업을 핸들 + 폴링으로 무상태 위에서 다루는 법.
+    <strong>실전</strong>: 내가 만든(또는 만들) MCP 서버의 <code>tools/list</code> 응답을 이 어휘로 리뷰해 보기 — 이름은 검색되는가, <code>ttlMs</code>는 정직한가, 순서는 고정인가.
+  </p>
+
+  <p><strong>먼저 읽을 1차 출처</strong> (짧고, 이 레슨의 원본이다):</p>
+  <ul>
+    <li><a href="https://modelcontextprotocol.io/docs/2026-07-28/develop/clients/client-best-practices">MCP docs — Client Best Practices: Progressive Tool Discovery</a> — 3계층·임계값·프롬프트 캐시 상호작용이 전부. <strong>이 레슨에서 딱 하나만 읽는다면 이것.</strong></li>
+    <li><a href="https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool">Anthropic — Tool search tool</a>의 <em>Deferred tool loading</em> 절 — "컨텍스트에 무엇이 들어가는지 vs 요청에 무엇을 보내는지" 문장.</li>
+    <li><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching">스펙 — Caching</a> — <code>ttlMs</code>·<code>cacheScope</code>·알림과의 상호작용 다이어그램.</li>
+  </ul>
+
+  <p>
+    <strong>연결된 자료:</strong>
+    <a href="../reference/0023-mcp-glossary-and-change-map.html">레퍼런스 0023</a>
+    (<a href="../reference/0023-mcp-glossary-and-change-map.html#s3">§3 세 층 다이어그램</a> · <a href="../reference/0023-mcp-glossary-and-change-map.html#s5">§5 숫자 카드</a>) ·
+    <a href="0047-mcp-stateless-what-changed.html">레슨 0047 — 무상태 MCP</a>.
+  </p>
+
+  <p class="note">
+    <strong>막히면 물어보자.</strong> 이 레슨에서 파고들 만한 곳:
+    <strong>BM25 vs 임베딩 vs 서브에이전트 검색은 언제 무엇을 고르나</strong> ·
+    <strong>컴팩션 뒤 재검색이 왜 필요하고 비용은 얼마인가</strong> ·
+    <strong><code>cacheScope: "public"</code>인 인증된 <code>tools/list</code>가 다른 토큰과 공유되는 것은 안전한가</strong> ·
+    <strong>코드 모드에서 샌드박스가 왜 네트워크를 차단해야 하나</strong>.
+    무엇이든 지금 물어보면 다음 레슨 전에 다룰 수 있다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

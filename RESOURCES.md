@@ -337,3 +337,37 @@
 - [GoogleChrome/web-vitals — Issues/Discussions](https://github.com/GoogleChrome/web-vitals/issues)
   Chrome 팀이 직접 답한다. Use for: "이 값이 왜 이렇게 나오나" 류의 측정 엣지 케이스 질문.
 - Gaps: 한국어 커뮤니티는 아직 검증된 곳이 없다. 실제 프로젝트 리포트를 들고 오면 이 워크스페이스에서 먼저 리뷰한다.
+
+## MCP 2026-07-28 Knowledge (0047·0048에서 검증, 2026-09-14)
+
+- [MCP 블로그 — 2026-07-28 스펙 릴리스](https://blog.modelcontextprotocol.io/posts/2026-07-28/)
+  릴리스 노트. Use for: "가장 많이 요청된 기능 — 신뢰성·확장성"이라는 동기, "라운드로빈 로드밸런서 뒤에서 공유 저장소 없이" 문장, MRTR·헤더 라우팅·캐시 가능한 리스트·권한 강화·Tasks 확장·12개월 폐기 정책 요약.
+- [스펙 — Changelog 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
+  변경 항목 정본. Use for: SEP 번호별 major/minor/deprecated 목록(SEP-2567 세션 제거, SEP-2575 무상태, SEP-2322 MRTR, SEP-2549 캐시, SEP-2243 헤더, SEP-2577 Roots/Sampling/Logging 폐기, SEP-2596 라이프사이클).
+- [스펙 — Base Protocol](https://modelcontextprotocol.io/specification/2026-07-28/basic/index) · [Versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning) · [server/discover](https://modelcontextprotocol.io/specification/2026-07-28/server/discover)
+  Use for: Statelessness 절 원문("서버는 이전 요청에 의존하면 안 된다"), `_meta` 필수 키 표, `resultType`, 에러코드 -32020~-32022, era(modern/legacy/dual-era) 호환 매트릭스, `server/discover`가 서버 MUST·클라이언트 MAY.
+- [스펙 — MRTR](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/mrtr) · [Subscriptions](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/subscriptions)
+  Use for: `InputRequiredResult`·`inputRequests`·`inputResponses`·`requestState` JSON, "요청 상태는 공격자 입력으로 취급, HMAC/AEAD", `subscriptions/listen` 필터·`subscriptionId`·우아한 종료.
+- [스펙 — Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) · [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio)
+  Use for: GET 엔드포인트·`Mcp-Session-Id`·`Last-Event-ID` 제거, `Mcp-Method`/`Mcp-Name` 헤더, 스트림 닫힘=취소, 옛 클라이언트 트래픽 처리(GET/DELETE→405), stdio `server/discover` 프로브 3분기.
+- [스펙 — Tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools) · [Pagination](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/pagination) · [Caching](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/caching)
+  Use for: `tools/list` 응답의 `ttlMs`/`cacheScope`/`nextCursor`, "결정적 순서 → 캐시·프롬프트 캐시 히트", 상태 핸들(basket_id) 가이드, TTL은 max-age 유사·알림이 즉시 무효화·페이지별 독립 캐시.
+- [스펙 2025-11-25 — Lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)
+  옛 방식 비교용. Use for: `initialize` 요청/응답 JSON, `notifications/initialized`, capability 협상 표, 버전 협상 규칙.
+- [docs — Architecture overview (2026-07-28)](https://modelcontextprotocol.io/docs/2026-07-28/learn/architecture)
+  Use for: Host/Client/Server 정의, 데이터 계층 vs 전송 계층, `server/discover`→`tools/list`→`tools/call`→`subscriptions/listen` 예제 4단계, "progressive tool discovery" 링크.
+- [docs — Client Best Practices: Progressive Tool Discovery](https://modelcontextprotocol.io/docs/2026-07-28/develop/clients/client-best-practices)
+  **점진적 로딩의 공식 문서(호스트 패턴).** Use for: "tools/list로 가져오되 컨텍스트 주입을 미룬다", `search_tools` 메타툴, 3계층(catalog/inspect/execute), 임계값 1~5% 권고, 동적 서버 연결, 프롬프트 캐시와의 상호작용(캐시 경계 뒤에 덧붙이기 / 단일 `call_tool` 메타툴), ~150K vs ~2K 토큰 그림.
+- [Anthropic 플랫폼 — Tool search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)
+  Use for: `defer_loading: true`, 정의는 매 요청 전부 보내되 컨텍스트엔 안 들어감, `tool_reference` 확장, "프리픽스 무변경 → 프롬프트 캐시 보존", 기본 5개 반환, 검색툴 자체는 defer 금지, 3~5개 핫툴 비지연, 최대 10,000개, regex/BM25 두 변형, MCP는 `mcp_toolset.default_config`.
+- [Claude Code Agent SDK — Scale with tool search](https://code.claude.com/docs/en/agent-sdk/tool-search)
+  Use for: 기본 켜짐, `ENABLE_TOOL_SEARCH` 값(true/false/auto 10%/auto:N), 50개 도구≈10~20K 토큰, 30~50개 넘으면 선택 정확도 하락, 검색당 1회 추가 라운드트립, 컴팩션 후 재검색, `alwaysLoad`.
+- [Anthropic Engineering — Advanced tool use](https://www.anthropic.com/engineering/advanced-tool-use)
+  Use for: 실측 숫자 — GitHub 26K(35툴)·Slack 21K(11툴)·합계 ~55K, 내부 134K 사례, 85% 절감, MCP 평가 정확도 Opus 4 49→74%, Opus 4.5 79.5→88.1%.
+- [MCP — Feature lifecycle & deprecation policy](https://modelcontextprotocol.io/community/feature-lifecycle)
+  Use for: Active/Deprecated/Removed, 최소 12개월, 보안 예외 시 최소 90일, Tier 1 SDK 의무.
+
+## MCP Wisdom (Communities)
+
+- [modelcontextprotocol/modelcontextprotocol — Discussions](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions) · SEP PR 스레드
+  스펙 저자들이 직접 답한다. Use for: "이 변경이 왜 이렇게 됐나"는 SEP 번호로 PR을 열어 논의를 읽는 것이 가장 정확.

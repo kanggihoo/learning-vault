@@ -46,3 +46,11 @@ figure.diagram figcaption {
     border-color: #c9c9c1;
   }
 }
+
+/* Sequence-diagram primitives (added for MCP lessons, reusable). */
+.d-life  { stroke: #9aa5b1; stroke-width: 1.2; stroke-dasharray: 4 4; }
+.d-actor { fill: #111827; font: 700 13px ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+.d-note  { fill: #fff7ed; stroke: #b45309; stroke-width: 1; rx: 4; }
+.d-msg   { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; fill: #1f2933; }
+.d-msg-a { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; fill: #0f766e; font-weight: 700; }
+.d-msg-x { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; fill: #b91c1c; }
