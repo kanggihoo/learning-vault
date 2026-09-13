@@ -304,3 +304,36 @@
   Use for: 위험·비위험·민감점·절충점의 정본 정의와 VPN 암호화 비트 수 예시. **§8의 ATAM 갭이 이걸로 메워졌다.**
 - [Thoughtworks Radar — Architectural fitness function](https://www.thoughtworks.com/en-us/radar/techniques/architectural-fitness-function)
   Use for: 적합성 함수 정의("객관적 무결성 평가"). 주의: 2018년 항목이라 현재판엔 없다. 정본은 *Building Evolutionary Architectures*(Ford·Parsons·Kua).
+
+## Web Vitals Knowledge (0046에서 검증, 2026-09-13)
+
+- [web.dev — Web Vitals](https://web.dev/articles/vitals)
+  구글 공식 개요. Use for: Core 3종(LCP 2.5s · INP 200ms · CLS 0.1)과 **75퍼센타일·모바일/데스크톱 분리** 규칙, "TTFB·FCP는 LCP 진단용, TBT는 field 측정 불가라 Core가 아니다"라는 원문, 도구별 측정 매트릭스(Lighthouse는 INP 대신 TBT).
+- [web.dev — Defining the Core Web Vitals metrics thresholds](https://web.dev/articles/defining-core-web-vitals-thresholds)
+  임계값의 근거. Use for: 75퍼센타일을 고른 이유("방문 4회 중 3회"·이상치에 강함), LCP 2.5s(Miller·Card 0.3~3s), INP 200ms(Michotte 인과 지각 ~100ms), CLS 0.1(실측), "상위 10% origin이 달성 가능해야" 기준.
+- [web.dev — LCP](https://web.dev/articles/lcp) · [Optimize LCP](https://web.dev/articles/optimize-lcp)
+  Use for: LCP 후보 요소 목록과 제외 규칙(opacity 0·전체 뷰포트·저엔트로피 이미지), 상호작용 시 보고 중단, **4구간(TTFB ~40% / load delay <10% / load duration ~40% / render delay <10%)** 예산표.
+- [web.dev — INP](https://web.dev/articles/inp) · [Optimize INP](https://web.dev/articles/optimize-inp) · [INP 출범 블로그](https://web.dev/blog/inp-cwv-launch)
+  Use for: 3구간(input delay · processing duration · presentation delay), 집계 규칙(최악 상호작용, 50회당 1회 제외), hover·scroll 제외, **2024-03-12 FID 대체**, 2024-09-09 FID 도구 지원 종료.
+- [web.dev — CLS](https://web.dev/articles/cls)
+  Use for: `impact fraction × distance fraction` 산식(0.75×0.25=0.1875 예), 세션 윈도우(간격 1s 미만·최대 5s), 입력 후 500ms 이내 이동은 `hadRecentInput`으로 제외, 무단위.
+- [web.dev — TTFB](https://web.dev/articles/ttfb) · [Optimize TTFB](https://web.dev/articles/optimize-ttfb)
+  Use for: TTFB 구성(리다이렉트·SW 기동·DNS·연결/TLS·요청~첫 바이트), 0.8s/1.8s 기준, "Core가 아니므로 반드시 good일 필요는 없다" 원문, **백엔드 몫**(호스팅·CDN·캐싱·리다이렉트 제거·스트리밍·103 Early Hints), "캐싱은 느린 백엔드를 가린다" 경고.
+- [web.dev — FCP](https://web.dev/articles/fcp)
+  Use for: 콘텐츠 정의(텍스트·이미지·배경이미지·svg·비백색 canvas), 1.8s/3.0s 기준, `paint` 엔트리 측정 스니펫.
+- [web.dev — TBT](https://web.dev/articles/tbt) · [Lighthouse — TBT 채점](https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time)
+  Use for: FCP~TTI 사이 50ms 초과분 합산 규칙과 워크드 예제(250/90/35/30/155 → 345ms), 모바일 200/600ms · 데스크톱 150/350ms 밴드, "TBT 낮으면 INP도 낮은 경향".
+- [web.dev — Lab and field data differences](https://web.dev/articles/lab-and-field-data-differences)
+  Use for: lab(Lighthouse) vs field(CrUX) 정의, INP를 lab에서 못 재는 이유, 수치가 다른 이유(콜드 캐시·기기/네트워크 분포·개인화).
+- [Lighthouse — Performance scoring](https://developer.chrome.com/docs/lighthouse/performance/performance-scoring)
+  Use for: 가중치(FCP 10 · SI 10 · LCP 25 · **TBT 30** · CLS 25), 0–49/50–89/90–100 색 구간, **INP·TTFB·DCL은 점수에 없다**.
+- [MDN — DOMContentLoaded](https://developer.mozilla.org/en-US/docs/Web/API/Document/DOMContentLoaded_event) · [MDN — PerformanceNavigationTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceNavigationTiming)
+  Use for: DCL 정의(HTML 파싱 완료 + defer/module 스크립트 실행, 이미지·서브프레임·async 대기 안 함), `load`와 차이, `readyState` 3단계, Navigation Timing 타임스탬프 순서(`responseStart`=TTFB, `domContentLoadedEventStart`=DCL).
+- [GoogleChrome/web-vitals (GitHub)](https://github.com/GoogleChrome/web-vitals)
+  Use for: field에서 Core 지표를 실제로 수집하는 공식 라이브러리(`onLCP`/`onINP`/`onCLS`), 어트리뷰션 빌드.
+
+## Web Vitals Wisdom (Communities)
+
+- [GoogleChrome/web-vitals — Issues/Discussions](https://github.com/GoogleChrome/web-vitals/issues)
+  Chrome 팀이 직접 답한다. Use for: "이 값이 왜 이렇게 나오나" 류의 측정 엣지 케이스 질문.
+- Gaps: 한국어 커뮤니티는 아직 검증된 곳이 없다. 실제 프로젝트 리포트를 들고 오면 이 워크스페이스에서 먼저 리뷰한다.

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Web Vitals 지도 — 일곱 지표를 한 타임라인 위에</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+  <style>
+    main { max-width: 1080px; padding-top: 28px; }
+    h1 { font-size: 1.85rem; }
+    h2 { margin-top: 34px; padding-top: 15px; font-size: 1.2rem; }
+    h3 { margin-top: 22px; font-size: 1.02rem; color: #0f766e; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.87rem; margin: 10px 0; }
+    th, td { border: 1px solid #deded6; padding: 5px 8px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    td code, th code { font-size: 0.9em; }
+    .ok { color: #047857; font-weight: 700; }
+    .no { color: #b91c1c; font-weight: 700; }
+    .mid { color: #b45309; font-weight: 700; }
+    ul { margin: 8px 0; padding-left: 22px; }
+    li { margin: 3px 0; }
+    .toc { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 14px 18px; }
+    .toc ol { margin: 0; padding-left: 22px; columns: 2; column-gap: 28px; }
+    .toc li { margin: 2px 0; font-size: 0.92rem; }
+    .lead { font-size: 1.06rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .core { background: #eef7f5; }
+    .aux  { background: #f3f4f6; }
+    .evt  { background: #fff7ed; }
+    .tag { display: inline-block; font-size: 0.75rem; padding: 1px 6px; border-radius: 4px; border: 1px solid #c9c9c1; background: #fff; margin-left: 4px; vertical-align: middle; }
+    @media print { h2 { break-after: avoid; } table, figure { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="sm">레퍼런스 0022 · 계속 돌아오는 문서 · 통독용이 아니라 <strong>찾아보는 용도</strong> · 출처는 전부 web.dev(Google)·Lighthouse 문서·MDN, 2026-09-13 검증</p>
+  <h1>Web Vitals 지도</h1>
+
+  <p class="lead">
+    일곱 이름 — <strong>TTFB · FCP · DCL · LCP · TBT · INP · CLS</strong> — 은 서버 로그가 아니라
+    <strong>사용자의 눈과 손</strong>을 기준으로 페이지 하나의 삶을 잘라 놓은 것이다.
+    이 문서는 그 일곱이 타임라인 어디에 있고, 왜 셋만 "Core"이고, 어느 도구가 어느 것을 재는지를 한 장에 모은다.
+    레슨은 이 지도의 한 축씩을 판다.
+  </p>
+
+  <div class="toc">
+    <ol>
+      <li><a href="#s0">30초 요약</a></li>
+      <li><a href="#s1">타임라인 — 일곱 지표의 위치</a></li>
+      <li><a href="#s2">지표 표 — 정의·기준·단위·측정</a></li>
+      <li><a href="#s3">Core 3 vs 보조 4 — 관계도</a></li>
+      <li><a href="#s4">Lab vs Field — 어느 도구가 무엇을 재나</a></li>
+      <li><a href="#s5">임계값의 근거 — 왜 75퍼센타일, 왜 2.5초</a></li>
+      <li><a href="#s6">증상 → 지표 → 책임 칸 진단표</a></li>
+      <li><a href="#s7">측정 스니펫</a></li>
+      <li><a href="#s8">출처 지도</a></li>
+    </ol>
+  </div>
+
+  <h2 id="s0">§0 · 30초 요약</h2>
+  <ul>
+    <li><strong>Core Web Vitals 3종</strong>은 사용자의 세 질문에 답한다 — <strong>보이나?</strong> LCP(2.5s) · <strong>반응하나?</strong> INP(200ms) · <strong>흔들리나?</strong> CLS(0.1). 셋 다 <strong>실제 사용자 브라우저(field)</strong>에서 측정되고, 기준은 <strong>75퍼센타일</strong>이다.</li>
+    <li><strong>보조 지표</strong>는 Core를 <em>진단</em>하는 용도다. TTFB·FCP는 LCP의 앞부분이고, TBT는 lab에서 INP를 대신 짚는 대리 지표다. 구글 원문: TTFB·FCP는 "LCP 문제를 진단하는 데 유용", TBT는 "field에서 측정 불가라 Core가 아님".</li>
+    <li><strong>DCL(DOMContentLoaded)은 Web Vitals가 아니다.</strong> 화면이 아니라 <strong>HTML 파서 상태</strong>를 알리는 브라우저 이벤트다. 개발자 타이밍이지 사용자 체감 지표가 아니다.</li>
+    <li><strong>Lighthouse 점수 ≠ Core Web Vitals 통과.</strong> Lighthouse는 lab이라 INP를 못 재고(TBT로 대체), 점수 가중치에 INP·TTFB·DCL이 없다. 실제 판정은 CrUX(field, 28일, p75)로 한다.</li>
+    <li><strong>백엔드의 칸은 TTFB다.</strong> 2.5초 LCP 예산에서 TTFB는 <strong>약 40%(≈1.0s)</strong>. DB 쿼리·SSR·리다이렉트·TLS가 전부 여기에 들어간다.</li>
+  </ul>
+
+  <h2 id="s1">§1 · 타임라인 — 일곱 지표의 위치</h2>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 960 330" role="img" aria-label="페이지 로드 타임라인 위 일곱 지표의 위치">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#52606d"/>
+      </marker>
+    </defs>
+
+    <!-- CLS band (whole lifetime) -->
+    <rect x="60" y="30" width="880" height="30" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text class="d-label" x="500" y="50" text-anchor="middle"><tspan font-weight="700">CLS</tspan> — 페이지 수명 전체의 "예상 못 한 레이아웃 이동" 누적 (Core)</text>
+
+    <!-- axis -->
+    <path class="d-line" d="M60,180 L930,180" marker-end="url(#ar)"/>
+    <text class="d-label-sm" x="60" y="200" text-anchor="start">0 = 내비게이션 시작</text>
+    <text class="d-label-sm" x="930" y="200" text-anchor="end">시간 →</text>
+
+    <!-- milestones -->
+    <!-- TTFB -->
+    <line x1="180" y1="120" x2="180" y2="180" stroke="#6b7280" stroke-width="1.5"/>
+    <rect class="d-box-c" x="130" y="80" width="100" height="40"/>
+    <text class="d-label" x="180" y="97" text-anchor="middle" font-weight="700">TTFB</text>
+    <text class="d-label-sm" x="180" y="112" text-anchor="middle">HTML 첫 바이트</text>
+
+    <!-- FCP -->
+    <line x1="320" y1="120" x2="320" y2="180" stroke="#6b7280" stroke-width="1.5"/>
+    <rect class="d-box-c" x="270" y="80" width="100" height="40"/>
+    <text class="d-label" x="320" y="97" text-anchor="middle" font-weight="700">FCP</text>
+    <text class="d-label-sm" x="320" y="112" text-anchor="middle">첫 콘텐츠 픽셀</text>
+
+    <!-- DCL (dashed, position varies) -->
+    <line x1="400" y1="240" x2="400" y2="180" stroke="#b45309" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <rect class="d-box-b" x="335" y="240" width="130" height="44"/>
+    <text class="d-label" x="400" y="257" text-anchor="middle" font-weight="700">DCL</text>
+    <text class="d-label-sm" x="400" y="273" text-anchor="middle">HTML 파싱 끝 · 위치 가변</text>
+    <text class="d-label-sm" x="400" y="300" text-anchor="middle" style="fill:#b45309">지표가 아니라 파서 이벤트</text>
+
+    <!-- LCP -->
+    <line x1="560" y1="120" x2="560" y2="180" stroke="#0f766e" stroke-width="2"/>
+    <rect class="d-box-a" x="505" y="80" width="110" height="40"/>
+    <text class="d-label" x="560" y="97" text-anchor="middle" font-weight="700">LCP (Core)</text>
+    <text class="d-label-sm" x="560" y="112" text-anchor="middle">가장 큰 콘텐츠 렌더</text>
+
+    <!-- TBT window -->
+    <path d="M320,215 L320,225 L700,225 L700,215" fill="none" stroke="#6b7280" stroke-width="1.5"/>
+    <rect class="d-box-c" x="510" y="228" width="220" height="40"/>
+    <text class="d-label" x="620" y="245" text-anchor="middle" font-weight="700">TBT</text>
+    <text class="d-label-sm" x="620" y="260" text-anchor="middle">FCP~TTI 사이 long task(50ms↑) 초과분 합</text>
+    <text class="d-label-sm" x="700" y="212" text-anchor="middle">TTI</text>
+
+    <!-- INP zone -->
+    <rect x="720" y="130" width="210" height="40" rx="6" fill="#eef7f5" stroke="#0f766e" stroke-width="1.5"/>
+    <text class="d-label" x="825" y="147" text-anchor="middle" font-weight="700">INP (Core)</text>
+    <text class="d-label-sm" x="825" y="162" text-anchor="middle">클릭·탭·키 입력 → 다음 프레임, 최악값</text>
+    <text class="d-label-sm" x="825" y="118" text-anchor="middle">사용자가 만지는 동안 내내</text>
+  </svg>
+  <figcaption>
+    실선 세 개(TTFB → FCP → LCP)는 "로딩 축", 오른쪽 상자(INP)와 그 lab 대리(TBT)는 "반응 축", 맨 위 띠(CLS)는 "시각 안정 축"이다.
+    DCL만 종류가 다르다 — 화면이 아닌 문서 상태를 가리키며, FCP보다 앞일 수도 뒤일 수도 있다(서버 렌더 페이지는 대개 FCP가 먼저, 빈 셸 SPA는 DCL이 먼저).
+  </figcaption>
+  </figure>
+
+  <h2 id="s2">§2 · 지표 표 — 정의·기준·단위·측정</h2>
+
+  <table>
+    <thead>
+      <tr><th style="width:9%">지표</th><th style="width:26%">한 줄 정의 (사용자 언어)</th><th style="width:13%">good / poor</th><th style="width:7%">단위</th><th style="width:8%">Core?</th><th style="width:11%">field / lab</th><th>측정 원천 · 진단 대상</th></tr>
+    </thead>
+    <tbody>
+      <tr class="aux"><td><strong>TTFB</strong></td><td>"서버가 대답을 시작했다." 내비게이션 시작 → HTML 응답 <strong>첫 바이트</strong>. 리다이렉트·SW 기동·DNS·연결/TLS·요청 시간 포함.</td><td>≤ 0.8s / &gt; 1.8s</td><td>ms</td><td>아니오</td><td>둘 다</td><td>Navigation Timing <code>responseStart</code>. <strong>LCP·FCP의 선행 구간</strong> — 여기가 길면 뒤가 전부 밀린다.</td></tr>
+      <tr class="aux"><td><strong>FCP</strong></td><td>"뭔가 보이기 시작했다." 텍스트·이미지·배경이미지·svg·비백색 canvas 중 <strong>무엇이든</strong> 첫 렌더.</td><td>≤ 1.8s / &gt; 3.0s</td><td>ms</td><td>아니오</td><td>둘 다</td><td>Paint Timing <code>first-contentful-paint</code>. LCP 진단용 — FCP와 LCP 사이 간격이 "주요 콘텐츠만 늦는가"를 말해 준다.</td></tr>
+      <tr class="evt"><td><strong>DCL</strong></td><td>"HTML을 다 읽었다." 파싱 완료 + <code>defer</code>/module 스크립트 실행 완료. 이미지·서브프레임·async 스크립트는 <strong>기다리지 않음</strong>.</td><td>기준 없음</td><td>ms</td><td><span class="no">지표 아님</span></td><td>둘 다</td><td><code>domContentLoadedEventStart</code>. DevTools Network의 파란 선. <strong>사용자 체감과 무관</strong> — 빈 <code>&lt;div id="root"&gt;</code>만 있어도 발생.</td></tr>
+      <tr class="core"><td><strong>LCP</strong></td><td>"주요 콘텐츠가 보였다." 뷰포트 안 <strong>가장 큰</strong> 이미지·텍스트 블록·비디오의 렌더 시각. 사용자가 상호작용하면 보고 중단.</td><td>≤ 2.5s / &gt; 4.0s</td><td>ms</td><td><span class="ok">예</span></td><td>둘 다</td><td><code>largest-contentful-paint</code> 엔트리. 4구간: TTFB ~40% · load delay &lt;10% · load duration ~40% · render delay &lt;10%.</td></tr>
+      <tr class="aux"><td><strong>TBT</strong></td><td>"클릭해도 먹통일 시간의 합." FCP~TTI 사이 <strong>50ms 초과 long task</strong>의 초과분 합계. 250ms 태스크 → 200ms 기여.</td><td>모바일 ≤ 200 / &gt; 600ms<br>데스크톱 ≤ 150 / &gt; 350ms</td><td>ms</td><td>아니오</td><td><strong>lab만</strong></td><td>Lighthouse가 계산. <strong>INP의 lab 대리</strong> — "TBT가 낮으면 INP도 낮은 경향". Lighthouse 점수 가중치 30%로 최대.</td></tr>
+      <tr class="core"><td><strong>INP</strong></td><td>"눌렀을 때 화면이 반응했다." 클릭·탭·키 입력 → <strong>다음 프레임 그려질 때까지</strong>. 페이지 수명 전체에서 <strong>최악값</strong>(50회당 1회 제외). hover·scroll 제외.</td><td>≤ 200ms / &gt; 500ms</td><td>ms</td><td><span class="ok">예</span></td><td><strong>field만</strong></td><td>Event Timing API / <code>web-vitals</code> <code>onINP</code>. 3구간: input delay · processing duration · presentation delay. 2024-03-12 FID 대체.</td></tr>
+      <tr class="core"><td><strong>CLS</strong></td><td>"읽다가 화면이 밀렸다." 예상 못 한 레이아웃 이동 점수의 <strong>가장 큰 묶음(세션 윈도우)</strong>. 이동 1건 = 영향 비율 × 거리 비율.</td><td>≤ 0.1 / &gt; 0.25</td><td>없음</td><td><span class="ok">예</span></td><td>둘 다</td><td>Layout Instability API <code>layout-shift</code>. 윈도우: 간격 &lt;1s, 최대 5s. 입력 후 500ms 내 이동은 <code>hadRecentInput</code>으로 제외.</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">good/poor 사이 구간이 "needs improvement". 모든 기준은 <strong>모바일·데스크톱 각각 75퍼센타일</strong>에 적용한다. TBT만 Lighthouse 자체 밴드(모바일/데스크톱 다름).</p>
+
+  <h2 id="s3">§3 · Core 3 vs 보조 4 — 관계도</h2>
+
+  <figure class="diagram">
+  <svg viewBox="0 0 960 250" role="img" aria-label="보조 지표가 Core 지표를 진단하는 관계">
+    <defs>
+      <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+      </marker>
+      <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#9aa5b1"/>
+      </marker>
+    </defs>
+    <text class="d-title" x="20" y="24">로딩 축 — "보이나?"</text>
+    <rect class="d-box-c" x="20" y="40" width="110" height="44"/>
+    <text class="d-label" x="75" y="58" text-anchor="middle" font-weight="700">TTFB</text>
+    <text class="d-label-sm" x="75" y="74" text-anchor="middle">서버 몫</text>
+    <path class="d-line-a" d="M134,62 L176,62" marker-end="url(#ag)"/>
+    <rect class="d-box-c" x="180" y="40" width="110" height="44"/>
+    <text class="d-label" x="235" y="58" text-anchor="middle" font-weight="700">FCP</text>
+    <text class="d-label-sm" x="235" y="74" text-anchor="middle">첫 픽셀</text>
+    <path class="d-line-a" d="M294,62 L336,62" marker-end="url(#ag)"/>
+    <rect class="d-box-a" x="340" y="40" width="130" height="44"/>
+    <text class="d-label" x="405" y="58" text-anchor="middle" font-weight="700">LCP · Core</text>
+    <text class="d-label-sm" x="405" y="74" text-anchor="middle">주요 콘텐츠</text>
+    <text class="d-label-sm" x="245" y="105" text-anchor="middle">앞 두 개는 LCP의 <tspan font-weight="700">부분 구간</tspan>이다 — 진단용</text>
+
+    <text class="d-title" x="540" y="24">반응 축 — "반응하나?"</text>
+    <rect class="d-box-c" x="540" y="40" width="140" height="44"/>
+    <text class="d-label" x="610" y="58" text-anchor="middle" font-weight="700">TBT</text>
+    <text class="d-label-sm" x="610" y="74" text-anchor="middle">lab · 로드 중 main thread</text>
+    <path class="d-line-d" d="M684,62 L756,62" marker-end="url(#ad)"/>
+    <text class="d-label-sm" x="720" y="52" text-anchor="middle">대리</text>
+    <rect class="d-box-a" x="760" y="40" width="150" height="44"/>
+    <text class="d-label" x="835" y="58" text-anchor="middle" font-weight="700">INP · Core</text>
+    <text class="d-label-sm" x="835" y="74" text-anchor="middle">field · 실제 상호작용</text>
+    <text class="d-label-sm" x="725" y="105" text-anchor="middle">INP는 사용자가 <tspan font-weight="700">언제 누를지</tspan> 모르니 lab에서 못 잰다</text>
+
+    <text class="d-title" x="20" y="160">시각 안정 축 — "흔들리나?"</text>
+    <rect class="d-box-a" x="20" y="176" width="150" height="44"/>
+    <text class="d-label" x="95" y="194" text-anchor="middle" font-weight="700">CLS · Core</text>
+    <text class="d-label-sm" x="95" y="210" text-anchor="middle">보조 지표 없음 · 혼자</text>
+
+    <text class="d-title" x="540" y="160" style="fill:#b45309">종류가 다른 것</text>
+    <rect class="d-box-b" x="540" y="176" width="370" height="44"/>
+    <text class="d-label" x="725" y="194" text-anchor="middle" font-weight="700">DCL — 브라우저 문서 이벤트</text>
+    <text class="d-label-sm" x="725" y="210" text-anchor="middle">사용자 체감 아님 · 어떤 축에도 속하지 않음 · 디버깅 기준선</text>
+  </svg>
+  <figcaption>
+    "Core"의 판별 기준은 두 가지다 — <strong>① 사용자가 체감하는 결과인가 ② 실제 사용자 브라우저(field)에서 잴 수 있는가.</strong>
+    TTFB·FCP는 ②는 되지만 ①에서 LCP의 부분일 뿐이고, TBT는 ②가 안 되고, DCL은 ①이 안 된다.
+  </figcaption>
+  </figure>
+
+  <h2 id="s4">§4 · Lab vs Field — 어느 도구가 무엇을 재나</h2>
+
+  <table>
+    <thead><tr><th style="width:14%"></th><th style="width:43%">Lab (실험실)</th><th>Field (실사용자, RUM)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>정의</strong></td><td>"정해진 기기·네트워크 설정의 통제된 환경에서 수집" — 재현 가능, 디버깅용</td><td>"사이트를 방문하는 실제 사용자로부터 수집" — 판정용</td></tr>
+      <tr><td><strong>대표 도구</strong></td><td>Lighthouse (DevTools · PageSpeed Insights 하단 · CI)</td><td>CrUX(Chrome User Experience Report) · Search Console · PSI 상단 · <code>web-vitals</code> 라이브러리</td></tr>
+      <tr><td><strong>잴 수 있는 것</strong></td><td>TTFB · FCP · DCL · LCP · <strong>TBT</strong> · CLS · Speed Index</td><td>TTFB · FCP · LCP · <strong>INP</strong> · CLS</td></tr>
+      <tr><td><strong>못 재는 것</strong></td><td><strong>INP</strong> — 사용자가 언제 무엇을 누를지 모른다 → TBT로 대신 짚는다</td><td>TBT — 정의가 lab 로드 시퀀스(FCP~TTI) 전제</td></tr>
+      <tr><td><strong>수치가 다른 이유</strong></td><td colspan="2">lab은 대개 <strong>콜드 캐시</strong>, field는 일부가 이미 캐시됨 · field는 기기·네트워크 분포 전체 · 개인화(광고·A/B)로 로드되는 요소가 다름 · lab은 상호작용을 안 하니 LCP 보고가 중단되지 않음</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Lighthouse Performance 점수 가중치 (v10)</h3>
+  <table>
+    <thead><tr><th>FCP</th><th>Speed Index</th><th>LCP</th><th>TBT</th><th>CLS</th><th>INP · TTFB · DCL</th></tr></thead>
+    <tbody><tr><td>10%</td><td>10%</td><td>25%</td><td><strong>30%</strong></td><td>25%</td><td><span class="no">점수에 없음</span></td></tr></tbody>
+  </table>
+  <p class="sm">색 구간: 0–49 <span class="no">빨강</span> · 50–89 <span class="mid">주황</span> · 90–100 <span class="ok">녹색</span>. "Opportunities·Diagnostics는 점수에 기여하지 않는다." 그래서 <strong>Lighthouse 95점인데 CrUX INP가 poor</strong>인 사이트가 실제로 존재한다.</p>
+
+  <h2 id="s5">§5 · 임계값의 근거 — 왜 75퍼센타일, 왜 2.5초</h2>
+  <table>
+    <thead><tr><th style="width:22%">결정</th><th>근거 (web.dev 원문 요지)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>75퍼센타일</strong></td><td>"방문 4회 중 3회가 목표 수준 이상의 경험을 했음을 안다. 또한 75퍼센타일은 이상치 영향을 덜 받는다." — 평균은 소수의 극단값에 끌려가고, p99는 달성 불가능한 목표가 된다. 백엔드의 p99 SLO와 같은 논리, 다른 분위수.</td></tr>
+      <tr><td><strong>모바일·데스크톱 같은 기준</strong></td><td>기기별로 기준을 나누지 않되 <strong>측정은 분리</strong>한다. "대부분 사이트에서 모바일이 트래픽의 다수"라 모바일이 사실상 병목.</td></tr>
+      <tr><td><strong>달성 가능성</strong></td><td>"good" 기준은 <strong>상위 10% 이상의 origin이 이미 달성</strong>하고, 잘 최적화된 사이트가 꾸준히 달성할 수 있어야 한다.</td></tr>
+      <tr><td><strong>LCP 2.5s</strong></td><td>Miller·Card의 인지 연구 — 사용자의 주의 유지 한계 "약 0.3초~3초". 2.5s는 그 범위 안이고 당시 모바일 origin의 42%가 달성.</td></tr>
+      <tr><td><strong>INP 200ms</strong></td><td>Michotte의 인과 지각 연구 — "약 100ms까지의 지연"은 내 행동의 결과로 느낀다. 200ms는 그것과 달성 가능성(모바일 56%)의 절충.</td></tr>
+      <tr><td><strong>CLS 0.1</strong></td><td>선행 연구가 없어 실제 페이지를 평가 — "0.1 이하는 눈에 띄지만 과도하게 방해하지 않았다." 서드파티 임베드 때문에 달성이 어려운 점을 감안.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s6">§6 · 증상 → 지표 → 책임 칸 진단표</h2>
+  <table>
+    <thead><tr><th style="width:26%">사용자가 말하는 증상</th><th style="width:16%">먼저 볼 지표</th><th style="width:20%">그 다음 볼 것</th><th>책임 칸이 갈리는 질문</th></tr></thead>
+    <tbody>
+      <tr><td>"흰 화면이 한참 떠 있다"</td><td>TTFB → FCP</td><td>TTFB가 0.8s 넘는가?</td><td>넘으면 <strong>서버·인프라 몫</strong>(쿼리·SSR·리다이렉트·TLS·CDN). 안 넘으면 렌더 차단 CSS/JS → 프론트 몫.</td></tr>
+      <tr><td>"글은 나왔는데 큰 이미지가 늦다"</td><td>LCP</td><td>FCP~LCP 간격, LCP 4구간</td><td>load delay가 크면 <strong>이미지가 늦게 발견됨</strong>(lazy-load·JS 뒤에 숨음) → 프론트. TTFB가 크면 서버.</td></tr>
+      <tr><td>"버튼 눌렀는데 한참 멈춘다" (로드 직후)</td><td>TBT (lab)</td><td>long task 목록, 스크립트 평가 시간</td><td>거의 항상 <strong>프론트 JS 몫</strong>. 단, 로드 직후 API 응답을 동기적으로 기다리는 구조면 서버 응답도 연루.</td></tr>
+      <tr><td>"버튼 눌렀는데 한참 멈춘다" (사용 중)</td><td>INP (field)</td><td>3구간 중 어디가 긴가</td><td>input delay → 다른 long task · processing → 핸들러 · presentation → 큰 DOM/레이아웃. 전부 프론트. <strong>fetch 대기 시간은 INP에 안 들어간다</strong> — 다음 프레임만 그리면 끝.</td></tr>
+      <tr><td>"읽는 중에 내용이 밀려서 잘못 눌렀다"</td><td>CLS</td><td>이동 원인 요소, 세션 윈도우</td><td>이미지·광고·폰트에 크기 예약이 없음 → 프론트. 서버가 <strong>늦게 도착하는 데이터</strong>로 목록 위에 배너를 끼워 넣는 구조면 설계 문제.</td></tr>
+      <tr><td>"Lighthouse는 90인데 Search Console이 빨갛다"</td><td>CrUX INP</td><td>lab에 INP가 없음을 확인</td><td>lab-field 차이 자체가 답. 실사용자 기기·상호작용에서만 드러남. TBT는 통과했어도 INP는 별개.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="s7">§7 · 측정 스니펫</h2>
+  <p class="sm">브라우저 콘솔에 붙여 넣으면 현재 페이지에서 바로 값이 나온다. 정식 수집은 <code>web-vitals</code> 라이브러리를 쓴다(엣지 케이스 처리).</p>
+<pre><code>// TTFB · DCL — Navigation Timing (단위 ms, 내비게이션 시작 기준)
+const nav = performance.getEntriesByType('navigation')[0];
+console.log('TTFB', nav.responseStart, 'DCL', nav.domContentLoadedEventStart, 'load', nav.loadEventEnd);
+
+// FCP — Paint Timing
+new PerformanceObserver(list => {
+  for (const e of list.getEntriesByName('first-contentful-paint')) console.log('FCP', e.startTime);
+}).observe({ type: 'paint', buffered: true });
+
+// LCP — 후보가 여러 번 갱신되고, 사용자가 상호작용하면 멈춘다
+new PerformanceObserver(list => {
+  for (const e of list.getEntries()) console.log('LCP candidate', e.startTime, e.element);
+}).observe({ type: 'largest-contentful-paint', buffered: true });
+
+// CLS — hadRecentInput=false 인 것만 누적 (세션 윈도우 계산은 web-vitals가 해 준다)
+new PerformanceObserver(list => {
+  for (const e of list.getEntries()) if (!e.hadRecentInput) console.log('shift', e.value);
+}).observe({ type: 'layout-shift', buffered: true });
+
+// INP · 전체 — 공식 라이브러리
+import { onLCP, onINP, onCLS, onTTFB, onFCP } from 'web-vitals';
+onINP(console.log); onLCP(console.log); onCLS(console.log);</code></pre>
+
+  <h2 id="s8">§8 · 출처 지도</h2>
+  <table>
+    <thead><tr><th style="width:28%">무엇을 확인하나</th><th>어디서</th></tr></thead>
+    <tbody>
+      <tr><td>Core 3종 기준 · 75p 규칙 · 보조 지표 관계 원문</td><td><a href="https://web.dev/articles/vitals">web.dev — Web Vitals</a></td></tr>
+      <tr><td>임계값 근거(연구·달성률)</td><td><a href="https://web.dev/articles/defining-core-web-vitals-thresholds">web.dev — Defining the Core Web Vitals thresholds</a></td></tr>
+      <tr><td>LCP 정의·후보·제외 · 4구간 예산</td><td><a href="https://web.dev/articles/lcp">LCP</a> · <a href="https://web.dev/articles/optimize-lcp">Optimize LCP</a></td></tr>
+      <tr><td>INP 정의·3구간·집계 · FID 대체 일정</td><td><a href="https://web.dev/articles/inp">INP</a> · <a href="https://web.dev/articles/optimize-inp">Optimize INP</a> · <a href="https://web.dev/blog/inp-cwv-launch">INP 출범(2024-03-12)</a></td></tr>
+      <tr><td>CLS 산식·세션 윈도우</td><td><a href="https://web.dev/articles/cls">CLS</a></td></tr>
+      <tr><td>TTFB 구성 · 백엔드 최적화 목록</td><td><a href="https://web.dev/articles/ttfb">TTFB</a> · <a href="https://web.dev/articles/optimize-ttfb">Optimize TTFB</a></td></tr>
+      <tr><td>FCP 정의</td><td><a href="https://web.dev/articles/fcp">FCP</a></td></tr>
+      <tr><td>TBT 산식·예제 · Lighthouse 밴드</td><td><a href="https://web.dev/articles/tbt">TBT</a> · <a href="https://developer.chrome.com/docs/lighthouse/performance/lighthouse-total-blocking-time">Lighthouse TBT</a></td></tr>
+      <tr><td>lab vs field · Lighthouse 가중치</td><td><a href="https://web.dev/articles/lab-and-field-data-differences">Lab and field data</a> · <a href="https://developer.chrome.com/docs/lighthouse/performance/performance-scoring">Performance scoring</a></td></tr>
+      <tr><td>DCL 정의 · Navigation Timing 순서</td><td><a href="https://developer.mozilla.org/en-US/docs/Web/API/Document/DOMContentLoaded_event">MDN DOMContentLoaded</a> · <a href="https://developer.mozilla.org/en-US/docs/Web/API/PerformanceNavigationTiming">MDN PerformanceNavigationTiming</a></td></tr>
+      <tr><td>field 수집 라이브러리</td><td><a href="https://github.com/GoogleChrome/web-vitals">GoogleChrome/web-vitals</a></td></tr>
+    </tbody>
+  </table>
+
+  <p class="sm" style="margin-top:24px">
+    레슨: <a href="../lessons/0046-web-vitals-seven-metrics-on-one-timeline.html">0046 — 일곱 지표를 한 타임라인 위에</a> (§1–§4를 판다).
+    이후 로딩 축(0047) · 반응 축(0048) · CLS(0049) · 실제 리포트 읽기(0050) 예정.
+  </p>
+
+</main>
+</body>
+</html>
