@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoF 6/6 — 생성 패턴 5개</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main class="gof">
+
+  <p class="sm">GoF 23패턴 · 묶음 6/6 (생성 패턴) · 레슨 0054 · <a href="../reference/0024-gof-23-patterns-toc.html">전체 목차</a> · 이전: <a href="0053-gof-iterator-visitor-memento-interpreter.html">레슨 0053</a></p>
+  <h1>생성 패턴 5개 — Factory Method · Abstract Factory · Builder · Prototype · Singleton</h1>
+
+  <p class="lead">
+    생성 패턴은 한 가지 질문에 답한다: <strong>"객체를 어떻게 만들까?"</strong> 이미 어디서 본 적이 있다고 하셨으니,
+    이 레슨은 새로 가르치기보다 <strong>이름과 코드 모양을 연결</strong>하는 데 집중한다.
+    "본 적이 있다"와 "구분할 수 있다"는 다르므로 퀴즈가 중심이다.
+  </p>
+
+  <h2>§0 · 워밍업 — 지난 묶음 4문제 (섞어서)</h2>
+
+  <section class="quiz">
+    <p><strong>R1.</strong> <code>for (Iterator it = list.iterator(); it.hasNext(); ) it.next();</code></p>
+    <button type="button" data-target="answer-r1" data-answer="correct">Iterator</button>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. 구독자에게 알리는 구조가 아니다.">Observer</button>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. 연산을 요소 밖으로 빼는 accept/visit 구조가 아니다.">Visitor</button>
+    <p class="answer" id="answer-r1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R2.</strong> 상위 클래스가 <code>final</code> 메서드로 순서를 고정하고 한 단계만 <code>abstract</code>로 남긴다.</p>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 합성이 아니라 상속이다.">Strategy</button>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 상태 전이 코드가 없다.">State</button>
+    <button type="button" data-target="answer-r2" data-answer="correct">Template Method</button>
+    <p class="answer" id="answer-r2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R3.</strong> 서로 다른 인터페이스를 가진 <code>OldApi</code>를 <code>NewApi</code>로 쓰려고 변환 클래스를 끼웠다.</p>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. 인터페이스를 유지하는 패턴이다.">Decorator</button>
+    <button type="button" data-target="answer-r3" data-answer="correct">Adapter</button>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. 서브시스템 전체의 새 창구를 만드는 것이 아니다.">Facade</button>
+    <p class="answer" id="answer-r3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R4.</strong> 실행한 요청을 객체로 만들어 스택에 쌓고, <code>undo()</code>를 호출해 되돌린다.</p>
+    <button type="button" data-target="answer-r4" data-answer="wrong" data-hint="오답. 알고리즘을 갈아끼우는 것이 아니다.">Strategy</button>
+    <button type="button" data-target="answer-r4" data-answer="correct">Command</button>
+    <button type="button" data-target="answer-r4" data-answer="wrong" data-hint="오답. 상태 스냅샷이 아니라 요청 객체를 저장한다.">Memento</button>
+    <p class="answer" id="answer-r4"></p>
+  </section>
+
+  <h2>§1 · 다섯 개를 한 장으로</h2>
+  <table>
+    <thead><tr><th>패턴</th><th>한 줄</th><th>비유</th><th>구조 신호</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Factory Method</strong></td><td>무엇을 만들지를 <strong>서브클래스</strong>가 정한다</td><td>프랜차이즈 지점이 빵 종류 결정</td><td>부모의 <code>abstract create()</code> + 자식이 오버라이드 (<strong>상속</strong>)</td></tr>
+      <tr><td><strong>Abstract Factory</strong></td><td>어울리는 <strong>제품군</strong>을 한 번에 만든다</td><td>"모던 세트" 공장 → 의자·소파·탁자</td><td>공장 인터페이스에 <code>createA()</code>, <code>createB()</code> 여러 개</td></tr>
+      <tr><td><strong>Builder</strong></td><td>복잡한 객체를 <strong>단계별로</strong> 조립한다</td><td>햄버거 주문(빵→패티→소스)</td><td><code>setX().setY().build()</code> 체인</td></tr>
+      <tr><td><strong>Prototype</strong></td><td>기존 객체를 <strong>복제</strong>해서 만든다</td><td>"다른 이름으로 저장"</td><td><code>clone()</code>, 복사 생성</td></tr>
+      <tr><td><strong>Singleton</strong></td><td>인스턴스를 <strong>하나만</strong> 만든다</td><td>나라의 대통령</td><td><code>private</code> 생성자 + <code>static getInstance()</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>§2 · Factory Method vs Abstract Factory — 가장 헷갈리는 쌍</h2>
+  <p>이름이 비슷하지만 <strong>만드는 대상의 개수</strong>가 다르다.</p>
+<pre>// Factory Method: 한 종류의 제품, 서브클래스가 구체 클래스를 결정 (상속)
+abstract class Bakery {
+    Bread order() { Bread b = createBread(); b.bake(); return b; }
+    protected abstract Bread createBread();                // 이 한 줄이 Factory Method
+}
+class SeoulBakery extends Bakery { protected Bread createBread() { return new Baguette(); } }
+
+// Abstract Factory: 서로 어울리는 여러 제품군을 한 번에 (합성으로 공장 객체를 받음)
+interface FurnitureFactory { Chair createChair(); Sofa createSofa(); Table createTable(); }
+class ModernFactory implements FurnitureFactory { /* 모던 스타일 3종 */ }
+class VictorianFactory implements FurnitureFactory { /* 빅토리아 스타일 3종 */ }</pre>
+  <table>
+    <thead><tr><th></th><th>Factory Method</th><th>Abstract Factory</th></tr></thead>
+    <tbody>
+      <tr><td><strong>만드는 것</strong></td><td>제품 <strong>하나</strong></td><td>제품 <strong>군(family)</strong></td></tr>
+      <tr><td><strong>방식</strong></td><td>상속 (클래스 패턴)</td><td>객체(공장)를 주입 (객체 패턴)</td></tr>
+      <tr><td><strong>교체 단위</strong></td><td>서브클래스 하나</td><td>공장 하나를 바꾸면 <strong>세트 전체</strong>가 바뀜</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">Refactoring.Guru: Abstract Factory는 흔히 여러 Factory Method의 집합으로 구성되고, Factory Method는 Template Method의 특수한 형태다. 가이드는 설계가 보통 Factory Method에서 시작해 필요할 때 Abstract Factory·Prototype·Builder로 발전한다고 말한다 (<a href="https://refactoring.guru/design-patterns/factory-method">Factory Method</a>, <a href="https://refactoring.guru/design-patterns/abstract-factory">Abstract Factory</a>).</p>
+
+  <h2>§3 · Builder — 단계별 조립</h2>
+  <p><strong>이론.</strong> 생성자 인자가 너무 많거나 선택 항목이 많은 객체를 <strong>단계별로 조립</strong>한다. 같은 조립 절차로 다른 표현을 만들 수 있다. 조립 순서를 정하는 Director는 선택이다 (<a href="https://refactoring.guru/design-patterns/builder">Refactoring.Guru</a>).</p>
+<pre>Pizza p = new Pizza.Builder()
+        .size(12).cheese(true).pepperoni(true)
+        .build();                                  // 마지막에 완성품을 받음</pre>
+  <p class="sm">Abstract Factory와의 차이: Abstract Factory는 제품을 <strong>즉시</strong> 돌려주고, Builder는 제품을 받기 전에 <strong>추가 조립 단계</strong>를 둘 수 있다.</p>
+
+  <h2>§4 · Prototype — 복제</h2>
+  <p><strong>이론.</strong> 구체 클래스에 의존하지 않고 <strong>기존 객체를 복사</strong>해서 새 객체를 만든다. 생성 비용이 크거나 설정이 복잡한 객체를 만들 때 유용하다. 상속이 필요 없다는 점이 Factory Method와 다르다.</p>
+<pre>interface Shape extends Cloneable { Shape copy(); }
+class Circle implements Shape {
+    int r; String color;
+    public Shape copy() { Circle c = new Circle(); c.r = r; c.color = color; return c; }
+}
+Shape b = a.copy();                                // a를 복제해서 약간만 고쳐 쓴다</pre>
+  <p class="sm">Memento의 단순한 대안이 되기도 한다. 저장할 객체가 단순하고 외부 연결이 적을 때다 (<a href="https://refactoring.guru/design-patterns/prototype">Refactoring.Guru</a>).</p>
+
+  <h2>§5 · Singleton — 하나만</h2>
+  <p><strong>이론.</strong> 클래스의 인스턴스를 <strong>오직 하나</strong>만 만들고 전역 접근점을 제공한다. 알아볼 표지는 <code>private</code> 생성자 + <code>static</code> 필드 + <code>static getInstance()</code>다. 시험 코드 문제에서는 <code>getInstance()</code>를 여러 번 불러도 <strong>같은 객체</strong>라 카운트가 누적되는 점이 함정으로 나온다.</p>
+<pre>class Config {
+    private static Config instance;
+    private Config() {}
+    public static synchronized Config getInstance() {   // 다중 스레드 동시 생성 방지
+        if (instance == null) instance = new Config();
+        return instance;
+    }
+}</pre>
+  <p class="warn">
+    <strong>Spring의 singleton은 GoF Singleton과 다르다.</strong> Spring 문서: GoF singleton은 클래스 자체가 <strong>ClassLoader당 인스턴스 하나</strong>를 강제하지만, Spring의 singleton scope는 <strong>컨테이너당·빈 정의당 하나</strong>다. 즉 <code>@Service</code> 빈이 하나라고 해서 클래스에 <code>getInstance()</code>가 있는 것이 아니다. 출처: <a href="https://docs.spring.io/spring-framework/reference/core/beans/factory-scopes.html">Spring — Bean Scopes</a>.
+  </p>
+  <p class="sm">Refactoring.Guru가 지적하는 단점: 나쁜 설계를 가릴 수 있고, 단위 테스트가 어렵고, 다중 스레드에서는 특별한 처리가 필요하다 (<a href="https://refactoring.guru/design-patterns/singleton">Singleton</a>).</p>
+
+  <h2>§6 · 판별 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong></p>
+<pre>abstract class Dialog {
+    void render() { Button b = createButton(); b.draw(); }
+    protected abstract Button createButton();
+}
+class WinDialog extends Dialog { protected Button createButton() { return new WinButton(); } }</pre>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 팩토리 객체를 주입받아 제품군을 만드는 구조가 아니다. 상속으로 한 제품을 정한다.">Abstract Factory</button>
+    <button type="button" data-target="answer-1" data-answer="correct">Factory Method</button>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 단계별 조립 체인이 없다.">Builder</button>
+    <p class="answer" id="answer-1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q2.</strong></p>
+<pre>interface UiFactory { Button createButton(); Checkbox createCheckbox(); TextBox createTextBox(); }
+class DarkFactory implements UiFactory { ... }
+class LightFactory implements UiFactory { ... }</pre>
+    <button type="button" data-target="answer-2" data-answer="correct">Abstract Factory</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 제품이 하나가 아니라 여러 개(제품군)다.">Factory Method</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 단계별로 조립하는 구조가 아니다.">Builder</button>
+    <p class="answer" id="answer-2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q3.</strong></p>
+<pre>User u = new User.Builder("kim")
+        .age(30).email("a@b.com").phone("010")
+        .build();</pre>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 팩토리 인터페이스가 없다.">Abstract Factory</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 복제가 아니다.">Prototype</button>
+    <button type="button" data-target="answer-3" data-answer="correct">Builder</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q4.</strong></p>
+<pre>class Counter {
+    private static Counter inst;
+    private int n;
+    private Counter() {}
+    static Counter get() { if (inst == null) inst = new Counter(); return inst; }
+    int inc() { return ++n; }
+}
+Counter.get().inc(); Counter.get().inc();
+System.out.println(Counter.get().inc());   // 출력은?</pre>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. 인스턴스가 하나뿐이라 값이 누적된다. 1이 세 번 나오지 않는다.">1</button>
+    <button type="button" data-target="answer-4" data-answer="correct">3</button>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. 세 번 증가시켰고 중간에 초기화되지 않는다.">0</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q5.</strong> 시험 지문: "<em>원형 인스턴스를 복제(clone)</em>해 새 객체를 생성한다. 생성 비용이 클 때 쓴다."</p>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 싱글톤은 인스턴스를 하나만 만든다.">Singleton</button>
+    <button type="button" data-target="answer-5" data-answer="correct">Prototype</button>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 빌더는 단계별 조립이 키워드다.">Builder</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q6.</strong> 시험 지문: "구체 클래스를 지정하지 않고 <em>관련되거나 의존적인 객체들의 군</em>을 생성하는 인터페이스를 제공한다. 별칭 <em>Kit</em>."</p>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 팩토리 메서드의 별칭은 Virtual Constructor(가상 생성자)다.">Factory Method</button>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 빌더는 별칭이 없고 키워드는 생성 과정과 표현의 분리다.">Builder</button>
+    <button type="button" data-target="answer-6" data-answer="correct">Abstract Factory</button>
+    <p class="answer" id="answer-6"></p>
+  </section>
+
+  <h2>§7 · 한 문장으로 회수</h2>
+  <p><strong>상속으로 한 제품을 정하면 Factory Method, 제품군이면 Abstract Factory, 단계별이면 Builder, 복제면 Prototype, 하나뿐이면 Singleton.</strong></p>
+
+  <h2>더 읽을 자료 (1차 출처)</h2>
+  <ul>
+    <li><a href="https://refactoring.guru/design-patterns/creational-patterns">Refactoring.Guru — Creational Patterns</a> 개요, 그리고 각 패턴 페이지의 "Relations with other patterns".</li>
+  </ul>
+
+  <p class="note">
+    <strong>막히면 선생님(에이전트)에게 물어보자.</strong> 예: "static factory method(<code>List.of</code>)는 Factory Method 패턴이야?",
+    "Lombok <code>@Builder</code>는 GoF Builder야?", "Singleton이 왜 테스트에 안 좋아?"
+    이것으로 23개 패턴을 한 바퀴 돌았다. 다음은 <strong>섞어서 푸는 종합 퀴즈</strong>(레퍼런스)를 만드는 것이 좋다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

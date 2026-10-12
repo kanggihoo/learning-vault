@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoF 2/6 — Decorator · Proxy · Adapter</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .answer.ok { color: #047857; }
+    .answer.no { color: #b91c1c; }
+    .quiz { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 6px 16px 12px; margin: 14px 0; }
+    .quiz pre { font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="sm">GoF 23패턴 · 묶음 2/6 (구조 패턴) · 레슨 0050 · <a href="../reference/0024-gof-23-patterns-toc.html">전체 목차</a> · 이전: <a href="0049-gof-strategy-state-template-method.html">레슨 0049</a></p>
+  <h1>Decorator · Proxy · Adapter</h1>
+
+  <p class="lead">
+    셋 다 <strong>"다른 객체를 필드로 들고 감싸는(wrap) 객체"</strong>다. 그래서 코드 모양이 거의 같다.
+    구분은 모양이 아니라 <strong>① 감싼 뒤 인터페이스가 어떻게 되는가</strong>, <strong>② 무엇을 하려고 감쌌는가</strong>로 한다.
+  </p>
+
+  <h2>§0 · 워밍업 — 지난 레슨 3문제</h2>
+  <p class="sm">지난 퀴즈가 많이 틀렸다면 정상이다. 틀린 것을 다시 꺼내 보는 것 자체가 연습이다. 판별 신호는 둘뿐이다: <strong>상속이면 Template Method / 합성이면 누가 바꾸나(밖=Strategy, 상태 객체 스스로=State).</strong></p>
+
+  <section class="quiz">
+    <p><strong>R1.</strong></p>
+<pre>class Sorter {
+    private final Comparator c;
+    Sorter(Comparator c) { this.c = c; }
+    void sort(List l) { l.sort(c); }
+}</pre>
+    <button type="button" data-target="answer-r1" data-answer="correct">Strategy</button>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. 상태 객체가 다음 상태를 정하는 코드가 없다. 밖에서 비교 방법을 넣어 준다.">State</button>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. 부모를 상속하지 않는다.">Template Method</button>
+    <p class="answer" id="answer-r1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R2.</strong></p>
+<pre>abstract class Game {
+    final void play() { init(); loop(); end(); }
+    abstract void loop();
+}</pre>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 인터페이스 필드가 없다.">Strategy</button>
+    <button type="button" data-target="answer-r2" data-answer="correct">Template Method</button>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 상태 전이 코드가 없다. 상속 + 순서 고정이 단서다.">State</button>
+    <p class="answer" id="answer-r2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R3.</strong></p>
+<pre>class TrafficLight {
+    private Light light = new Red();
+    void tick() { light = light.next(); }   // Red → Green → Yellow ...
+}</pre>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. 클라이언트가 바꾸는 것이 아니라 상태가 스스로 다음 상태를 돌려준다.">Strategy</button>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. 상속으로 골격을 채우는 구조가 아니다.">Template Method</button>
+    <button type="button" data-target="answer-r3" data-answer="correct">State</button>
+    <p class="answer" id="answer-r3"></p>
+  </section>
+
+  <h2>§1 · 먼저 하나의 그림: "감싸는 객체"</h2>
+  <p>
+    선물을 포장지로 싸는 것과 같다. 안에 든 물건(원본)이 있고, 겉에서 싸는 것(래퍼)이 있다.
+    사용하는 쪽은 겉만 본다. 세 패턴은 <strong>"무엇을 하려고 싸는가"</strong>가 다르다.
+  </p>
+  <table>
+    <thead><tr><th></th><th>싸는 목적</th><th>싼 뒤의 인터페이스</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Adapter</strong></td><td>모양이 안 맞는 것을 <strong>맞추려고</strong></td><td><strong>달라진다</strong> (바깥이 원하는 모양으로)</td></tr>
+      <tr><td><strong>Decorator</strong></td><td>기능을 <strong>더하려고</strong></td><td>같다</td></tr>
+      <tr><td><strong>Proxy</strong></td><td>접근을 <strong>통제하려고</strong></td><td>같다</td></tr>
+    </tbody>
+  </table>
+  <p class="note"><strong>구조 신호.</strong> ① 원본과 래퍼가 <strong>같은 인터페이스</strong>를 구현하는가? 아니면 Adapter. ② 같다면 래퍼가 하는 일이 "기능 추가"인가(Decorator) "접근 통제"인가(Proxy)?</p>
+
+  <h2>§2 · Adapter (어댑터) — 모양을 맞춘다</h2>
+  <p><strong>이론.</strong> 이미 있는 클래스의 인터페이스가 내가 기대하는 것과 <strong>다를 때</strong>, 그 사이에 변환 객체를 끼운다. 기존 코드를 고치지 않고 재사용하는 것이 목적이다. 별칭 Wrapper.</p>
+  <p><strong>비유.</strong> 해외여행 <strong>돼지코</strong>. 콘센트(내가 가진 것)와 플러그(기대하는 것)의 모양이 달라서 사이에 끼운다. 전기(기능)는 그대로고 <strong>모양만</strong> 바뀐다.</p>
+<pre>interface WavPlayer { void playWav(String file); }      // 내가 기대하는 모양
+class Mp3Player { void playMp3(String file) { ... } }   // 이미 있는 클래스(모양이 다름)
+
+class Mp3ToWavAdapter implements WavPlayer {            // 기대하는 모양을 구현
+    private final Mp3Player mp3 = new Mp3Player();     // 원본을 들고 있음
+    public void playWav(String file) { mp3.playMp3(convert(file)); }  // 변환해서 위임
+}</pre>
+  <p class="sm">두 가지 형태: <strong>객체 어댑터</strong>(위처럼 필드로 들고 있음, 합성)와 <strong>클래스 어댑터</strong>(상속). 시험에서 Adapter가 "클래스 패턴"으로 분류되는 것은 클래스 어댑터 때문이다. 출처: <a href="https://refactoring.guru/design-patterns/adapter">Refactoring.Guru — Adapter</a>.</p>
+
+  <h2>§3 · Decorator (데코레이터) — 기능을 겹겹이 더한다</h2>
+  <p><strong>이론.</strong> 원본과 <strong>같은 인터페이스</strong>를 구현하는 래퍼가 원본을 들고, 원본의 동작 앞뒤에 기능을 <strong>덧붙인다</strong>. 같은 인터페이스라서 <strong>래퍼를 또 래퍼로 감쌀 수 있다</strong>(겹겹이). 어떤 조합으로 쌓을지는 <strong>클라이언트가 정한다</strong>. 기능 확장을 위해 서브클래스를 만드는 것의 대안이다.</p>
+  <p><strong>비유.</strong> 카페 주문. 에스프레소 위에 "우유 추가", 거기에 "휘핑 추가"를 얹는다. 결과물은 여전히 "커피"이고, 가격만 합쳐진다.</p>
+<pre>interface Coffee { int cost(); }
+class Espresso implements Coffee { public int cost() { return 3000; } }
+
+class Milk implements Coffee {                       // 같은 인터페이스
+    private final Coffee base;                       // 감쌀 대상(또 다른 Coffee)
+    Milk(Coffee base) { this.base = base; }
+    public int cost() { return base.cost() + 500; }  // 원본 호출 + 기능 추가
+}
+Coffee order = new Whip(new Milk(new Espresso()));   // 클라이언트가 겹겹이 쌓음</pre>
+
+  <h2>§4 · Proxy (프록시) — 접근을 통제한다</h2>
+  <p><strong>이론.</strong> 원본과 <strong>같은 인터페이스</strong>를 가진 대리자가 원본 앞에 서서, 원본에 닿기 전에 <strong>가로채 통제</strong>한다. 종류: 가상(필요할 때 늦게 생성), 보호(권한 검사), 원격(다른 서버 객체를 로컬처럼), 로깅, 캐싱. 별칭 Surrogate.</p>
+  <p><strong>비유.</strong> 연예인 <strong>매니저</strong>. 섭외 전화는 매니저가 받고, 일정과 조건이 맞을 때만 연예인에게 전달한다. 연예인과 같은 "섭외 창구" 역할을 하지만, 연예인을 언제 만날지는 매니저가 정한다.</p>
+<pre>interface Image { void show(); }
+class RealImage implements Image { /* 생성 시 파일을 읽어 무거움 */ public void show() { ... } }
+
+class LazyImage implements Image {                   // 같은 인터페이스
+    private final String path;
+    private RealImage real;                          // 아직 안 만듦
+    LazyImage(String path) { this.path = path; }
+    public void show() {
+        if (real == null) real = new RealImage(path); // 필요할 때 처음 생성 (가상 프록시)
+        real.show();
+    }
+}</pre>
+
+  <h2>§5 · Decorator vs Proxy — 가장 헷갈리는 쌍</h2>
+  <p>둘은 코드 모양이 거의 같다. 같은 인터페이스 + 원본을 필드로 보유 + 위임이다. 차이는 <strong>의도와 책임자</strong>에 있다.</p>
+  <table>
+    <thead><tr><th></th><th>Decorator</th><th>Proxy</th></tr></thead>
+    <tbody>
+      <tr><td><strong>목적</strong></td><td>기능 추가</td><td>접근 통제</td></tr>
+      <tr><td><strong>원본 생성·수명</strong></td><td>클라이언트가 원본을 만들어 넘긴다</td><td>프록시가 스스로 관리하기도 한다 (§4의 <code>new RealImage</code>)</td></tr>
+      <tr><td><strong>쌓기</strong></td><td>클라이언트가 여러 겹으로 쌓는다</td><td>보통 한 겹</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/decorator">Refactoring.Guru — Decorator</a>, <a href="https://refactoring.guru/design-patterns/proxy">Proxy</a>의 "Relations with other patterns". Proxy는 "usually manages the life cycle of its service object on its own"이고 Decorator의 구성은 "controlled by the client"라고 정리한다.</p>
+
+  <h2>§6 · Spring·JDK에서 찾아보기</h2>
+  <table>
+    <thead><tr><th>어디</th><th>무엇</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://docs.spring.io/spring-framework/reference/core/aop/introduction-proxies.html">Spring AOP</a> (<code>@Transactional</code> 등)</td><td>Proxy</td><td>문서: "Spring AOP is proxy-based". 인터페이스가 있으면 JDK 동적 프록시, 없으면 CGLIB. 호출 앞뒤에서 트랜잭션을 열고 닫는 것은 <strong>접근 통제(가로채기)</strong>다</td></tr>
+      <tr><td><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/io/InputStreamReader.html"><code>InputStreamReader</code></a></td><td>구조상 Adapter</td><td>바이트 스트림(<code>InputStream</code>)을 문자 스트림(<code>Reader</code>)으로 <strong>인터페이스를 바꿔</strong> 준다. Javadoc은 이걸 "bridge"라고 부르는데, GoF의 Bridge 패턴과는 다른 일상적 의미의 단어다</td></tr>
+    </tbody>
+  </table>
+  <p class="warn"><strong>주의.</strong> <code>new BufferedReader(new FileReader(...))</code>처럼 같은 종류(<code>Reader</code>)끼리 겹쳐 쓰는 Java I/O는 Decorator의 고전 사례로 흔히 인용된다. 다만 이 레슨에서는 공식 문서로 그 명칭을 직접 확인하지 않았으므로 "구조상 그렇다"까지만 말한다.</p>
+
+  <h2>§7 · 판별 퀴즈</h2>
+  <p class="sm">풀 때 신호 ①: 래퍼와 원본의 <strong>인터페이스가 같은가?</strong></p>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong></p>
+<pre>class LegacyToNewAdapter implements NewApi {
+    private final LegacyApi legacy;
+    public String fetch(int id) { return legacy.get(String.valueOf(id)); }
+}</pre>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. NewApi와 LegacyApi는 서로 다른 인터페이스다. 기능을 더하는 게 아니라 모양을 바꾸고 있다.">Decorator</button>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 접근을 막거나 늦추는 코드가 없다. 인터페이스 변환이 핵심이다.">Proxy</button>
+    <button type="button" data-target="answer-1" data-answer="correct">Adapter</button>
+    <p class="answer" id="answer-1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q2.</strong></p>
+<pre>class Whip implements Coffee {
+    private final Coffee base;
+    Whip(Coffee base) { this.base = base; }
+    public int cost() { return base.cost() + 700; }
+}</pre>
+    <button type="button" data-target="answer-2" data-answer="correct">Decorator</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 같은 인터페이스인 것은 맞지만, 하는 일이 접근 통제가 아니라 가격 추가(기능 추가)다.">Proxy</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 인터페이스를 바꾸지 않았다. 같은 Coffee다.">Adapter</button>
+    <p class="answer" id="answer-2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q3.</strong></p>
+<pre>class AdminOnlyReport implements Report {
+    private final Report real;
+    public String read(User u) {
+        if (!u.isAdmin()) throw new SecurityException();
+        return real.read(u);
+    }
+}</pre>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 기능을 더하는 게 아니라 접근 자체를 막을지 결정하고 있다.">Decorator</button>
+    <button type="button" data-target="answer-3" data-answer="correct">Proxy</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 같은 Report 인터페이스다. 모양을 바꾸지 않았다.">Adapter</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q4.</strong> 시험 지문: "<em>호환되지 않는 인터페이스를 가진 클래스들을 함께 동작하게</em> 한다."</p>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. Decorator는 인터페이스를 같게 둔 채 기능을 더한다.">Decorator</button>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. Proxy의 키워드는 접근 제어, 지연 로딩, 대리자다.">Proxy</button>
+    <button type="button" data-target="answer-4" data-answer="correct">Adapter</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q5.</strong> 시험 지문: "<em>동적으로</em> 객체에 책임을 <em>추가</em>하며, 서브클래스 대신 쓰는 유연한 대안."</p>
+    <button type="button" data-target="answer-5" data-answer="correct">Decorator</button>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. Proxy의 키워드는 대리자와 접근 제어다. '책임 추가'는 Decorator.">Proxy</button>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. Adapter의 키워드는 인터페이스 변환과 호환성이다.">Adapter</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q6.</strong> <code>@Transactional</code>이 붙은 메서드를 호출하면 그 앞뒤에서 트랜잭션이 자동으로 시작·종료된다. 이 동작을 구현하는 Spring AOP의 구조는?</p>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 기능을 더하는 면도 있지만 Spring 문서는 이 구조를 프록시 기반이라고 설명한다. 호출을 가로채 통제하는 쪽이다.">Decorator</button>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 인터페이스를 바꾸는 구조가 아니다. 같은 타입으로 대신 서 있다.">Adapter</button>
+    <button type="button" data-target="answer-6" data-answer="correct">Proxy</button>
+    <p class="answer" id="answer-6"></p>
+  </section>
+
+  <h2>§8 · 한 문장으로 회수</h2>
+  <p>
+    <strong>인터페이스가 달라지면 Adapter.</strong> 같다면 <strong>기능을 더하면 Decorator, 접근을 통제하면 Proxy.</strong>
+  </p>
+
+  <h2>더 읽을 자료 (1차 출처)</h2>
+  <ul>
+    <li><a href="https://refactoring.guru/design-patterns/proxy">Refactoring.Guru — Proxy</a>: 종류(가상·보호·원격·로깅·캐싱)와 "Relations with other patterns".</li>
+    <li><a href="https://docs.spring.io/spring-framework/reference/core/aop/introduction-proxies.html">Spring Framework Reference — Proxying mechanisms 입문</a>.</li>
+  </ul>
+
+  <p class="note">
+    <strong>막히면 선생님(에이전트)에게 물어보자.</strong> 예: "Decorator와 Proxy는 코드가 똑같은데 왜 다른 패턴이야?",
+    "Adapter와 Facade는 뭐가 달라?", "Spring에서 <code>@Transactional</code>이 왜 같은 클래스 안의 호출에서는 안 먹어?"
+    다음 레슨은 묶음 3 (행위: Observer / Mediator / Chain of Responsibility / Command)이다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

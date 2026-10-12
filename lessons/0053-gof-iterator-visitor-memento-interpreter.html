@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoF 5/6 — Iterator · Visitor · Memento · Interpreter</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main class="gof">
+
+  <p class="sm">GoF 23패턴 · 묶음 5/6 (행위 패턴) · 레슨 0053 · <a href="../reference/0024-gof-23-patterns-toc.html">전체 목차</a> · 이전: <a href="0052-gof-composite-facade-bridge-flyweight.html">레슨 0052</a></p>
+  <h1>Iterator · Visitor · Memento · Interpreter</h1>
+
+  <p class="lead">
+    행위 패턴의 나머지 넷이다. 앞 묶음처럼 서로 닮아서 헷갈리는 쌍이 아니라, 각각 <strong>따로 떨어진 질문</strong>에 답한다:
+    순회(Iterator), 연산 분리(Visitor), 상태 저장·복원(Memento), 문법 해석(Interpreter).
+    그래서 이번엔 "이 키워드가 나오면 이것"으로 빨리 알아보는 연습이 중심이다.
+  </p>
+
+  <h2>§0 · 워밍업 — 지난 묶음 4문제</h2>
+  <p class="sm">신호 요약. 구조: 자기와 같은 타입의 리스트를 들고 재귀하면 Composite / 여러 서브시스템 앞의 새 창구는 Facade / 기능·구현 두 계층 분리는 Bridge / 공유로 아끼면 Flyweight.</p>
+
+  <section class="quiz">
+    <p><strong>R1.</strong> <code>class Folder implements Node { List&lt;Node&gt; children; int size(){ sum of children.size() } }</code></p>
+    <button type="button" data-target="answer-r1" data-answer="correct">Composite</button>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. Decorator는 자식이 하나이고 기능을 더한다.">Decorator</button>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. 서로 다른 서브시스템을 조율하는 창구가 아니다.">Facade</button>
+    <p class="answer" id="answer-r1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R2.</strong> 나무 1만 그루가 모델·텍스처 객체 하나를 공유하고 위치만 따로 가진다.</p>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 인스턴스를 하나만 두는 패턴이 아니다. 공유 객체가 여러 종류일 수 있다.">Singleton</button>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 복제로 새 객체를 만드는 게 아니라 공유로 새로 만들지 않는 것이다.">Prototype</button>
+    <button type="button" data-target="answer-r2" data-answer="correct">Flyweight</button>
+    <p class="answer" id="answer-r2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R3.</strong> 구독자 목록을 들고 있다가 값이 바뀌면 전원의 <code>onChange()</code>를 호출한다.</p>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. 허브를 거쳐 서로 소통하는 구조가 아니다.">Mediator</button>
+    <button type="button" data-target="answer-r3" data-answer="correct">Observer</button>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. 한 명이 처리할 때까지 넘기는 구조가 아니다.">Chain of Responsibility</button>
+    <p class="answer" id="answer-r3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R4.</strong> 래퍼가 원본과 같은 인터페이스이고, 권한이 없으면 원본을 호출하지 않고 예외를 던진다.</p>
+    <button type="button" data-target="answer-r4" data-answer="wrong" data-hint="오답. 기능 추가가 아니라 접근 통제다.">Decorator</button>
+    <button type="button" data-target="answer-r4" data-answer="wrong" data-hint="오답. 인터페이스를 바꾸지 않았다.">Adapter</button>
+    <button type="button" data-target="answer-r4" data-answer="correct">Proxy</button>
+    <p class="answer" id="answer-r4"></p>
+  </section>
+
+  <h2>§1 · 네 개를 한 장으로</h2>
+  <table>
+    <thead><tr><th>패턴</th><th>답하는 질문</th><th>비유</th><th>키워드</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Iterator</strong></td><td>내부 구조를 모른 채 <strong>하나씩 꺼내고</strong> 싶다</td><td>TV 채널 다음/이전 버튼</td><td>순차 접근, hasNext/next</td></tr>
+      <tr><td><strong>Visitor</strong></td><td>클래스를 <strong>안 고치고 새 연산</strong>을 추가하고 싶다</td><td>집은 그대로, 검침원·수리공이 방문해 각자 일</td><td>accept(visitor), 더블 디스패치</td></tr>
+      <tr><td><strong>Memento</strong></td><td>상태를 <strong>저장했다가 되돌리고</strong> 싶다</td><td>게임 세이브 파일</td><td>스냅샷, undo</td></tr>
+      <tr><td><strong>Interpreter</strong></td><td>간단한 <strong>언어의 문법을 클래스로</strong> 표현해 해석하고 싶다</td><td>수식 계산기, 정규식</td><td>문법, 구문 트리</td></tr>
+    </tbody>
+  </table>
+
+  <h2>§2 · Iterator (반복자) — 속을 숨기고 순서대로 꺼낸다</h2>
+  <p><strong>이론.</strong> 리스트든 트리든 해시든, 내부 표현을 드러내지 않고 요소를 <strong>하나씩 순서대로</strong> 꺼내는 공통 방법(<code>hasNext()</code>, <code>next()</code>)을 제공한다. 별칭 Cursor.</p>
+  <p><strong>비유.</strong> TV 리모컨의 채널 다음/이전 버튼. 방송국이 채널을 어떻게 보관하든 누르면 다음 채널이 나온다.</p>
+<pre>interface Iterator&lt;T&gt; { boolean hasNext(); T next(); }
+Iterator&lt;String&gt; it = list.iterator();      // 리스트 내부 구조를 몰라도 된다
+while (it.hasNext()) System.out.println(it.next());</pre>
+  <p class="sm">Java의 <a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Iterator.html"><code>java.util.Iterator</code></a>가 그대로 이 패턴이다 (Javadoc: "An iterator over a collection", <code>hasNext()</code>/<code>next()</code>). <code>for-each</code> 문도 내부에서 이터레이터를 쓴다. 출처: <a href="https://refactoring.guru/design-patterns/iterator">Refactoring.Guru — Iterator</a>.</p>
+
+  <h2>§3 · Visitor (방문자) — 연산을 밖으로 뺀다</h2>
+  <p><strong>이론.</strong> 데이터 구조(요소 클래스들)는 그대로 두고, 그 위에 할 <strong>새 연산을 별도 클래스(Visitor)</strong>로 만든다. 요소는 <code>accept(visitor)</code>만 가지고 있고, 그 안에서 <code>visitor.visit(this)</code>를 호출한다. 이렇게 두 번 호출해 <strong>요소 타입에 맞는 메서드가 자동 선택</strong>되는 것이 더블 디스패치다. 새 연산이 필요하면 Visitor 클래스만 추가한다.</p>
+  <p><strong>비유.</strong> 집(데이터)은 그대로인데 검침원, 배달원, 수리공(연산)이 번갈아 방문해 각자 일을 한다. 집은 "들어오세요"(accept)만 안다.</p>
+<pre>interface Shape { void accept(ShapeVisitor v); }
+class Circle implements Shape { public void accept(ShapeVisitor v) { v.visit(this); } }
+class Square implements Shape { public void accept(ShapeVisitor v) { v.visit(this); } }
+
+interface ShapeVisitor { void visit(Circle c); void visit(Square s); }
+class AreaVisitor implements ShapeVisitor {          // 새 연산 = 새 클래스
+    public void visit(Circle c) { /* 원 넓이 */ }
+    public void visit(Square s) { /* 사각형 넓이 */ }
+}
+shape.accept(new AreaVisitor());                     // 요소가 알아서 맞는 visit을 호출</pre>
+  <p class="sm">JDK 예: <a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/nio/file/FileVisitor.html"><code>FileVisitor</code></a>를 <code>Files.walkFileTree</code>에 넘기면 파일 트리의 각 항목에서 <code>visitFile</code>, <code>preVisitDirectory</code> 같은 메서드가 호출된다. 출처: <a href="https://refactoring.guru/design-patterns/visitor">Refactoring.Guru — Visitor</a>.</p>
+  <p class="warn"><strong>알아볼 표지.</strong> 요소 클래스마다 <code>accept(Visitor v) { v.visit(this); }</code>가 똑같이 들어 있고, Visitor 인터페이스에 요소 타입별 <code>visit()</code> 오버로드가 있다. 이 모양이면 거의 Visitor다.</p>
+
+  <h2>§4 · Memento (메멘토) — 캡슐화를 지키며 저장·복원</h2>
+  <p><strong>이론.</strong> 객체의 내부 상태를 <strong>밖에 노출하지 않고</strong> 스냅샷(Memento)으로 꺼내 보관했다가, 필요할 때 그 상태로 <strong>복원</strong>한다. 핵심은 "private 필드를 공개하지 않고도 저장·복원"이다. 보관하는 쪽(Caretaker)은 내용을 못 열어 본다. 별칭 Token.</p>
+  <p><strong>비유.</strong> 게임 세이브 파일. 게임이 자기 상태를 파일로 만들어 주고, 불러오면 그때로 돌아간다. 세이브 파일 관리자(메뉴)는 파일 안을 모른다.</p>
+<pre>class Editor {
+    private String text;
+    Snapshot save() { return new Snapshot(text); }          // 상태를 포장
+    void restore(Snapshot s) { this.text = s.text; }        // 상태 복원
+    static class Snapshot {                                  // 밖에서는 내용을 못 연다
+        private final String text;
+        private Snapshot(String t) { this.text = t; }
+    }
+}
+Deque&lt;Editor.Snapshot&gt; undoStack = new ArrayDeque&lt;&gt;();     // Caretaker가 보관만 한다</pre>
+  <p class="sm">Command와 함께 undo를 구현할 때 짝으로 쓴다 — Command가 동작하기 직전에 Memento로 상태를 저장한다 (<a href="https://refactoring.guru/design-patterns/memento">Refactoring.Guru — Memento</a>).</p>
+
+  <h2>§5 · Interpreter (인터프리터) — 문법을 클래스로</h2>
+  <p><strong>이론.</strong> 간단한 언어의 <strong>문법 규칙 하나하나를 클래스</strong>로 만들고, 문장은 그 객체들의 <strong>트리</strong>로 표현해 <code>interpret()</code>를 재귀로 호출해 해석한다. 숫자 같은 끝(terminal)과, 더하기처럼 다른 규칙을 품는 가지(nonterminal)로 나뉜다 — Composite와 닮았다. GoF의 <strong>클래스 패턴</strong> 4개 중 하나다.</p>
+  <p><strong>비유.</strong> 수식 계산기. "(1 + 2) * 3"을 숫자 객체와 연산자 객체의 트리로 만들고 루트에서 계산을 시작한다.</p>
+<pre>interface Expr { int interpret(); }
+class Num implements Expr { int n; public int interpret() { return n; } }            // 끝
+class Add implements Expr {                                                          // 가지
+    Expr l, r;
+    public int interpret() { return l.interpret() + r.interpret(); }
+}
+// (1 + 2) → new Add(new Num(1), new Num(2)).interpret()  == 3</pre>
+  <p class="sm">한계: 이 패턴은 <strong>문자열을 파싱하지는 않는다</strong>(트리가 이미 만들어졌다고 가정). 문법이 복잡하면 파서가 더 적합하다 (<a href="https://sourcemaking.com/design_patterns/interpreter">SourceMaking — Interpreter</a>). Refactoring.Guru 카탈로그에는 이 패턴이 없다.</p>
+
+  <h2>§6 · 헷갈리는 쌍</h2>
+  <table>
+    <thead><tr><th>쌍</th><th>구분 질문</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Visitor vs Iterator</strong></td><td>Iterator는 <strong>꺼내는 순서</strong>를 정하고, Visitor는 꺼낸 요소에 <strong>무슨 일을 할지</strong>를 정한다. 둘을 함께 쓰기도 한다</td></tr>
+      <tr><td><strong>Memento vs Command</strong></td><td>Memento는 <strong>상태</strong>를 저장하고, Command는 <strong>동작</strong>을 저장한다. undo에서는 같이 쓴다</td></tr>
+      <tr><td><strong>Interpreter vs Composite</strong></td><td>구조는 닮았다(트리·재귀). Interpreter는 그 트리가 <strong>문법을 표현해 해석</strong>한다는 점이 다르다</td></tr>
+    </tbody>
+  </table>
+
+  <h2>§7 · 판별 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong></p>
+<pre>interface Doc { void accept(Visitor v); }
+class Pdf implements Doc { public void accept(Visitor v) { v.visit(this); } }
+class Word implements Doc { public void accept(Visitor v) { v.visit(this); } }</pre>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 순서대로 꺼내는 코드가 아니다. accept와 visit(this)의 짝이 단서다.">Iterator</button>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 상태 저장·복원 코드가 없다.">Memento</button>
+    <button type="button" data-target="answer-1" data-answer="correct">Visitor</button>
+    <p class="answer" id="answer-1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q2.</strong></p>
+<pre>Game.Save s = game.save();      // 상태를 포장해서 꺼냄
+saves.push(s);
+game.restore(saves.pop());      // 그 상태로 복원</pre>
+    <button type="button" data-target="answer-2" data-answer="correct">Memento</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 커맨드는 동작을 저장한다. 여기는 상태 스냅샷이다.">Command</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 프로토타입은 복제로 새 객체를 만든다.">Prototype</button>
+    <p class="answer" id="answer-2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q3.</strong></p>
+<pre>interface Expr { int interpret(); }
+class Mul implements Expr {
+    Expr l, r;
+    public int interpret() { return l.interpret() * r.interpret(); }
+}</pre>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 컴포지트와 닮았지만 문법을 표현해 해석(interpret)한다는 점이 단서다.">Composite</button>
+    <button type="button" data-target="answer-3" data-answer="correct">Interpreter</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 방문자는 accept/visit 짝이 단서다.">Visitor</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q4.</strong> 시험 지문: "<em>내부 표현을 노출하지 않고</em> 집합 객체의 요소에 <em>순차적으로 접근</em>한다."</p>
+    <button type="button" data-target="answer-4" data-answer="correct">Iterator</button>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. 비지터의 키워드는 연산 분리, accept다.">Visitor</button>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. 메멘토의 키워드는 상태 저장·복원이다.">Memento</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q5.</strong> 시험 지문: "객체 구조의 요소에 수행할 <em>연산을 별도 클래스로 분리</em>하여, 요소 클래스를 <em>수정하지 않고 새 연산을 추가</em>한다."</p>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 이터레이터는 순차 접근이 키워드다.">Iterator</button>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 인터프리터는 문법과 해석이 키워드다.">Interpreter</button>
+    <button type="button" data-target="answer-5" data-answer="correct">Visitor</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q6.</strong> 시험 지문: "<em>캡슐화를 위배하지 않고</em> 객체의 내부 상태를 저장해 두었다가 <em>이전 상태로 복원</em>한다."</p>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 커맨드는 요청을 객체로 만들어 실행·취소하는 것이다. '상태 저장·복원'이 단서다.">Command</button>
+    <button type="button" data-target="answer-6" data-answer="correct">Memento</button>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 인터프리터는 문법 해석이 키워드다.">Interpreter</button>
+    <p class="answer" id="answer-6"></p>
+  </section>
+
+  <h2>§8 · 한 문장으로 회수</h2>
+  <p><strong>하나씩 꺼내면 Iterator, accept/visit으로 연산을 빼면 Visitor, 상태를 저장·복원하면 Memento, 문법 트리를 해석하면 Interpreter.</strong></p>
+
+  <h2>더 읽을 자료 (1차 출처)</h2>
+  <ul>
+    <li><a href="https://refactoring.guru/design-patterns/iterator">Iterator</a> · <a href="https://refactoring.guru/design-patterns/visitor">Visitor</a> · <a href="https://refactoring.guru/design-patterns/memento">Memento</a> (Refactoring.Guru) · <a href="https://sourcemaking.com/design_patterns/interpreter">Interpreter</a> (SourceMaking)</li>
+  </ul>
+
+  <p class="note">
+    <strong>막히면 선생님(에이전트)에게 물어보자.</strong> 예: "Visitor의 더블 디스패치가 왜 필요해?", "Memento는 왜 getter/setter로 하면 안 돼?",
+    "Interpreter는 실무에서 어디서 써?" 다음 레슨은 묶음 6 (생성 패턴 5개)이다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

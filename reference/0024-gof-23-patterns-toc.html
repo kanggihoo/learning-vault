@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoF 23패턴 목차</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    main { max-width: 1020px; padding-top: 26px; }
+    h1 { font-size: 1.8rem; }
+    h2 { margin-top: 28px; padding-top: 13px; font-size: 1.15rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; margin: 8px 0; }
+    th, td { border: 1px solid #deded6; padding: 6px 9px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    .lead { font-size: 1.04rem; color: #3e4c59; }
+    .sm { font-size: 0.84rem; color: #52606d; }
+    .cls { color: #b45309; font-weight: 700; }
+    @media print { h2 { break-after: avoid; } table { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="sm">레퍼런스 0024 · GoF 디자인 패턴 목차 · 학습 순서는 6개 묶음(묶음 번호 = 학습 순서) · <a href="../lessons/0049-gof-strategy-state-template-method.html">레슨 0049</a>부터</p>
+  <h1>GoF 23패턴 목차</h1>
+
+  <p class="lead">
+    GoF = 책 <em>Design Patterns</em>(1994)의 네 저자. 이 책이 소개한 패턴이 <strong>23개</strong>다.
+    목적에 따라 <strong>생성 5 · 구조 7 · 행위 11</strong>로 나눈다.
+  </p>
+
+  <table>
+    <thead><tr><th>분류</th><th>질문</th><th>한 줄 비유</th><th>개수</th></tr></thead>
+    <tbody>
+      <tr><td><strong>생성</strong> Creational</td><td>객체를 <strong>어떻게 만들까</strong></td><td>공장</td><td><a href="../lessons/0053-gof-iterator-visitor-memento-interpreter.html">5</a></td></tr>
+      <tr><td><strong>구조</strong> Structural</td><td>클래스·객체를 <strong>어떻게 조합할까</strong></td><td>레고 조립</td><td>7</td></tr>
+      <tr><td><strong>행위</strong> Behavioral</td><td>객체들이 <strong>어떻게 협력하고 책임을 나눌까</strong></td><td>팀 업무 분담</td><td>11</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">범위(Scope): <span class="cls">주황색</span> = 클래스 패턴(상속, 컴파일 시점 고정). 나머지는 객체 패턴(합성·위임, 실행 중 변경 가능).
+    클래스 패턴은 Factory Method · Adapter · Interpreter · Template Method 4개 — 외우기 "팩어인템". Adapter는 클래스 어댑터(상속)와 객체 어댑터(합성) 두 형태가 있다.</p>
+
+  <h2>생성 패턴 5개 — "객체를 어떻게 만들까"</h2>
+  <table>
+    <thead><tr><th style="width:17%">패턴</th><th>한 줄 설명</th><th style="width:20%">비유</th><th style="width:9%">묶음</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Abstract Factory</strong><br><span class="sm">추상 팩토리 · Kit</span></td><td>서로 어울리는 <strong>객체 묶음(제품군)</strong>을 구체 클래스 지정 없이 만든다</td><td>가구 브랜드 "모던 세트"</td><td><a href="../lessons/0054-gof-creational-patterns.html">6</a></td></tr>
+      <tr><td><strong>Builder</strong><br><span class="sm">빌더</span></td><td>복잡한 객체를 <strong>단계별로</strong> 조립한다. 같은 절차로 다른 결과를 만든다</td><td>햄버거 주문</td><td><a href="../lessons/0054-gof-creational-patterns.html">6</a></td></tr>
+      <tr><td class="cls">Factory Method<br><span class="sm">팩토리 메서드 · Virtual Constructor</span></td><td>생성 메서드는 부모가 선언하고 <strong>무엇을 만들지는 서브클래스</strong>가 정한다</td><td>프랜차이즈 지점이 빵 종류를 결정</td><td><a href="../lessons/0054-gof-creational-patterns.html">6</a></td></tr>
+      <tr><td><strong>Prototype</strong><br><span class="sm">프로토타입</span></td><td>기존 객체를 <strong>복제(clone)</strong>해서 새 객체를 만든다</td><td>"다른 이름으로 저장"</td><td><a href="../lessons/0054-gof-creational-patterns.html">6</a></td></tr>
+      <tr><td><strong>Singleton</strong><br><span class="sm">싱글톤</span></td><td>인스턴스를 <strong>하나만</strong> 만들고 전역 접근점을 준다</td><td>나라의 대통령</td><td><a href="../lessons/0054-gof-creational-patterns.html">6</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>구조 패턴 7개 — "어떻게 조합할까"</h2>
+  <table>
+    <thead><tr><th style="width:17%">패턴</th><th>한 줄 설명</th><th style="width:20%">비유</th><th style="width:9%">묶음</th></tr></thead>
+    <tbody>
+      <tr><td class="cls">Adapter<br><span class="sm">어댑터 · Wrapper</span></td><td>맞지 않는 인터페이스를 <strong>기대하는 모양으로 변환</strong>해 같이 쓰게 한다</td><td>돼지코 변환 플러그</td><td><a href="../lessons/0050-gof-decorator-proxy-adapter.html">2</a></td></tr>
+      <tr><td><strong>Bridge</strong><br><span class="sm">브리지</span></td><td><strong>기능 계층과 구현 계층을 분리</strong>해 각각 독립 확장한다</td><td>리모컨 종류 × TV 제조사</td><td><a href="../lessons/0052-gof-composite-facade-bridge-flyweight.html">4</a></td></tr>
+      <tr><td><strong>Composite</strong><br><span class="sm">컴포지트</span></td><td>부분-전체를 <strong>트리</strong>로 만들고 개별/복합 객체를 <strong>똑같이</strong> 다룬다</td><td>폴더 안의 파일과 폴더</td><td><a href="../lessons/0052-gof-composite-facade-bridge-flyweight.html">4</a></td></tr>
+      <tr><td><strong>Decorator</strong><br><span class="sm">데코레이터 · Wrapper</span></td><td>객체를 <strong>감싸서 기능을 동적으로 추가</strong>한다 (상속 대신)</td><td>커피에 샷·시럽 추가</td><td><a href="../lessons/0050-gof-decorator-proxy-adapter.html">2</a></td></tr>
+      <tr><td><strong>Facade</strong><br><span class="sm">퍼사드</span></td><td>복잡한 서브시스템 앞에 <strong>단순한 창구</strong> 하나를 둔다</td><td>호텔 컨시어지</td><td><a href="../lessons/0052-gof-composite-facade-bridge-flyweight.html">4</a></td></tr>
+      <tr><td><strong>Flyweight</strong><br><span class="sm">플라이웨이트</span></td><td>같은 데이터를 <strong>공유</strong>해 대량 객체의 메모리를 줄인다</td><td>숲의 나무 1만 그루가 모델 공유</td><td><a href="../lessons/0052-gof-composite-facade-bridge-flyweight.html">4</a></td></tr>
+      <tr><td><strong>Proxy</strong><br><span class="sm">프록시 · Surrogate</span></td><td>대리자를 세워 <strong>접근을 제어</strong>한다 (지연 생성·권한·원격)</td><td>연예인 매니저</td><td><a href="../lessons/0050-gof-decorator-proxy-adapter.html">2</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>행위 패턴 11개 — "어떻게 협력하고 책임을 나눌까"</h2>
+  <table>
+    <thead><tr><th style="width:17%">패턴</th><th>한 줄 설명</th><th style="width:20%">비유</th><th style="width:9%">묶음</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Chain of Responsibility</strong><br><span class="sm">책임 연쇄</span></td><td>처리할 수 있는 객체가 나올 때까지 요청을 <strong>사슬로 넘긴다</strong></td><td>대리 → 과장 → 부장 결재</td><td><a href="../lessons/0051-gof-observer-mediator-chain-command.html">3</a></td></tr>
+      <tr><td><strong>Command</strong><br><span class="sm">커맨드 · Action</span></td><td><strong>요청 자체를 객체</strong>로 만들어 저장·큐잉·취소(undo)한다</td><td>식당 주문서</td><td><a href="../lessons/0051-gof-observer-mediator-chain-command.html">3</a></td></tr>
+      <tr><td class="cls">Interpreter<br><span class="sm">인터프리터</span></td><td>언어의 <strong>문법을 클래스로</strong> 표현하고 문장을 해석한다</td><td>수식 계산기, 정규식</td><td><a href="../lessons/0053-gof-iterator-visitor-memento-interpreter.html">5</a></td></tr>
+      <tr><td><strong>Iterator</strong><br><span class="sm">반복자 · Cursor</span></td><td>내부 구조를 숨기고 요소를 <strong>순서대로</strong> 꺼낸다</td><td>TV 채널 다음/이전</td><td><a href="../lessons/0053-gof-iterator-visitor-memento-interpreter.html">5</a></td></tr>
+      <tr><td><strong>Mediator</strong><br><span class="sm">중재자</span></td><td>객체끼리 직접 말하지 않고 <strong>중재자를 거친다</strong> (N:N → 1:N)</td><td>공항 관제탑</td><td><a href="../lessons/0051-gof-observer-mediator-chain-command.html">3</a></td></tr>
+      <tr><td><strong>Memento</strong><br><span class="sm">메멘토 · Token</span></td><td>캡슐화를 깨지 않고 상태를 <strong>저장했다가 복원</strong>한다</td><td>게임 세이브</td><td><a href="../lessons/0053-gof-iterator-visitor-memento-interpreter.html">5</a></td></tr>
+      <tr><td><strong>Observer</strong><br><span class="sm">옵서버 · Publish-Subscribe</span></td><td>상태가 바뀌면 의존하는 객체들에게 <strong>자동 통지</strong>한다 (1:N)</td><td>유튜브 구독 알림</td><td><a href="../lessons/0051-gof-observer-mediator-chain-command.html">3</a></td></tr>
+      <tr><td><strong>State</strong><br><span class="sm">상태</span></td><td>내부 상태가 바뀌면 <strong>행동이 바뀐다</strong>. 상태를 객체로 분리한다</td><td>자판기</td><td><a href="../lessons/0049-gof-strategy-state-template-method.html">1</a></td></tr>
+      <tr><td><strong>Strategy</strong><br><span class="sm">전략 · Policy</span></td><td><strong>알고리즘을 캡슐화</strong>해 서로 <strong>교체</strong>할 수 있게 한다</td><td>내비 경로 선택</td><td><a href="../lessons/0049-gof-strategy-state-template-method.html">1</a></td></tr>
+      <tr><td class="cls">Template Method<br><span class="sm">템플릿 메서드</span></td><td>부모가 <strong>알고리즘 골격</strong>을 정하고 일부 단계를 자식이 채운다</td><td>라면 끓이기 순서</td><td><a href="../lessons/0049-gof-strategy-state-template-method.html">1</a></td></tr>
+      <tr><td><strong>Visitor</strong><br><span class="sm">방문자</span></td><td>요소 클래스를 <strong>수정하지 않고</strong> 새 연산을 별도 클래스로 추가한다</td><td>검침원·배달원이 각자 방문</td><td><a href="../lessons/0053-gof-iterator-visitor-memento-interpreter.html">5</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>학습 순서 (한 묶음 = 한 분류, 6묶음)</h2>
+  <table>
+    <thead><tr><th>묶음</th><th>분류</th><th>패턴</th><th>구분의 핵심</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>행위</td><td>Strategy / State / Template Method</td><td>상속인가 합성인가, 누가 바꾸나</td></tr>
+      <tr><td>2</td><td>구조</td><td>Decorator / Proxy / Adapter</td><td>인터페이스를 같게 두는가, 바꾸는가</td></tr>
+      <tr><td>3</td><td>행위</td><td>Observer / Mediator / Chain of Responsibility / Command</td><td>요청이 어디로 가는가</td></tr>
+      <tr><td>4</td><td>구조</td><td>Composite / Facade / Bridge / Flyweight</td><td>트리·창구·분리·공유</td></tr>
+      <tr><td>5</td><td>행위</td><td>Iterator / Visitor / Memento / Interpreter</td><td>순회·연산 분리·상태 저장·문법</td></tr>
+      <tr><td>6</td><td>생성</td><td>Factory Method / Abstract Factory / Builder / Prototype / Singleton</td><td>무엇을 어떻게 만드는가 (복습 중심)</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">생성 패턴은 이미 본 적이 있다고 해서 뒤로 보냈고, 구조·행위를 앞에 둔다. 퀴즈에서 실제로 틀린 쌍을 보고 계속 조정한다.
+    <strong>출처 주의:</strong> 위 한 줄 설명은 시험 대비 정리본과 <a href="https://refactoring.guru/design-patterns/catalog">Refactoring.Guru</a> 카탈로그를 대조해 다시 쓴 것이다. Refactoring.Guru는 Interpreter를 다루지 않으며(22개), 클래스 범위 4개 분류는 GoF 원전 기준이므로 시험 직전 원전·기출로 재확인한다.</p>
+
+  <p class="sm">막히면 선생님(에이전트)에게 물어보자. "A와 B가 뭐가 달라?"가 가장 좋은 질문이다.</p>
+</main>
+</body>
+</html>

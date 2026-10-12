@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoF 3/6 — Observer · Mediator · Chain of Responsibility · Command</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main class="gof">
+
+  <p class="sm">GoF 23패턴 · 묶음 3/6 (행위 패턴) · 레슨 0051 · <a href="../reference/0024-gof-23-patterns-toc.html">전체 목차</a> · 이전: <a href="0050-gof-decorator-proxy-adapter.html">레슨 0050</a></p>
+  <h1>Observer · Mediator · Chain of Responsibility · Command</h1>
+
+  <p class="lead">
+    넷 다 <strong>"요청(메시지)이 보내는 쪽에서 받는 쪽으로 어떻게 가는가"</strong>를 다룬다.
+    구분은 코드 모양이 아니라 <strong>요청이 가는 길의 모양</strong>으로 한다: 1:N 방송, 허브 경유, 사슬, 포장된 물건.
+  </p>
+
+  <h2>§0 · 워밍업 — 지난 두 묶음에서 4문제</h2>
+  <p class="sm">신호 요약. 행위(묶음 1): 상속이면 Template Method / 합성이면 밖에서 갈아끼우면 Strategy, 상태 객체가 스스로 전이하면 State. 구조(묶음 2): 감싼 뒤 인터페이스가 달라지면 Adapter / 같으면서 기능 추가는 Decorator, 접근 통제는 Proxy.</p>
+
+  <section class="quiz">
+    <p><strong>R1.</strong> <code>class Cart { private Discount d; void setDiscount(Discount d){this.d=d;} int total(){ return d.apply(sum()); } }</code></p>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. 상속이 없다. 인터페이스를 필드로 들고 있다.">Template Method</button>
+    <button type="button" data-target="answer-r1" data-answer="correct">Strategy</button>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. 상태 객체가 스스로 다음 상태로 전이하는 코드가 없다.">State</button>
+    <p class="answer" id="answer-r1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R2.</strong> <code>class Bold implements Text { private Text t; public String render(){ return "&lt;b&gt;" + t.render() + "&lt;/b&gt;"; } }</code> — 클라이언트가 <code>new Bold(new Italic(new Plain("hi")))</code>처럼 겹쳐 쌓는다.</p>
+    <button type="button" data-target="answer-r2" data-answer="correct">Decorator</button>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 같은 Service 인터페이스다. 모양을 바꾸지 않았다.">Adapter</button>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 접근을 통제하는 코드가 아니라 태그를 더하는 기능 추가이고, 클라이언트가 쌓는다.">Proxy</button>
+    <p class="answer" id="answer-r2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R3.</strong> 기존 <code>OldPrinter.printText(String)</code>을 새 인터페이스 <code>Printer.print(Doc)</code>로 쓰고 싶어서 변환 클래스를 만들었다.</p>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. Proxy는 같은 인터페이스를 유지한다.">Proxy</button>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. Decorator는 같은 인터페이스를 유지한다.">Decorator</button>
+    <button type="button" data-target="answer-r3" data-answer="correct">Adapter</button>
+    <p class="answer" id="answer-r3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R4.</strong> 상위 클래스가 <code>final</code> 메서드로 순서를 고정하고, 한 단계만 <code>abstract</code>로 남겼다.</p>
+    <button type="button" data-target="answer-r4" data-answer="wrong" data-hint="오답. 합성(필드)이 아니라 상속이 핵심이다.">Strategy</button>
+    <button type="button" data-target="answer-r4" data-answer="correct">Template Method</button>
+    <button type="button" data-target="answer-r4" data-answer="wrong" data-hint="오답. 상태 전이 코드가 없다.">State</button>
+    <p class="answer" id="answer-r4"></p>
+  </section>
+
+  <h2>§1 · 먼저 하나의 그림: 요청이 가는 길</h2>
+  <table>
+    <thead><tr><th>패턴</th><th>요청이 가는 길</th><th>한 줄 비유</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Observer</strong></td><td>한 곳에서 <strong>여러 구독자에게 동시에</strong> (1:N)</td><td>유튜브 구독 알림</td></tr>
+      <tr><td><strong>Mediator</strong></td><td>모두가 <strong>허브 하나를 거쳐서</strong> (N:N → 허브)</td><td>공항 관제탑</td></tr>
+      <tr><td><strong>Chain of Responsibility</strong></td><td>처리할 사람이 나올 때까지 <strong>한 줄로 넘김</strong></td><td>대리 → 과장 → 부장 결재</td></tr>
+      <tr><td><strong>Command</strong></td><td>요청을 <strong>물건(객체)으로 포장</strong>해서 저장·전달</td><td>식당 주문서</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/mediator">Refactoring.Guru — Mediator</a>의 "Relations with other patterns"가 이 네 패턴을 "보내는 쪽과 받는 쪽을 연결하는 서로 다른 방식"으로 비교한다.</p>
+
+  <h2>§2 · Observer (옵서버) — 바뀌면 구독자 전원에게 알린다</h2>
+  <p><strong>이론.</strong> 한 객체(Subject, 주제)의 상태가 바뀌면 <strong>미리 등록한 모든 구독자(Observer)</strong>에게 자동으로 알린다. 구독자는 런타임에 등록·해지할 수 있다. 별칭 Publish-Subscribe, Dependents.</p>
+  <p><strong>비유.</strong> 유튜브 구독. 채널(주제)이 영상을 올리면 구독 버튼 누른 사람 전원에게 알림이 간다. 채널은 구독자가 누군지 몰라도 되고, 구독자는 언제든 해지한다.</p>
+<pre>interface Observer { void update(String news); }
+class Channel {                                    // Subject
+    private final List&lt;Observer&gt; subs = new ArrayList&lt;&gt;();
+    void subscribe(Observer o) { subs.add(o); }    // 등록
+    void upload(String v) { for (Observer o : subs) o.update(v); }  // 전원에게 통지
+}</pre>
+
+  <h2>§3 · Mediator (중재자) — 허브를 거친다</h2>
+  <p><strong>이론.</strong> 객체들이 서로를 직접 참조하면 선이 N×N으로 얽힌다. 중재자 한 객체를 두고 <strong>모두가 중재자하고만</strong> 소통하게 해서 얽힘을 N:1로 줄인다. 목표는 "서로에 대한 의존 제거"다.</p>
+  <p><strong>비유.</strong> 공항 관제탑. 비행기끼리 무전하지 않고 관제탑하고만 통신한다. 채팅방도 같다. 참가자끼리 직접 보내지 않고 방(중재자)이 전달한다.</p>
+<pre>class ChatRoom {                                   // Mediator
+    private final List&lt;User&gt; users = new ArrayList&lt;&gt;();
+    void join(User u) { users.add(u); }
+    void send(User from, String msg) {            // 모든 소통이 여기를 지남
+        for (User u : users) if (u != from) u.receive(msg);
+    }
+}</pre>
+
+  <h2>§4 · Chain of Responsibility (책임 연쇄) — 한 줄로 넘긴다</h2>
+  <p><strong>이론.</strong> 요청을 <strong>핸들러의 사슬</strong>에 흘려보낸다. 각 핸들러는 "내가 처리한다" 또는 "다음 핸들러로 넘긴다"를 고른다. 보내는 쪽은 누가 처리할지 모른다.</p>
+  <p><strong>비유.</strong> 결재 라인. 100만 원 이하는 대리가, 아니면 과장에게, 그래도 안 되면 부장에게 넘어간다.</p>
+<pre>abstract class Approver {
+    private Approver next;
+    Approver setNext(Approver n) { this.next = n; return n; }
+    void handle(int amount) {
+        if (canApprove(amount)) approve(amount);
+        else if (next != null) next.handle(amount);   // 못 하면 다음 사람에게
+    }
+    abstract boolean canApprove(int amount);
+    abstract void approve(int amount);
+}</pre>
+
+  <h2>§5 · Command (커맨드) — 요청을 물건으로 만든다</h2>
+  <p><strong>이론.</strong> "무엇을 할지"를 <strong>객체 하나로 포장</strong>한다. 객체가 되었으니 변수에 담고, 큐에 줄 세우고, 기록하고, <strong>실행 취소(undo)</strong>할 수 있다. 별칭 Action, Transaction.</p>
+  <p><strong>비유.</strong> 식당 주문서. 말로 주문하면 사라지지만, 종이 한 장(요청)이 되면 줄 세우고, 취소하고, 기록으로 남긴다.</p>
+<pre>interface Command { void execute(); void undo(); }
+class LightOn implements Command {
+    private final Light light;
+    public void execute() { light.on(); }
+    public void undo()    { light.off(); }       // 되돌리는 법도 명령이 안다
+}
+// 리모컨은 Command만 안다 (누구를 켜는지 모른다)
+Deque&lt;Command&gt; history = new ArrayDeque&lt;&gt;();  // 실행한 명령을 쌓아 undo</pre>
+  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/command">Refactoring.Guru — Command</a>. undo는 "실행 전 상태를 백업해 히스토리 스택에 쌓고, 되돌릴 때 pop해서 undo를 호출"하는 방식으로 설명한다.</p>
+
+  <h2>§6 · 헷갈리는 쌍</h2>
+  <table>
+    <thead><tr><th>쌍</th><th>구분 질문</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Observer vs Mediator</strong></td><td>한 방향 1:N 방송이면 Observer, <strong>서로 주고받는</strong> 관계를 허브로 정리하는 것이면 Mediator. 가이드: 둘은 헷갈리기 쉽고 Mediator를 Observer로 구현하기도 한다(중재자=발행자, 컴포넌트=구독자)</td></tr>
+      <tr><td><strong>Observer vs Chain</strong></td><td>구독자 <strong>전원</strong>이 받으면 Observer, <strong>한 명이 처리할 때까지</strong> 넘기면 Chain</td></tr>
+      <tr><td><strong>Command vs Strategy</strong></td><td>같은 일을 하는 방법을 <strong>갈아끼우면</strong> Strategy, "무엇을 할지" 자체를 <strong>물건으로 만들어 저장·취소</strong>하면 Command</td></tr>
+      <tr><td><strong>Chain vs Decorator</strong></td><td>둘 다 재귀적으로 감싼다. Chain의 핸들러는 <strong>흐름을 끊을 수 있다</strong>(처리하고 종료). Decorator는 흐름을 끊지 않는다 (Guru)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>§7 · Spring·JDK에서 찾아보기 (문서 확인)</h2>
+  <table>
+    <thead><tr><th>어디</th><th>무엇</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://docs.spring.io/spring-framework/reference/core/beans/context-introduction.html">Spring <code>ApplicationListener</code></a></td><td>Observer</td><td>문서가 직접 "this is the standard Observer design pattern"이라고 쓴다. 기본은 <strong>동기</strong>라서 <code>publishEvent()</code>가 모든 리스너가 끝날 때까지 막힌다</td></tr>
+      <tr><td><a href="https://docs.oracle.com/javaee/7/api/javax/servlet/FilterChain.html">Servlet <code>FilterChain</code></a></td><td>구조상 Chain of Responsibility</td><td>각 필터가 <code>doFilter</code>로 "사슬의 다음 필터를 호출"하거나, 마지막이면 자원을 호출한다. Javadoc이 패턴 이름을 쓰지는 않는다</td></tr>
+    </tbody>
+  </table>
+  <p class="warn"><strong>주의.</strong> 고전 Chain은 "처리하면 멈춘다"인데 서블릿 필터는 보통 "자기 일을 하고 <strong>다음으로도 넘긴다</strong>"는 점에서 변형이다. 이름만으로 판정하지 말고 구조(다음에게 넘기는가)로 본다.</p>
+
+  <h2>§8 · 판별 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong></p>
+<pre>class Stock {
+    private List&lt;Listener&gt; ls = new ArrayList&lt;&gt;();
+    void add(Listener l) { ls.add(l); }
+    void setPrice(int p) { for (Listener l : ls) l.onChange(p); }
+}</pre>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 허브를 거쳐 서로 소통하는 구조가 아니라 한쪽이 구독자들에게 방송한다.">Mediator</button>
+    <button type="button" data-target="answer-1" data-answer="correct">Observer</button>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 한 명이 처리할 때까지 넘기는 게 아니라 전원에게 알린다.">Chain of Responsibility</button>
+    <p class="answer" id="answer-1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q2.</strong></p>
+<pre>abstract class Handler {
+    protected Handler next;
+    void handle(Req r) {
+        if (can(r)) process(r);
+        else if (next != null) next.handle(r);
+    }
+}</pre>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 구독자 목록이 없다.">Observer</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 요청을 객체로 포장해 저장하는 코드가 아니다.">Command</button>
+    <button type="button" data-target="answer-2" data-answer="correct">Chain of Responsibility</button>
+    <p class="answer" id="answer-2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q3.</strong></p>
+<pre>class Remote {
+    private final Deque&lt;Command&gt; history = new ArrayDeque&lt;&gt;();
+    void press(Command c) { c.execute(); history.push(c); }
+    void undo() { if (!history.isEmpty()) history.pop().undo(); }
+}</pre>
+    <button type="button" data-target="answer-3" data-answer="correct">Command</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 알고리즘을 갈아끼우는 게 아니라 실행한 요청을 저장해 되돌린다.">Strategy</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 구독자에게 방송하는 구조가 아니다.">Observer</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q4.</strong> 시험 지문: "<em>객체 간의 직접 통신을 제한하고 중재 객체를 통해서만 협력</em>하게 하여 결합도를 낮춘다."</p>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. Observer의 키워드는 1:N 통지, 구독이다.">Observer</button>
+    <button type="button" data-target="answer-4" data-answer="correct">Mediator</button>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. Command의 키워드는 요청 캡슐화, undo, 큐다.">Command</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q5.</strong> 시험 지문: "<em>요청을 처리할 수 있는 객체가 나올 때까지</em> 객체 사슬을 따라 요청을 넘긴다."</p>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 사슬이 아니라 허브를 거친다.">Mediator</button>
+    <button type="button" data-target="answer-5" data-answer="correct">Chain of Responsibility</button>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 전원에게 통지하는 구조다.">Observer</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q6.</strong> 시험 지문: "<em>요청 자체를 객체로 캡슐화</em>하여 매개변수화, 큐잉, 로그, 실행 취소를 지원한다."</p>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. Strategy는 알고리즘 교체가 키워드다.">Strategy</button>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. Mediator는 소통을 허브로 모으는 것이 키워드다.">Mediator</button>
+    <button type="button" data-target="answer-6" data-answer="correct">Command</button>
+    <p class="answer" id="answer-6"></p>
+  </section>
+
+  <h2>§9 · 한 문장으로 회수</h2>
+  <p><strong>전원에게 방송이면 Observer, 허브 경유면 Mediator, 처리할 때까지 넘기면 Chain, 요청을 물건으로 만들면 Command.</strong></p>
+
+  <h2>더 읽을 자료 (1차 출처)</h2>
+  <ul>
+    <li><a href="https://refactoring.guru/design-patterns/observer">Refactoring.Guru — Observer</a> · <a href="https://refactoring.guru/design-patterns/mediator">Mediator</a> · <a href="https://refactoring.guru/design-patterns/chain-of-responsibility">Chain of Responsibility</a> · <a href="https://refactoring.guru/design-patterns/command">Command</a></li>
+  </ul>
+
+  <p class="note">
+    <strong>막히면 선생님(에이전트)에게 물어보자.</strong> 예: "Observer와 Pub/Sub는 같은 거야?", "Mediator와 Facade는 뭐가 달라?",
+    "Command와 Strategy는 둘 다 인터페이스 하나짜리 객체인데 왜 달라?" 다음 레슨은 묶음 4 (구조: Composite / Facade / Bridge / Flyweight)다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

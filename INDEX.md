@@ -258,3 +258,25 @@ This index points to saved learning material in this Learning Vault.
 
 - [0029 - 마켓 리플레이 백엔드 학습 범위 확정](./learning-records/0029-market-replay-backend-scope-baseline.md)
 - [0030 - 두 종류의 이해와 지도 구멍](./learning-records/0030-two-types-of-understanding-and-the-map-gap.md)
+
+## Design Patterns (GoF)
+
+GoF 23개 패턴을 시험·실무 양쪽에서 **구분해서** 쓰기 위한 아크. 카탈로그 암기가 아니라 구조 신호 판별이 목표.
+
+**Learning Records**
+
+- [0036 - GoF 23패턴 학습 시작](./learning-records/0036-gof-23-patterns-baseline.md)
+
+**References**
+
+- [0024 - GoF 23패턴 목차](./reference/0024-gof-23-patterns-toc.html)
+  — 생성5/구조7/행위11, 패턴별 한 줄 설명·비유·별칭, 클래스 범위 4개, 6묶음 학습 순서
+
+**Lessons**
+
+- [0049 - GoF 1/6: Strategy · State · Template Method](./lessons/0049-gof-strategy-state-template-method.html)
+- [0050 - GoF 2/6: Decorator · Proxy · Adapter](./lessons/0050-gof-decorator-proxy-adapter.html)
+- [0051 - GoF 3/6: Observer · Mediator · Chain of Responsibility · Command](./lessons/0051-gof-observer-mediator-chain-command.html)
+- [0052 - GoF 4/6: Composite · Facade · Bridge · Flyweight](./lessons/0052-gof-composite-facade-bridge-flyweight.html)
+- [0053 - GoF 5/6: Iterator · Visitor · Memento · Interpreter](./lessons/0053-gof-iterator-visitor-memento-interpreter.html)
+- [0054 - GoF 6/6: 생성 패턴 5개](./lessons/0054-gof-creational-patterns.html)

@@ -371,3 +371,17 @@
 
 - [modelcontextprotocol/modelcontextprotocol — Discussions](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions) · SEP PR 스레드
   스펙 저자들이 직접 답한다. Use for: "이 변경이 왜 이렇게 됐나"는 SEP 번호로 PR을 열어 논의를 읽는 것이 가장 정확.
+
+## GoF Design Patterns Knowledge (2026-10-12 검증 시작)
+
+- [Refactoring.Guru — Design Patterns catalog](https://refactoring.guru/design-patterns/catalog)
+  패턴별 문제·해법·구조도·Java 예제·"Relations with other patterns". Use for: 패턴 구분 설명, 코드 예제, 혼동 쌍 비교. **주의: 22개만 다루고 Interpreter가 없다**(2026-10-12 fetch 확인). Interpreter는 GoF 원전으로 보완.
+- [Refactoring.Guru — Strategy](https://refactoring.guru/design-patterns/strategy)
+  Use for: Strategy vs State(State는 Strategy의 확장, 상태끼리 서로 의존), vs Template Method(상속/정적 vs 합성/런타임), vs Decorator(껍질 vs 내장), vs Command.
+- [Book: _Design Patterns: Elements of Reusable Object-Oriented Software_ — Gamma, Helm, Johnson, Vlissides (GoF, 1994)](https://www.pearson.com/en-us/subject-catalog/p/design-patterns-elements-of-reusable-objectoriented-software/P200000009480)
+  원전. Use for: 의도(Intent) 원문·별칭(Also Known As)·클래스/객체 범위 분류·Interpreter 등 시험 출제 근거.
+- [Refactoring.Guru — Java examples repo](https://github.com/RefactoringGuru/design-patterns-java)
+  Use for: 패턴별 실행 가능한 Java 코드.
+
+## GoF Gaps
+- 정보처리기사 실기 기출을 공식 출처로 확인할 자료(큐넷)는 아직 목록에 없음. 사용자가 가진 기출 지문을 직접 받는 것이 가장 정확.

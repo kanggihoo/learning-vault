@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoF 1/6 — Strategy · State · Template Method</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <style>
+    table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+    th, td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #eef7f5; }
+    .lead { font-size: 1.08rem; color: #3e4c59; }
+    .sm { font-size: 0.85rem; color: #52606d; }
+    .answer.ok { color: #047857; }
+    .answer.no { color: #b91c1c; }
+    .quiz { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 6px 16px 12px; margin: 14px 0; }
+    .quiz pre { font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+<main>
+
+  <p class="sm">GoF 23패턴 · 묶음 1/6 · 레슨 0049 · <a href="../reference/0024-gof-23-patterns-toc.html">전체 목차(레퍼런스 0024)</a></p>
+  <h1>Strategy · State · Template Method</h1>
+
+  <p class="lead">
+    셋 다 <strong>"if/switch로 분기하던 동작을 클래스로 빼고 싶다"</strong>는 문제에서 나온 행위 패턴이다.
+    그래서 코드가 닮았고, 그래서 헷갈린다. 이 레슨의 목표는 하나다:
+    <strong>코드를 보고 셋 중 무엇인지 구조 신호로 가른다.</strong>
+  </p>
+
+  <p class="note">
+    <strong>구조 신호 두 개만 기억한다.</strong>
+    ① <strong>상속인가 합성인가</strong> (부모 클래스를 상속 / 인터페이스를 필드로 보유)
+    ② 합성이라면 <strong>누가 갈아끼우는가</strong> (밖에서 / 상태 객체 스스로)
+  </p>
+
+  <h2>§1 · Strategy (전략) — 밖에서 갈아끼운다</h2>
+  <p><strong>이론.</strong> 알고리즘 여러 개를 각각 클래스로 만들어 <strong>같은 인터페이스</strong>로 묶고, 사용하는 쪽(Context)이 그중 하나를 필드로 들고 위임한다. 어떤 알고리즘을 쓸지는 <strong>클라이언트가 고른다.</strong> 별칭 Policy.</p>
+  <p><strong>비유.</strong> 내비게이션. 본체는 그대로이고 "최단 / 무료 / 고속"을 사용자가 고른다.</p>
+<pre>interface RouteStrategy { Route find(Point from, Point to); }
+class Navi {
+    private RouteStrategy strategy;               // 합성
+    void setStrategy(RouteStrategy s) { this.strategy = s; }   // 밖에서 교체
+    Route go(Point a, Point b) { return strategy.find(a, b); }
+}</pre>
+
+  <h2>§2 · State (상태) — 안에서 스스로 바뀐다</h2>
+  <p><strong>이론.</strong> 객체의 <strong>상태를 클래스로</strong> 만든다. Context는 현재 상태 객체에 위임하고, <strong>상태 객체가 다음 상태를 정해</strong> 전이한다. 그래서 상태가 바뀌면 같은 호출의 행동이 달라진다. 구조는 Strategy와 거의 같지만, 상태끼리 서로를 안다.</p>
+  <p><strong>비유.</strong> 자판기. 같은 "버튼 누르기"가 동전 없음 / 있음 / 품절에 따라 다르게 동작하고, 동전을 넣으면 자판기가 스스로 "있음" 상태가 된다.</p>
+<pre>interface VendingState { VendingState pressButton(); }
+class NoCoin implements VendingState {
+    public VendingState pressButton() { /* "동전을 넣으세요" */ return this; }
+}
+class HasCoin implements VendingState {
+    public VendingState pressButton() { /* 음료 배출 */ return new NoCoin(); }  // 스스로 전이
+}</pre>
+
+  <h2>§3 · Template Method (템플릿 메서드) — 순서는 부모, 일부는 자식</h2>
+  <p><strong>이론.</strong> 부모 클래스의 메서드가 <strong>알고리즘의 순서(골격)</strong>를 고정하고, 달라지는 단계만 <strong>추상 메서드</strong>로 남겨 서브클래스가 채운다. <strong>상속</strong>이라 컴파일 시점에 정해지고 실행 중에는 못 바꾼다. GoF의 <strong>클래스 패턴</strong> 4개 중 하나다.</p>
+  <p><strong>비유.</strong> 라면 끓이기. 물 끓이기 → 면 → 스프 → 먹기 순서는 같고 스프만 제품마다 다르다.</p>
+<pre>abstract class Ramen {
+    final void cook() { boilWater(); addNoodle(); addSoup(); serve(); }  // 골격 고정
+    abstract void addSoup();                                              // 이 단계만 자식이 채움
+}
+class ShinRamen extends Ramen { void addSoup() { /* 매운 스프 */ } }</pre>
+
+  <h2>§4 · 한 장으로 구분</h2>
+  <table>
+    <thead><tr><th></th><th>Strategy</th><th>State</th><th>Template Method</th></tr></thead>
+    <tbody>
+      <tr><td><strong>관계</strong></td><td>합성(인터페이스 필드)</td><td>합성(인터페이스 필드)</td><td>상속(추상 클래스)</td></tr>
+      <tr><td><strong>교체 시점</strong></td><td>실행 중</td><td>실행 중</td><td>컴파일 시점(고정)</td></tr>
+      <tr><td><strong>누가 바꾸나</strong></td><td>외부(클라이언트)</td><td>상태 객체 스스로</td><td>바꾸지 않음</td></tr>
+      <tr><td><strong>부품끼리</strong></td><td>서로 모른다</td><td>서로 안다(다음 상태를 만듦)</td><td>해당 없음</td></tr>
+      <tr><td><strong>시험 키워드</strong></td><td>알고리즘 교체, 캡슐화</td><td>상태에 따라 행동 변경</td><td>골격, 하위 클래스가 구현</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/strategy">Refactoring.Guru — Strategy</a>의 "Relations with other patterns". State는 Strategy의 확장 형태이고, Template Method는 상속이라 정적이며, Strategy는 합성이라 런타임에 바뀐다고 정리한다.</p>
+
+  <h2>§5 · Spring·JDK에서 찾아보기 (검증한 것만)</h2>
+  <table>
+    <thead><tr><th>어디</th><th>무엇</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://docs.oracle.com/javaee/7/api/javax/servlet/http/HttpServlet.html"><code>HttpServlet</code></a></td><td>Template Method</td><td>서브클래스가 <code>doGet</code>/<code>doPost</code>를 오버라이드하고, <code>service</code>가 요청 종류에 맞춰 그것들을 호출한다(문서: "almost no reason to override <code>service</code>")</td></tr>
+      <tr><td><code>Comparator</code> 를 <code>sort</code>에 전달</td><td>구조상 Strategy</td><td>정렬 알고리즘의 "비교 방법"을 밖에서 끼운다. 단 <a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Comparator.html">Javadoc</a>이 "strategy"라고 부르지는 않는다</td></tr>
+      <tr><td><a href="https://docs.spring.io/spring-framework/reference/data-access/jdbc/core.html"><code>JdbcTemplate</code></a></td><td><strong>이름만 Template</strong></td><td>고정 흐름은 템플릿이 하고 변하는 부분은 <strong>콜백 객체(<code>RowMapper</code> 등)</strong>를 받는다 = 상속이 아니라 합성. 고전 Template Method가 아니라 Strategy에 가까운 "콜백 방식"</td></tr>
+    </tbody>
+  </table>
+  <p class="warn"><strong>교정.</strong> 앞선 대화에서 "<code>RestTemplate</code>은 Template Method 계열"이라고 했다. <code>JdbcTemplate</code> 문서를 확인해 보니, 이름과 달리 상속이 아니라 콜백 합성 구조다. 이름에 Template이 있다고 Template Method는 아니다. <code>RestTemplate</code>은 직접 확인하지 않았으므로 판단을 보류한다.</p>
+
+  <h2>§6 · 판별 퀴즈 (인출 연습)</h2>
+  <p class="sm">답을 누르면 바로 채점된다. 틀리면 힌트가 나온다. 구조 신호 두 개로 풀어보자.</p>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong></p>
+<pre>class Player {
+    private Codec codec;
+    void setCodec(Codec c) { this.codec = c; }
+    void play() { codec.decode(); }
+}</pre>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 인터페이스 필드를 밖에서 setter로 바꾸고 있다. 부모를 상속하지도 않는다.">State</button>
+    <button type="button" data-target="answer-1" data-answer="correct">Strategy</button>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 상속이 없다. Template Method는 부모가 골격을 갖는다.">Template Method</button>
+    <p class="answer" id="answer-1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q2.</strong></p>
+<pre>abstract class Report {
+    public final void make() { open(); body(); close(); }
+    protected abstract void body();
+}</pre>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 인터페이스를 필드로 들고 있지 않다. 추상 메서드를 상속으로 채우는 구조다.">Strategy</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 다음 상태를 만들어 반환하는 코드가 없다.">State</button>
+    <button type="button" data-target="answer-2" data-answer="correct">Template Method</button>
+    <p class="answer" id="answer-2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q3.</strong></p>
+<pre>class Paid implements OrderState {
+    public void next(Order o) { o.setState(new Shipped()); }
+}</pre>
+    <button type="button" data-target="answer-3" data-answer="correct">State</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 교체를 밖에서 하지 않고 상태 객체 자신이 다음 상태를 지정한다.">Strategy</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 상속으로 골격을 채우는 구조가 아니다.">Template Method</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q4.</strong> <code>users.sort((a, b) -&gt; a.age() - b.age());</code> 에서 람다가 하는 역할은?</p>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. 람다는 내부에서 다음 상태로 전이하지 않는다. 호출하는 쪽이 비교 방법을 넘긴다.">State 객체</button>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. 서브클래스를 만들어 오버라이드하는 것이 아니다.">Template 단계</button>
+    <button type="button" data-target="answer-4" data-answer="correct">Strategy 객체</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q5.</strong> 시험 지문: "<em>알고리즘의 골격은 상위 클래스에서 정의하고, 일부 단계를 하위 클래스에서 구현</em>한다." 이 패턴이 <strong>클래스 패턴</strong>인 이유는?</p>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 합성·위임은 객체 패턴의 특징이다.">합성으로 연결되기 때문</button>
+    <button type="button" data-target="answer-5" data-answer="correct">상속으로 연결되기 때문</button>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 실행 중에 바뀌는 것은 객체 패턴의 특징이다.">실행 중에 바뀌기 때문</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q6.</strong> 같은 <code>Order</code>가 "결제 전 / 결제 후 / 배송 중"에 따라 <code>cancel()</code>의 동작이 달라지고, 상태 전이를 각 상태 클래스가 직접 정한다. 가장 알맞은 패턴은?</p>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 전이를 클라이언트가 고르지 않는다.">Strategy</button>
+    <button type="button" data-target="answer-6" data-answer="correct">State</button>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 순서 고정과 상속이 핵심 단서인데 여기엔 없다.">Template Method</button>
+    <p class="answer" id="answer-6"></p>
+  </section>
+
+  <h2>§7 · 한 문장으로 회수</h2>
+  <p>
+    <strong>상속이면 Template Method.</strong> 합성이면 <strong>누가 바꾸는지</strong>를 본다 —
+    밖에서 고르면 Strategy, 상태 객체가 스스로 전이하면 State.
+  </p>
+
+  <h2>더 읽을 자료 (1차 출처)</h2>
+  <ul>
+    <li><a href="https://refactoring.guru/design-patterns/strategy">Refactoring.Guru — Strategy</a> · State · Template Method 페이지의 "Relations with other patterns" 절부터 읽는다.</li>
+    <li>원전: <em>Design Patterns</em> (GoF, 1994) — 시험 근거 확인용.</li>
+  </ul>
+
+  <p class="note">
+    <strong>막히면 선생님(에이전트)에게 물어보자.</strong> 예: "Strategy와 State는 왜 코드가 똑같은데 다른 패턴이야?",
+    "Template Method에서 <code>final</code>이 왜 붙어?", "Spring에서 Strategy는 어디 있어?"
+    다음 레슨은 묶음 2 (Decorator / Proxy / Adapter)다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

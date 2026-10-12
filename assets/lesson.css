@@ -132,3 +132,14 @@ details.reveal > *:last-child {
 @media print {
   details.reveal:not([open]) > *:not(summary) { display: block; }
 }
+
+/* GoF 레슨 공통 (main class="gof") — 비교표·퀴즈 카드 */
+.gof table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+.gof th, .gof td { border: 1px solid #deded6; padding: 8px 10px; text-align: left; vertical-align: top; }
+.gof th { background: #eef7f5; }
+.gof .lead { font-size: 1.08rem; color: #3e4c59; }
+.gof .sm { font-size: 0.85rem; color: #52606d; }
+.gof .answer.ok { color: #047857; }
+.gof .answer.no { color: #b91c1c; }
+.gof .quiz { background: #fff; border: 1px solid #deded6; border-radius: 8px; padding: 6px 16px 12px; margin: 14px 0; }
+.gof .quiz pre { font-size: 0.85rem; }

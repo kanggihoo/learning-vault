@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoF 4/6 — Composite · Facade · Bridge · Flyweight</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main class="gof">
+
+  <p class="sm">GoF 23패턴 · 묶음 4/6 (구조 패턴) · 레슨 0052 · <a href="../reference/0024-gof-23-patterns-toc.html">전체 목차</a> · 이전: <a href="0051-gof-observer-mediator-chain-command.html">레슨 0051</a></p>
+  <h1>Composite · Facade · Bridge · Flyweight</h1>
+
+  <p class="lead">
+    구조 패턴의 나머지 네 개다. 묶음 2(Decorator·Proxy·Adapter)는 "감싸는 객체"였고, 이번 넷은 각각 <strong>다른 질문</strong>에 답한다:
+    트리로 묶기(Composite), 창구 하나 두기(Facade), 두 갈래로 쪼개기(Bridge), 공유로 아끼기(Flyweight).
+  </p>
+
+  <h2>§0 · 워밍업 — 지난 묶음 4문제</h2>
+  <p class="sm">신호 요약. 구조: 감싼 뒤 인터페이스가 달라지면 Adapter / 같으면 기능 추가는 Decorator, 접근 통제는 Proxy. 행위: 방송은 Observer, 허브는 Mediator, 사슬은 Chain, 요청을 물건으로 만들면 Command.</p>
+
+  <section class="quiz">
+    <p><strong>R1.</strong> 요청이 "대리 → 과장 → 부장"으로 넘어가며, 처리할 수 있는 첫 사람이 처리한다.</p>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. Observer는 구독자 전원이 받는다.">Observer</button>
+    <button type="button" data-target="answer-r1" data-answer="correct">Chain of Responsibility</button>
+    <button type="button" data-target="answer-r1" data-answer="wrong" data-hint="오답. 허브를 거치는 구조가 아니라 한 줄로 넘기는 구조다.">Mediator</button>
+    <p class="answer" id="answer-r1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R2.</strong> 채팅방 객체를 두고 모든 참가자가 방을 통해서만 메시지를 주고받는다.</p>
+    <button type="button" data-target="answer-r2" data-answer="correct">Mediator</button>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 한쪽이 방송하는 1:N 구조가 아니라, 서로 주고받는 소통을 허브로 모은 것이다.">Observer</button>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 요청을 포장해 저장하는 구조가 아니다.">Command</button>
+    <p class="answer" id="answer-r2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R3.</strong> <code>class Cached implements Repo { private Repo r; private Map m; public Item find(id){ return m.computeIfAbsent(id, r::find); } }</code> — 캐시 적중이면 원본을 아예 호출하지 않는다.</p>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. 인터페이스를 바꾸지 않았다.">Adapter</button>
+    <button type="button" data-target="answer-r3" data-answer="correct">Proxy</button>
+    <button type="button" data-target="answer-r3" data-answer="wrong" data-hint="오답. 같은 인터페이스인 것은 맞지만, 원본 호출 여부를 통제하는 것은 접근 통제 쪽이다.">Decorator</button>
+    <p class="answer" id="answer-r3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>R4.</strong> 상태 객체가 <code>return new Shipped();</code>처럼 다음 상태를 스스로 정해 반환한다.</p>
+    <button type="button" data-target="answer-r4" data-answer="wrong" data-hint="오답. 밖에서 갈아끼우는 게 아니다.">Strategy</button>
+    <button type="button" data-target="answer-r4" data-answer="wrong" data-hint="오답. 상속이 아니라 합성이다.">Template Method</button>
+    <button type="button" data-target="answer-r4" data-answer="correct">State</button>
+    <p class="answer" id="answer-r4"></p>
+  </section>
+
+  <h2>§1 · 네 개를 한 장으로</h2>
+  <table>
+    <thead><tr><th>패턴</th><th>답하는 질문</th><th>비유</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Composite</strong></td><td>부분과 전체를 <strong>똑같이</strong> 다루고 싶다</td><td>폴더 안의 파일과 폴더</td></tr>
+      <tr><td><strong>Facade</strong></td><td>복잡한 내부 앞에 <strong>단순한 창구</strong>를 두고 싶다</td><td>호텔 컨시어지</td></tr>
+      <tr><td><strong>Bridge</strong></td><td>두 방향의 변화를 <strong>따로따로</strong> 확장하고 싶다</td><td>리모컨 종류 × TV 제조사</td></tr>
+      <tr><td><strong>Flyweight</strong></td><td>똑같은 객체가 너무 많아 <strong>메모리를 아끼고</strong> 싶다</td><td>숲의 나무 1만 그루가 모델 하나 공유</td></tr>
+    </tbody>
+  </table>
+
+  <h2>§2 · Composite (컴포지트) — 부분과 전체를 같게</h2>
+  <p><strong>이론.</strong> 객체를 <strong>트리</strong>로 구성하고, 개별 객체(잎)와 묶음 객체(가지)를 <strong>같은 인터페이스</strong>로 다룬다. 그래서 "크기 구하기"를 파일에 호출하든 폴더에 호출하든 똑같이 쓰고, 폴더는 안에 든 것들에게 재귀로 위임한다.</p>
+  <p><strong>비유.</strong> 컴퓨터의 폴더. 폴더 안에 파일도 있고 폴더도 있다. "용량 확인"은 파일에도 폴더에도 똑같이 누른다.</p>
+<pre>interface Node { int size(); }
+class FileNode implements Node {                        // 잎
+    private final int bytes;
+    public int size() { return bytes; }
+}
+class Folder implements Node {                          // 가지: 같은 인터페이스 + 자식 목록
+    private final List&lt;Node&gt; children = new ArrayList&lt;&gt;();
+    void add(Node n) { children.add(n); }
+    public int size() { int s = 0; for (Node c : children) s += c.size(); return s; }  // 재귀
+}</pre>
+  <p class="sm">구조 신호: <strong>자기와 같은 타입의 리스트</strong>를 필드로 들고 있다. Decorator와 모양이 비슷하지만 Decorator는 자식이 <strong>하나</strong>이고 기능을 더하며, Composite는 자식 <strong>여러 개</strong>의 결과를 합친다 (<a href="https://refactoring.guru/design-patterns/composite">Refactoring.Guru</a>).</p>
+
+  <h2>§3 · Facade (퍼사드) — 단순한 창구</h2>
+  <p><strong>이론.</strong> 서브시스템의 여러 클래스를 일일이 호출하지 않아도 되게 <strong>높은 수준의 단순한 인터페이스</strong> 하나를 제공한다. 서브시스템 객체를 직접 쓰는 것을 막지는 않는다.</p>
+  <p><strong>비유.</strong> 호텔 컨시어지. 식당 예약, 택시, 공연 티켓을 각각 전화하지 않고 창구 한 곳에 부탁한다.</p>
+<pre>class HomeTheaterFacade {                        // 창구
+    private final Amp amp; private final Projector pj; private final Player player;
+    void watchMovie(String m) {                  // 호출 한 번에 여러 서브시스템을 조율
+        amp.on(); amp.setVolume(5); pj.on(); player.play(m);
+    }
+}</pre>
+  <p class="sm">구조 신호: <strong>여러 서로 다른 객체를 필드로 들고</strong> 순서대로 호출하는 메서드가 있다. Adapter와의 차이: Adapter는 <strong>기존 인터페이스를 맞추는 것</strong>(보통 객체 1개), Facade는 <strong>새 인터페이스를 정의</strong>하는 것(서브시스템 전체). Proxy와의 차이: Proxy는 원본과 <strong>같은 인터페이스</strong>, Facade는 다르다 (<a href="https://refactoring.guru/design-patterns/facade">Refactoring.Guru</a>).</p>
+
+  <h2>§4 · Bridge (브리지) — 두 갈래로 쪼갠다</h2>
+  <p><strong>이론.</strong> 클래스가 <strong>두 방향</strong>으로 변할 때(예: 리모컨 종류 × TV 제조사), 상속으로 다 만들면 조합 수만큼 클래스가 폭발한다. 그래서 <strong>기능(추상) 계층</strong>과 <strong>구현 계층</strong>을 별개의 계층으로 쪼개고, 기능 쪽이 구현 쪽을 <strong>필드로 들고 위임</strong>한다. 그 필드가 "다리"다.</p>
+  <p><strong>비유.</strong> 리모컨(기본/고급)과 TV(삼성/LG). 상속만 쓰면 기본-삼성, 기본-LG, 고급-삼성, 고급-LG 4개를 만들어야 한다. 쪼개면 리모컨 2개 + TV 2개 = 4개를 <strong>더하기</strong>로 만들고 조합은 런타임에 연결한다.</p>
+<pre>interface Device { void on(); void off(); }               // 구현 계층 (TV 제조사)
+class SamsungTv implements Device { ... }
+class LgTv implements Device { ... }
+
+class Remote {                                            // 기능 계층
+    protected final Device device;                        // 다리
+    Remote(Device d) { this.device = d; }
+    void power() { device.on(); }
+}
+class AdvancedRemote extends Remote { void mute() { ... } }
+new AdvancedRemote(new LgTv());                           // 조합은 선택</pre>
+  <p class="warn"><strong>용어 주의.</strong> 여기서 추상/구현은 Java의 <code>interface</code>·<code>abstract class</code>가 아니다. Refactoring.Guru: 추상 = 상위 수준 제어 계층(예: GUI), 구현 = 플랫폼(예: OS API). 또 Bridge는 보통 <strong>처음부터 설계</strong>하고, Adapter는 <strong>이미 있는 것</strong>을 맞추는 데 쓴다.</p>
+  <p class="sm">구조 신호: 합성 모양은 Strategy와 같다(인터페이스를 필드로 들고 위임). 다른 점은 <strong>두 계층이 둘 다 확장된다</strong>는 것이다 (<a href="https://refactoring.guru/design-patterns/bridge">Refactoring.Guru — Bridge</a>).</p>
+
+  <h2>§5 · Flyweight (플라이웨이트) — 공유로 아낀다</h2>
+  <p><strong>이론.</strong> 똑같은 데이터를 가진 객체가 수만 개면 메모리가 터진다. 그래서 객체의 상태를 둘로 나눈다. <strong>내재 상태(intrinsic)</strong> = 바뀌지 않아서 <strong>공유</strong>할 수 있는 부분, <strong>외재 상태(extrinsic)</strong> = 상황마다 달라서 <strong>사용할 때 밖에서 넘겨주는</strong> 부분. 내재 상태만 가진 가벼운 객체를 하나씩만 만들어 재사용한다.</p>
+  <p><strong>비유.</strong> 게임 속 숲의 나무 1만 그루. 나무 모델·텍스처(내재)는 하나를 공유하고, 위치·크기(외재)만 그루마다 따로 가진다.</p>
+<pre>class TreeType {                                    // Flyweight: 공유되는 내재 상태 (불변)
+    final String name; final byte[] texture;
+}
+class TreeFactory {                                 // 이미 있으면 재사용
+    private static final Map&lt;String, TreeType&gt; cache = new HashMap&lt;&gt;();
+    static TreeType get(String name) { return cache.computeIfAbsent(name, TreeType::new); }
+}
+class Tree { int x, y; TreeType type; }            // 위치(외재)만 개별, 모델은 공유</pre>
+  <p class="sm">Singleton과의 차이: Flyweight는 <strong>여러 종류의 인스턴스</strong>가 있을 수 있고 <strong>불변</strong>이다. Singleton은 인스턴스가 <strong>하나</strong>이고 가변일 수 있다 (<a href="https://refactoring.guru/design-patterns/flyweight">Refactoring.Guru — Flyweight</a>).</p>
+
+  <h2>§6 · 헷갈리는 쌍</h2>
+  <table>
+    <thead><tr><th>쌍</th><th>구분 질문</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Composite vs Decorator</strong></td><td>자식이 <strong>여럿이고 결과를 합치면</strong> Composite, 자식이 <strong>하나이고 기능을 더하면</strong> Decorator</td></tr>
+      <tr><td><strong>Facade vs Adapter</strong></td><td>서브시스템 전체에 <strong>새 창구</strong>를 만들면 Facade, <strong>기존 모양을 기대하는 모양으로</strong> 바꾸면 Adapter</td></tr>
+      <tr><td><strong>Facade vs Mediator</strong></td><td>Facade는 서브시스템끼리는 <strong>직접 소통하게 둔다</strong>(밖에서 쓰기 편하게 할 뿐). Mediator는 소통을 <strong>전부 허브로 모은다</strong></td></tr>
+      <tr><td><strong>Bridge vs Strategy</strong></td><td>인터페이스를 필드로 들고 위임하는 모양은 같다. <strong>기능 계층이 따로 확장</strong>되면 Bridge, 알고리즘 교체만이면 Strategy</td></tr>
+    </tbody>
+  </table>
+
+  <h2>§7 · 판별 퀴즈</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong></p>
+<pre>class Dir implements Item {
+    private List&lt;Item&gt; items = new ArrayList&lt;&gt;();
+    public int count() { int n = 0; for (Item i : items) n += i.count(); return n; }
+}</pre>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. Decorator는 자식이 하나이고 기능을 더한다. 여기는 자식 여러 개의 결과를 합친다.">Decorator</button>
+    <button type="button" data-target="answer-1" data-answer="correct">Composite</button>
+    <button type="button" data-target="answer-1" data-answer="wrong" data-hint="오답. 서로 다른 서브시스템을 조율하는 게 아니라 자기와 같은 타입을 재귀로 묶는다.">Facade</button>
+    <p class="answer" id="answer-1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q2.</strong></p>
+<pre>class OrderFacade {
+    private Stock stock; private Payment pay; private Delivery delivery;
+    void order(Item i) { stock.reserve(i); pay.charge(i); delivery.schedule(i); }
+}</pre>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 중재자는 서브시스템끼리의 소통을 허브로 모은다. 여기는 밖에서 쓰기 편한 창구다.">Mediator</button>
+    <button type="button" data-target="answer-2" data-answer="wrong" data-hint="오답. 어댑터는 보통 객체 1개의 인터페이스를 맞춘다.">Adapter</button>
+    <button type="button" data-target="answer-2" data-answer="correct">Facade</button>
+    <p class="answer" id="answer-2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q3.</strong> 도형(원/사각형) × 색(빨강/파랑)을 각각 따로 확장하려고, <code>Shape</code> 클래스가 <code>Color</code> 인터페이스를 필드로 들고 위임한다. 이 구조는?</p>
+    <button type="button" data-target="answer-3" data-answer="correct">Bridge</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. Strategy는 알고리즘 교체 하나가 목적이다. 여기는 도형과 색 두 계층이 각자 확장된다.">Strategy</button>
+    <button type="button" data-target="answer-3" data-answer="wrong" data-hint="오답. 어댑터는 이미 있는 것을 맞추는 용도이고 여기는 처음부터 두 계층으로 설계했다.">Adapter</button>
+    <p class="answer" id="answer-3"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q4.</strong> 시험 지문: "<em>공유를 통해 많은 수의 작은 객체를 효율적으로</em> 지원한다. 내재 상태와 외재 상태를 구분한다."</p>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. 싱글톤은 인스턴스가 하나뿐이다. 이 패턴은 여러 종류의 공유 객체를 쓴다.">Singleton</button>
+    <button type="button" data-target="answer-4" data-answer="wrong" data-hint="오답. 프로토타입은 복제로 새 객체를 만든다. 공유가 아니다.">Prototype</button>
+    <button type="button" data-target="answer-4" data-answer="correct">Flyweight</button>
+    <p class="answer" id="answer-4"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q5.</strong> 시험 지문: "<em>서브시스템의 여러 인터페이스에 대한 통합된 단순 인터페이스</em>를 제공한다."</p>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 어댑터의 키워드는 인터페이스 변환, 호환성이다.">Adapter</button>
+    <button type="button" data-target="answer-5" data-answer="correct">Facade</button>
+    <button type="button" data-target="answer-5" data-answer="wrong" data-hint="오답. 프록시의 키워드는 대리자, 접근 제어다.">Proxy</button>
+    <p class="answer" id="answer-5"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q6.</strong> 시험 지문: "<em>부분-전체 계층</em>을 트리로 표현하고 <em>개별 객체와 복합 객체를 동일하게</em> 다룬다."</p>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 브리지는 기능과 구현의 분리가 키워드다.">Bridge</button>
+    <button type="button" data-target="answer-6" data-answer="wrong" data-hint="오답. 플라이웨이트는 공유가 키워드다.">Flyweight</button>
+    <button type="button" data-target="answer-6" data-answer="correct">Composite</button>
+    <p class="answer" id="answer-6"></p>
+  </section>
+
+  <h2>§8 · 한 문장으로 회수</h2>
+  <p><strong>트리로 같게 다루면 Composite, 단순 창구면 Facade, 두 계층을 쪼개면 Bridge, 공유로 아끼면 Flyweight.</strong></p>
+
+  <h2>더 읽을 자료 (1차 출처)</h2>
+  <ul>
+    <li><a href="https://refactoring.guru/design-patterns/composite">Composite</a> · <a href="https://refactoring.guru/design-patterns/facade">Facade</a> · <a href="https://refactoring.guru/design-patterns/bridge">Bridge</a> · <a href="https://refactoring.guru/design-patterns/flyweight">Flyweight</a> (Refactoring.Guru)</li>
+  </ul>
+
+  <p class="note">
+    <strong>막히면 선생님(에이전트)에게 물어보자.</strong> 예: "Bridge가 Strategy랑 코드가 똑같은데 왜 달라?",
+    "Flyweight에서 내재/외재 상태를 어떻게 나눠?", "Composite에서 잎에 <code>add()</code>가 있어야 해?"
+    다음 레슨은 묶음 5 (행위: Iterator / Visitor / Memento / Interpreter)다.
+  </p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
