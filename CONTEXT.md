@@ -9,7 +9,7 @@ A personal workspace that stores AI-assisted learning material for later review.
 _Avoid_: Project, repository, knowledge base
 
 **Teach Session**:
-A guided learning interaction powered by the `teach` skill.
+A guided learning interaction powered by the `tutor` skill.
 _Avoid_: Chat, explanation, tutoring run
 
 **Learning Index**:

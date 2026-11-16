@@ -8,7 +8,7 @@ Before working in this repository, read [CONTEXT.md](./CONTEXT.md). Use its lang
 
 ## Learning Workflow
 
-Use the `teach` skill for Teach Sessions. The `teach` skill's storage structure is the project standard:
+Use the `tutor` skill for Teach Sessions. The following storage structure is the project standard:
 
 - `MISSION.md`
 - `RESOURCES.md`
