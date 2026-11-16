@@ -1,0 +1,272 @@
+<template>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    @font-face { font-family: "EB Garamond"; src: url("../../assets/fonts/EBGaramond-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-700.woff2") format("woff2"); font-weight: 700; }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #141413;
+      font-family: "Inter", "Noto Sans KR", sans-serif;
+    }
+    #st04-bg { position: absolute; inset: 0; background: #FAF9F5; }
+    #st04-stage { position: absolute; inset: 0; }
+    .st04-mono { font-family: "JetBrains Mono", "Noto Sans KR", monospace; }
+
+    /* ---- left analogy zone (x 4%–54%) ---- */
+    #st04-box {
+      position: absolute; left: 192px; top: 238px; width: 730px; height: 432px;
+      background: #EFE9DE; border: 1px solid rgba(20, 20, 19, 0.12); border-radius: 12px;
+      box-sizing: border-box;
+    }
+    #st04-box-label {
+      position: absolute; left: 24px; top: 20px;
+      font-size: 26px; font-weight: 400; letter-spacing: 0.02em; color: rgba(20, 20, 19, 0.7);
+    }
+    #st04-coin {
+      position: absolute; right: 24px; top: 20px;
+      font-size: 22px; letter-spacing: 0.02em; color: rgba(20, 20, 19, 0.75);
+      display: flex; align-items: center; gap: 10px;
+    }
+    #st04-coin i {
+      display: block; width: 16px; height: 16px; border-radius: 9999px;
+      border: 1px solid rgba(20, 20, 19, 0.5); background: #ECE3D4;
+    }
+    #st04-slot-label {
+      position: absolute; left: 155px; top: 112px;
+      font-size: 20px; letter-spacing: 0.02em; color: rgba(20,20,19,0.7);
+    }
+    #st04-slot {
+      position: absolute; left: 155px; top: 147px; width: 420px; height: 150px;
+      border: 2px dashed rgba(20, 20, 19, 0.28); border-radius: 8px; box-sizing: border-box;
+      perspective: 900px;
+    }
+    #st04-card {
+      position: absolute; left: 28px; top: 18px; width: 360px; height: 110px;
+      background: #FAF9F5; border: 1px solid rgba(20, 20, 19, 0.2); border-radius: 8px; box-sizing: border-box;
+      box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+      transform-origin: 50% 50%;
+    }
+    .st04-face {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 4px;
+    }
+    .st04-face b { font-size: 40px; font-weight: 700; line-height: 1.15; letter-spacing: -0.005em; }
+    .st04-face span { font-size: 20px; color: rgba(20,20,19,0.7); letter-spacing: 0.02em; }
+
+    #st04-btn {
+      position: absolute; left: 192px; top: 696px; width: 330px; height: 78px;
+      border-radius: 9999px; border: 1px solid rgba(20, 20, 19, 0.2); background: #EFE9DE;
+      box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+      font-size: 28px; color: #141413;
+      box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+      transform-origin: 50% 50%;
+    }
+    #st04-result {
+      position: absolute; left: 556px; top: 708px; width: 380px; height: 54px;
+    }
+    .st04-res {
+      position: absolute; left: 0; top: 0; white-space: nowrap;
+      font-size: 34px; line-height: 54px; color: #141413;
+    }
+
+    #st04-arrows { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; }
+    #st04-arrows path { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .st04-coral { stroke: #CC785C; }
+    .st04-inkline { stroke: rgba(20,20,19,0.7); }
+    .st04-arrow-label {
+      position: absolute; font-size: 26px; letter-spacing: 0.02em; white-space: nowrap;
+    }
+    #st04-lbl1 { left: 732px; top: 346px; color: #A5614A; }
+    #st04-lbl2 { left: 236px; top: 560px; color: rgba(20,20,19,0.7); }
+
+    /* ---- right rail (x 58%–96%) ---- */
+    #st04-kicker {
+      position: absolute; left: 1114px; top: 116px;
+      font-size: 28px; font-weight: 400; letter-spacing: 0.16em; text-transform: uppercase; color: #141413;
+    }
+    #st04-kicker .st04-spike { color: #CC785C; }
+    #st04-headline {
+      position: absolute; left: 1114px; top: 206px; width: 730px; white-space: nowrap;
+      font-family: "EB Garamond", "Noto Serif KR", serif; font-weight: 400;
+      font-size: 74px; line-height: 1.06; letter-spacing: -0.018em;
+    }
+    .st04-word { display: inline-block; }
+
+    #st04-code {
+      position: absolute; left: 1114px; top: 389px; width: 730px; height: 302px;
+      background: #181715; border: 1px solid rgba(250, 249, 245, 0.14); border-radius: 8px;
+      box-sizing: border-box; overflow: hidden;
+    }
+    #st04-code-bar {
+      height: 46px; background: #252320; border-bottom: 1px solid rgba(250, 249, 245, 0.14);
+      display: flex; align-items: center; padding: 0 22px;
+      font-size: 18px; letter-spacing: 0.02em; color: rgba(250, 249, 245, 0.6);
+    }
+    #st04-code-body { padding: 26px 0; }
+    .st04-line {
+      font-size: 24px; line-height: 44px; color: #FAF9F5; white-space: pre; padding: 0 28px;
+    }
+    .st04-line.st04-hot { background: #252320; }
+    .st04-kw { color: #CC785C; }
+    .st04-ty { color: #E8A55A; }
+    .st04-cm { color: rgba(250, 249, 245, 0.55); }
+
+    #st04-tags {
+      position: absolute; left: 1114px; top: 756px; width: 730px; height: 64px;
+      display: flex; gap: 12px;
+    }
+    .st04-tag {
+      height: 64px; padding: 0 20px; box-sizing: border-box; border-radius: 9999px;
+      border: 1px solid rgba(20, 20, 19, 0.12); background: #FAF9F5;
+      display: flex; align-items: center; white-space: nowrap;
+      font-size: 24px; color: #141413;
+    }
+    .st04-tag em { font-style: normal; color: rgba(20,20,19,0.7); margin-right: 8px; }
+    #st04-mark-wrap { position: relative; display: inline-block; }
+    #st04-mark-svg { position: absolute; left: -2px; bottom: -8px; width: calc(100% + 4px); height: 12px; overflow: visible; }
+  </style>
+
+  <div data-hf-id="hf-5bx0" id="root" data-composition-id="04-state" data-width="1920" data-height="1080" data-duration="15.5">
+    <div data-hf-id="hf-0780" id="st04-bg" class="clip" data-start="0" data-duration="15.5" data-track-index="0"></div>
+
+    <div data-hf-id="hf-c4go" id="st04-stage" class="clip" data-start="0" data-duration="15.5" data-track-index="1">
+      <!-- left: vending machine with the VendingState slot -->
+      <div data-hf-id="hf-5xlo" id="st04-box">
+        <div data-hf-id="hf-14q7" id="st04-box-label" class="st04-mono">자판기</div>
+        <div data-hf-id="hf-eme6" id="st04-coin" class="st04-mono"><i data-hf-id="hf-wt6k"></i>동전 투입</div>
+        <div data-hf-id="hf-szhm" id="st04-slot-label" class="st04-mono">VendingState</div>
+        <div data-hf-id="hf-eyqd" id="st04-slot">
+          <div data-hf-id="hf-a7zr" id="st04-card">
+            <div data-hf-id="hf-bwtu" id="st04-face-a" class="st04-face"><b data-hf-id="hf-mucq">동전 없음</b><span data-hf-id="hf-y9l2" class="st04-mono">NoCoin</span></div>
+            <div data-hf-id="hf-si0o" id="st04-face-b" class="st04-face" style="opacity: 0"><b data-hf-id="hf-5wr0">동전 있음</b><span data-hf-id="hf-b3o1" class="st04-mono">HasCoin</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- transition arrows: both start ON the state card (tail dot) and land back on it -->
+      <svg data-hf-id="hf-hes8" id="st04-arrows" viewBox="0 0 1920 1080">
+        <circle data-hf-id="hf-s5hr" id="st04-dot1" cx="737" cy="438" r="5" fill="#CC785C" />
+        <path data-hf-id="hf-jhqr" id="st04-arc1" class="st04-coral" d="M 737 438 C 870 400, 870 520, 742 482" />
+        <path data-hf-id="hf-mdl2" id="st04-head1" class="st04-coral" d="M 757.7 478.3 L 742 482 L 753.1 493.7" />
+        <circle data-hf-id="hf-vkb5" id="st04-dot2" cx="377" cy="482" r="5" fill="rgba(20,20,19,0.7)" />
+        <path data-hf-id="hf-e9yc" id="st04-arc2" class="st04-inkline" d="M 377 482 C 244 520, 244 400, 372 438" />
+        <path data-hf-id="hf-o7n1" id="st04-head2" class="st04-inkline" d="M 360.9 426.3 L 372 438 L 356.3 441.7" />
+      </svg>
+      <div data-hf-id="hf-erb2" id="st04-lbl1" class="st04-arrow-label st04-mono">스스로 전이</div>
+      <div data-hf-id="hf-ufth" id="st04-lbl2" class="st04-arrow-label st04-mono">스스로 전이</div>
+
+      <div data-hf-id="hf-3u4h" id="st04-btn" class="st04-mono">pressButton()</div>
+      <div data-hf-id="hf-16hi" id="st04-result">
+        <div data-hf-id="hf-4b53" id="st04-res1" class="st04-res">→ 동전을 넣으세요</div>
+        <div data-hf-id="hf-5jvi" id="st04-res2" class="st04-res">→ 음료 배출</div>
+      </div>
+
+      <!-- right rail -->
+      <div data-hf-id="hf-8jzj" id="st04-kicker" class="st04-mono"><span data-hf-id="hf-vtd8" class="st04-spike">✱</span> STATE · 상태</div>
+      <div data-hf-id="hf-zhll" id="st04-headline"><span data-hf-id="hf-gg03" class="st04-word">안에서</span> <span data-hf-id="hf-59s3" class="st04-word">스스로</span> <span data-hf-id="hf-ekf3" class="st04-word">바뀐다</span></div>
+
+      <div data-hf-id="hf-jpgi" id="st04-code" class="st04-mono">
+        <div data-hf-id="hf-qc6z" id="st04-code-bar">HasCoin.java</div>
+        <div data-hf-id="hf-r1zr" id="st04-code-body">
+          <div data-hf-id="hf-8ty9" class="st04-line"><span data-hf-id="hf-1sgp" class="st04-kw">class</span> <span data-hf-id="hf-xe6x" class="st04-ty">HasCoin</span> <span data-hf-id="hf-c6dd" class="st04-kw">implements</span> <span data-hf-id="hf-6owe" class="st04-ty">VendingState</span> {</div>
+          <div data-hf-id="hf-nucd" class="st04-line">  <span data-hf-id="hf-4ljm" class="st04-kw">public</span> <span data-hf-id="hf-rt02" class="st04-ty">VendingState</span> pressButton() {</div>
+          <div data-hf-id="hf-53ct" class="st04-line st04-hot">    <span data-hf-id="hf-4ipr" class="st04-kw">return new</span> <span data-hf-id="hf-xb5a" class="st04-ty">NoCoin</span>();  <span data-hf-id="hf-xsvh" class="st04-cm">// 스스로 전이</span></div>
+          <div data-hf-id="hf-e96w" class="st04-line">} }</div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-sh1e" id="st04-tags">
+        <div data-hf-id="hf-3wu4" class="st04-tag"><em data-hf-id="hf-musb">관계:</em>합성</div>
+        <div data-hf-id="hf-pssa" class="st04-tag"><em data-hf-id="hf-w4bf">교체:</em>실행 중</div>
+        <div data-hf-id="hf-td3i" class="st04-tag"><em data-hf-id="hf-a9er">누가:</em><span data-hf-id="hf-brfa" id="st04-mark-wrap">상태 객체 자신<svg data-hf-id="hf-ruje" id="st04-mark-svg" viewBox="0 0 200 12" preserveAspectRatio="none"><path data-hf-id="hf-6ke1" id="st04-mark" d="M0,6 Q12,2 25,6 Q37,10 50,6 Q62,2 75,6 Q87,10 100,6 Q112,2 125,6 Q137,10 150,6 Q162,2 175,6 Q187,10 200,6" fill="none" stroke="rgba(20,20,19,0.7)" stroke-width="2" stroke-linecap="round" vector-effect="non-scaling-stroke" /></svg></span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const $ = (id) => document.getElementById("st04-" + id);
+      const q = (cls) => Array.from($("stage").getElementsByClassName(cls));
+      const tl = gsap.timeline({ paused: true });
+
+      // ---- Scene 1 (0–3s): kicker + per-word headline (content-length sequencing), box rises in ----
+      tl.fromTo($("box"), { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, ease: "power3.out" }, 0.1);
+      tl.fromTo($("btn"), { y: 16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }, 0.8);
+      tl.fromTo($("kicker"), { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" }, 0.2);
+      // dynamic-content-sequencing: each word's start precomputed from its length
+      const BASE = 0.22, SEC_PER_CHAR = 0.06;
+      let t = 0.55;
+      q("st04-word").forEach((w) => {
+        tl.fromTo(w, { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, t);
+        t += BASE + w.textContent.length * SEC_PER_CHAR;
+      });
+
+      [$("arc1"), $("arc2"), $("mark")].forEach((p) => {
+        const len = p.getTotalLength() * 1.05;
+        gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
+      });
+
+      // press-release-spring (subtle): linear press, soft back.out release, adjacent positions
+      function press(at) {
+        const PRESS_DUR = 0.16;
+        tl.to($("btn"), { scale: 0.95, backgroundColor: "#ECE3D4", boxShadow: "0 1px 2px rgba(20,20,19,0.06), 0 1px 4px rgba(20,20,19,0.03)", duration: PRESS_DUR, ease: "power1.in" }, at);
+        tl.to($("btn"), { scale: 1, backgroundColor: "#EFE9DE", boxShadow: "0 1px 3px rgba(20,20,19,0.08), 0 4px 16px rgba(20,20,19,0.04)", duration: 0.6, ease: "back.out(1.4)" }, at + PRESS_DUR);
+      }
+      // card flip: rotateX out, swap face at the edge-on moment, rotateX in
+      function flip(at, from, to) {
+        tl.fromTo($("card"), { rotationX: 0 }, { rotationX: 90, duration: 0.22, ease: "power2.in", immediateRender: false }, at);
+        tl.set(from, { opacity: 0 }, at + 0.22);
+        tl.set(to, { opacity: 1 }, at + 0.22);
+        tl.fromTo($("card"), { rotationX: -90 }, { rotationX: 0, duration: 0.32, ease: "power2.out", immediateRender: false }, at + 0.22);
+      }
+
+      // ---- Scene 2 (3.0–6.5s): press → "동전을 넣으세요"; coin in; card transitions itself (coral arrow) ----
+      press(3.1);
+      tl.fromTo($("res1"), { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5, ease: "power2.out" }, 3.3);
+      tl.fromTo($("coin"), { y: -10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: "power2.out" }, 4.5);
+      tl.fromTo($("dot1"), { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out" }, 4.95);
+      tl.to($("arc1"), { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" }, 5.0);
+      tl.fromTo($("head1"), { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out" }, 5.6);
+      tl.fromTo($("lbl1"), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 5.5);
+      flip(5.75, $("face-a"), $("face-b"));
+
+      // ---- Scene 3 (6.5–10.0s): same call, different result; card returns along its own second arrow; code reveals ----
+      press(6.6);
+      tl.to($("res1"), { y: -14, opacity: 0, duration: 0.3, ease: "power2.in" }, 6.8);
+      tl.fromTo($("res2"), { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 7.0);
+      tl.fromTo($("dot2"), { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out" }, 7.25);
+      tl.to($("arc2"), { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" }, 7.3);
+      tl.fromTo($("head2"), { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power1.out" }, 7.9);
+      tl.fromTo($("lbl2"), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 7.8);
+      flip(8.0, $("face-b"), $("face-a"));
+      tl.to($("coin"), { opacity: 0.3, duration: 0.4, ease: "power1.out" }, 8.1); // coin spent
+
+      tl.fromTo($("code"), { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 8.4);
+      q("st04-line").forEach((l, i) => {
+        tl.fromTo(l, { x: -12, opacity: 0 }, { x: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 8.75 + i * 0.35);
+      });
+
+      // ---- Scene 4 (10.0–15.0s): signal tags fill left→right; third pill gets a hairline scribble marker; hold ----
+      q("st04-tag").forEach((p, i) => {
+        tl.fromTo(p, { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" }, 10.3 + i * 0.4);
+      });
+      tl.to($("mark"), { strokeDashoffset: 0, duration: 0.8, ease: "power1.inOut" }, 11.7);
+      tl.to({}, { duration: 0.01 }, 14.99); // pin timeline length to the 15s window
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["04-state"] = tl;
+    })();
+  </script>
+</template>

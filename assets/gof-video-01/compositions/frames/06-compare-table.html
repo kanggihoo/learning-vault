@@ -1,0 +1,203 @@
+<template>
+  <div data-hf-id="hf-pcji"
+    id="root"
+    data-composition-id="06-compare-table"
+    data-start="0"
+    data-duration="14.5"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div data-hf-id="hf-ulac" id="f06-bg" class="clip" data-start="0" data-duration="14.5" data-track-index="0"></div>
+
+    <div data-hf-id="hf-6sk6" id="f06-stage" class="clip" data-start="0" data-duration="14.5" data-track-index="1">
+      <div data-hf-id="hf-fpim" id="f06-kicker"><span data-hf-id="hf-cshd" class="f06-spike">✱</span> 한 장으로</div>
+      <h1 data-hf-id="hf-s2r7" id="f06-headline">한 장으로 구분</h1>
+
+      <div data-hf-id="hf-wigs" id="f06-table">
+        <div data-hf-id="hf-8b6m" class="f06-row f06-head">
+          <div data-hf-id="hf-pxjx" class="f06-label"></div>
+          <div data-hf-id="hf-3yfo" class="f06-col">Strategy</div>
+          <div data-hf-id="hf-9wzq" class="f06-col">State</div>
+          <div data-hf-id="hf-dpfo" class="f06-col">Template Method</div>
+        </div>
+
+        <div data-hf-id="hf-feiy" class="f06-row f06-body f06-key" id="f06-r1">
+          <div data-hf-id="hf-2lxu" class="f06-fill"></div><div data-hf-id="hf-ju8v" class="f06-marker"></div>
+          <div data-hf-id="hf-tpt2" class="f06-label f06-cell">관계</div>
+          <div data-hf-id="hf-aguz" class="f06-cell">합성</div>
+          <div data-hf-id="hf-czrv" class="f06-cell">합성</div>
+          <div data-hf-id="hf-e0ef" class="f06-cell">상속</div>
+        </div>
+        <div data-hf-id="hf-uk8i" class="f06-row f06-body f06-dim" id="f06-r2">
+          <div data-hf-id="hf-rf0u" class="f06-label f06-cell">교체 시점</div>
+          <div data-hf-id="hf-21ut" class="f06-cell">실행 중</div>
+          <div data-hf-id="hf-nt4p" class="f06-cell">실행 중</div>
+          <div data-hf-id="hf-8vcp" class="f06-cell">컴파일 시점</div>
+        </div>
+        <div data-hf-id="hf-aor4" class="f06-row f06-body f06-key" id="f06-r3">
+          <div data-hf-id="hf-dqs6" class="f06-fill"></div><div data-hf-id="hf-ayjj" class="f06-marker"></div>
+          <div data-hf-id="hf-v9s2" class="f06-label f06-cell">누가 바꾸나</div>
+          <div data-hf-id="hf-7fv0" class="f06-cell">외부(클라이언트)</div>
+          <div data-hf-id="hf-1v3d" class="f06-cell">상태 객체 스스로</div>
+          <div data-hf-id="hf-hkdn" class="f06-cell">바꾸지 않음</div>
+        </div>
+        <div data-hf-id="hf-d8gs" class="f06-row f06-body f06-dim" id="f06-r4">
+          <div data-hf-id="hf-i10q" class="f06-label f06-cell">부품끼리</div>
+          <div data-hf-id="hf-x9ct" class="f06-cell">서로 모른다</div>
+          <div data-hf-id="hf-j4q7" class="f06-cell">서로 안다</div>
+          <div data-hf-id="hf-84hg" class="f06-cell">해당 없음</div>
+        </div>
+      </div>
+
+      <div data-hf-id="hf-e9tm" id="f06-caption">이 두 줄만 보면 갈린다</div>
+    </div>
+
+    <style>
+      @font-face { font-family: "EB Garamond"; src: url("../../assets/fonts/EBGaramond-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-700.woff2") format("woff2"); font-weight: 700; }
+      @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-400.woff2") format("woff2"); font-weight: 400; }
+      @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-700.woff2") format("woff2"); font-weight: 700; }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: #141413;
+        font-family: "Inter", "Noto Sans KR", sans-serif;
+      }
+      #f06-bg { position: absolute; inset: 0; background: #faf9f5; }
+      #f06-stage { position: absolute; inset: 0; }
+
+      #f06-kicker {
+        position: absolute;
+        left: 270px;
+        top: 70px;
+        font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+        font-size: 28px;
+        font-weight: 400;
+        letter-spacing: 0.16em;
+        color: rgba(20, 20, 19, 0.72);
+      }
+      .f06-spike { color: #cc785c; }
+      #f06-headline {
+        position: absolute;
+        left: 270px;
+        top: 112px;
+        margin: 0;
+        font-family: "EB Garamond", "Noto Serif KR", serif;
+        font-weight: 400;
+        font-size: 88px;
+        line-height: 1.06;
+        letter-spacing: -0.018em;
+      }
+
+      #f06-table {
+        position: absolute;
+        left: 270px;
+        top: 250px;
+        width: 1380px;
+        background: #efe9de;
+        border: 1px solid rgba(20, 20, 19, 0.12);
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+        overflow: hidden;
+      }
+      .f06-row {
+        position: relative;
+        display: grid;
+        grid-template-columns: 270px repeat(3, 1fr);
+        align-items: center;
+      }
+      .f06-head { height: 100px; }
+      .f06-body { height: 108px; border-top: 1px solid rgba(20, 20, 19, 0.12); }
+      .f06-col {
+        padding: 0 28px;
+        font-family: "EB Garamond", "Noto Serif KR", serif;
+        font-weight: 400;
+        font-size: 52px;
+        letter-spacing: -0.012em;
+        line-height: 1;
+      }
+      .f06-cell {
+        position: relative;
+        z-index: 1;
+        padding: 0 28px;
+        font-size: 34px;
+        line-height: 1.25;
+      }
+      .f06-label.f06-cell {
+        padding-left: 44px;
+        font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+        font-size: 28px;
+        font-weight: 700;
+        color: rgba(20, 20, 19, 0.7);
+      }
+      .f06-fill { position: absolute; inset: 0; background: #ece3d4; opacity: 0; }
+      .f06-marker {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 8px;
+        height: 100%;
+        background: #cc785c;
+        transform-origin: center top;
+        z-index: 2;
+      }
+
+      #f06-caption {
+        position: absolute;
+        left: 270px;
+        top: 818px;
+        font-family: "Inter", "Noto Sans KR", sans-serif;
+        font-size: 34px;
+        color: rgba(20, 20, 19, 0.78);
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        const root = document.querySelector('[data-composition-id="06-compare-table"]');
+        const q = (s) => root.querySelectorAll(s);
+        const tl = gsap.timeline({ paused: true });
+
+        // Scene 1 (0–2s): kicker + headline, table frame, column headers L→R
+        tl.fromTo("#f06-kicker", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0.1);
+        tl.fromTo("#f06-headline", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" }, 0.25);
+        tl.fromTo("#f06-table", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 0.55);
+        tl.fromTo(q(".f06-col"), { opacity: 0, x: -18 }, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out", stagger: 0.2 }, 0.8);
+
+        // Scene 2 (2–10s): rows assemble ~2s apart — label first, then cells L→R
+        const ROW_START = 2.0;
+        const ROW_GAP = 2.0;
+        ["#f06-r1", "#f06-r2", "#f06-r3", "#f06-r4"].forEach((id, i) => {
+          const t = ROW_START + i * ROW_GAP;
+          const row = root.querySelector(id);
+          tl.fromTo(row, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out" }, t);
+          tl.fromTo(
+            row.querySelectorAll(".f06-cell"),
+            { opacity: 0, x: -16 },
+            { opacity: 1, x: 0, duration: 0.45, ease: "power2.out", stagger: 0.18 },
+            t,
+          );
+        });
+
+        // Scene 3 (10–14s): coral markers + fill on the two decisive rows, others dim, caption, hold
+        tl.fromTo(q(".f06-key .f06-marker"), { scaleY: 0 }, { scaleY: 1, duration: 0.5, ease: "power2.out", stagger: 0.15 }, 10.0);
+        tl.fromTo(q(".f06-key .f06-fill"), { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 10.0);
+        tl.fromTo(q(".f06-dim .f06-cell"), { opacity: 1 }, { opacity: 0.55, duration: 0.6, ease: "power1.out", immediateRender: false }, 10.1);
+        tl.fromTo("#f06-caption", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 10.8);
+        tl.set({}, {}, 14);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["06-compare-table"] = tl;
+      })();
+    </script>
+  </div>
+</template>

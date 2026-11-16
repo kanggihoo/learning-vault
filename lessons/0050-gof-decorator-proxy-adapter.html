@@ -70,8 +70,8 @@
 
   <h2>§1 · 먼저 하나의 그림: "감싸는 객체"</h2>
   <p>
-    선물을 포장지로 싸는 것과 같다. 안에 든 물건(원본)이 있고, 겉에서 싸는 것(래퍼)이 있다.
-    사용하는 쪽은 겉만 본다. 세 패턴은 <strong>"무엇을 하려고 싸는가"</strong>가 다르다.
+    세 패턴은 모두 <strong>원본 객체를 필드로 들고, 호출을 원본에 넘기는 객체(래퍼)</strong>를 만든다. 선물 포장에 빗대면, 안에 든 물건이 원본이고 겉에서 싸는 것이 래퍼다. 사용하는 쪽은 겉만 본다.
+    세 패턴은 <strong>"무엇을 하려고 싸는가"</strong>가 다르다. 비유가 맞지 않는 곳: 포장지는 물건을 바꾸지 못하지만, 래퍼는 호출을 가로채 값을 바꾸거나 원본을 아예 부르지 않을 수 있다.
   </p>
   <table>
     <thead><tr><th></th><th>싸는 목적</th><th>싼 뒤의 인터페이스</th></tr></thead>
@@ -81,23 +81,30 @@
       <tr><td><strong>Proxy</strong></td><td>접근을 <strong>통제하려고</strong></td><td>같다</td></tr>
     </tbody>
   </table>
-  <p class="note"><strong>구조 신호.</strong> ① 원본과 래퍼가 <strong>같은 인터페이스</strong>를 구현하는가? 아니면 Adapter. ② 같다면 래퍼가 하는 일이 "기능 추가"인가(Decorator) "접근 통제"인가(Proxy)?</p>
+  <p class="note">
+    <strong>구조 신호.</strong>
+    ① 래퍼와 원본이 <strong>같은 인터페이스</strong>를 구현하는가? 다르면 Adapter.<br>
+    ② 같다면 <strong>래퍼가 원본 호출을 어떻게 다루는가.</strong> 원본을 <strong>항상 부르고</strong> 그 앞뒤에 기능을 얹으면 Decorator. 원본을 <strong>부를지 말지, 언제 만들지</strong>를 래퍼가 정하면 Proxy.<br>
+    ③ ②로 안 갈리면(로깅·캐시처럼 둘 다 되는 경우) <strong>누가 감쌌는가</strong>를 본다. 클라이언트가 직접 <code>new</code>로 쌓으면 Decorator, 프레임워크나 대리자가 원본을 만들고 관리하면 Proxy(§5).
+  </p>
 
   <h2>§2 · Adapter (어댑터) — 모양을 맞춘다</h2>
-  <p><strong>이론.</strong> 이미 있는 클래스의 인터페이스가 내가 기대하는 것과 <strong>다를 때</strong>, 그 사이에 변환 객체를 끼운다. 기존 코드를 고치지 않고 재사용하는 것이 목적이다. 별칭 Wrapper.</p>
-  <p><strong>비유.</strong> 해외여행 <strong>돼지코</strong>. 콘센트(내가 가진 것)와 플러그(기대하는 것)의 모양이 달라서 사이에 끼운다. 전기(기능)는 그대로고 <strong>모양만</strong> 바뀐다.</p>
-<pre>interface WavPlayer { void playWav(String file); }      // 내가 기대하는 모양
-class Mp3Player { void playMp3(String file) { ... } }   // 이미 있는 클래스(모양이 다름)
+  <p><strong>한 문장.</strong> 이미 있는 클래스를 고치지 않고, 내가 기대하는 인터페이스로 쓸 수 있게 중간에 변환 객체를 끼우는 패턴이다. 별칭 Wrapper.</p>
+  <p><strong>비유.</strong> 해외여행용 <strong>돼지코</strong>. 내 기기의 플러그(이미 있는 것)가 현지 콘센트(기대하는 모양)와 맞지 않아 사이에 끼운다. 전기는 그대로 흐르고 <strong>모양만</strong> 바뀐다. 비유가 맞지 않는 곳: 돼지코는 모양만 맞추지만, Adapter는 메서드 이름이나 인자 타입을 바꾸는 변환 코드를 직접 가진다.</p>
+<pre>interface Printer { void print(Doc d); }                 // 내가 기대하는 모양
+class OldPrinter { void printText(String s) { ... } }    // 이미 있는 클래스 (모양이 다름, 고칠 수 없음)
 
-class Mp3ToWavAdapter implements WavPlayer {            // 기대하는 모양을 구현
-    private final Mp3Player mp3 = new Mp3Player();     // 원본을 들고 있음
-    public void playWav(String file) { mp3.playMp3(convert(file)); }  // 변환해서 위임
-}</pre>
-  <p class="sm">두 가지 형태: <strong>객체 어댑터</strong>(위처럼 필드로 들고 있음, 합성)와 <strong>클래스 어댑터</strong>(상속). 시험에서 Adapter가 "클래스 패턴"으로 분류되는 것은 클래스 어댑터 때문이다. 출처: <a href="https://refactoring.guru/design-patterns/adapter">Refactoring.Guru — Adapter</a>.</p>
+class OldPrinterAdapter implements Printer {             // 기대하는 모양을 구현
+    private final OldPrinter old = new OldPrinter();     // 원본을 들고 있음
+    public void print(Doc d) { old.printText(d.toText()); }   // 인자를 변환해서 원본에 위임
+}
+// 클라이언트는 Printer만 알고, OldPrinter가 뒤에 있다는 걸 모른다</pre>
+  <p class="sm">두 가지 형태가 있다. <strong>객체 어댑터</strong>는 위처럼 원본을 필드로 들고 위임한다(합성). <strong>클래스 어댑터</strong>는 원본 클래스를 상속해서 만든다. 시험에서 Adapter가 "클래스 패턴"으로 분류되는 것은 클래스 어댑터 형태가 상속을 쓰기 때문이다(클래스 패턴의 뜻은 레슨 0049 §3). 출처: <a href="https://refactoring.guru/design-patterns/adapter">Refactoring.Guru: Adapter</a>.</p>
 
   <h2>§3 · Decorator (데코레이터) — 기능을 겹겹이 더한다</h2>
-  <p><strong>이론.</strong> 원본과 <strong>같은 인터페이스</strong>를 구현하는 래퍼가 원본을 들고, 원본의 동작 앞뒤에 기능을 <strong>덧붙인다</strong>. 같은 인터페이스라서 <strong>래퍼를 또 래퍼로 감쌀 수 있다</strong>(겹겹이). 어떤 조합으로 쌓을지는 <strong>클라이언트가 정한다</strong>. 기능 확장을 위해 서브클래스를 만드는 것의 대안이다.</p>
-  <p><strong>비유.</strong> 카페 주문. 에스프레소 위에 "우유 추가", 거기에 "휘핑 추가"를 얹는다. 결과물은 여전히 "커피"이고, 가격만 합쳐진다.</p>
+  <p><strong>한 문장.</strong> 원본과 같은 인터페이스를 가진 래퍼로 원본을 감싸서, 원본은 그대로 부르면서 그 앞뒤에 기능을 덧붙이는 패턴이다.</p>
+  <p><strong>구조.</strong> 래퍼가 원본과 <strong>같은 인터페이스</strong>라서, 래퍼를 또 다른 래퍼로 감쌀 수 있다(겹겹이). 어떤 조합으로 쌓을지는 <strong>클라이언트가 정한다.</strong> 기능을 더하려고 서브클래스를 조합별로 만드는 방식의 대안이다.</p>
+  <p><strong>비유.</strong> 카페 주문. 에스프레소 위에 "우유 추가", 거기에 "휘핑 추가"를 얹는다. 결과물은 여전히 "커피"이고, 가격만 합쳐진다. 비유가 맞지 않는 곳: 우유를 넣은 뒤에도 안의 에스프레소는 그대로 있다. 코드에서도 Decorator는 원본을 <strong>반드시 호출</strong>하고 그 결과에 얹는다.</p>
 <pre>interface Coffee { int cost(); }
 class Espresso implements Coffee { public int cost() { return 3000; } }
 
@@ -109,8 +116,9 @@ class Milk implements Coffee {                       // 같은 인터페이스
 Coffee order = new Whip(new Milk(new Espresso()));   // 클라이언트가 겹겹이 쌓음</pre>
 
   <h2>§4 · Proxy (프록시) — 접근을 통제한다</h2>
-  <p><strong>이론.</strong> 원본과 <strong>같은 인터페이스</strong>를 가진 대리자가 원본 앞에 서서, 원본에 닿기 전에 <strong>가로채 통제</strong>한다. 종류: 가상(필요할 때 늦게 생성), 보호(권한 검사), 원격(다른 서버 객체를 로컬처럼), 로깅, 캐싱. 별칭 Surrogate.</p>
-  <p><strong>비유.</strong> 연예인 <strong>매니저</strong>. 섭외 전화는 매니저가 받고, 일정과 조건이 맞을 때만 연예인에게 전달한다. 연예인과 같은 "섭외 창구" 역할을 하지만, 연예인을 언제 만날지는 매니저가 정한다.</p>
+  <p><strong>한 문장.</strong> 원본과 같은 인터페이스를 가진 대리자가 원본 앞에 서서, 호출이 원본에 닿기 전에 <strong>"원본을 부를지, 언제 부를지, 아예 만들지"</strong>를 정하는 패턴이다. 별칭 Surrogate.</p>
+  <p><strong>종류.</strong> 가상 프록시(원본을 필요할 때 처음 만든다), 보호 프록시(권한이 없으면 원본을 안 부른다), 원격 프록시(다른 서버의 객체를 같은 서버에 있는 것처럼 쓰게 한다), 캐싱 프록시(저장된 값이 있으면 원본을 안 부른다). 로깅 프록시도 있지만 이것은 Decorator와 구조가 같아서 ③으로 가른다(§5).</p>
+  <p><strong>비유.</strong> 연예인 <strong>매니저</strong>. 섭외 전화는 매니저가 받고, 일정과 조건이 맞을 때만 연예인에게 전달한다. 의뢰인은 매니저에게든 연예인에게든 같은 방식("섭외 요청")으로 말하므로 인터페이스가 같다. 비유가 맞지 않는 곳: 매니저는 일부 요청을 연예인에게 알리지 않고 혼자 거절하거나 답한다. 캐싱 프록시가 원본을 안 부르고 저장된 값을 돌려주는 것과 같다.</p>
 <pre>interface Image { void show(); }
 class RealImage implements Image { /* 생성 시 파일을 읽어 무거움 */ public void show() { ... } }
 
@@ -125,26 +133,27 @@ class LazyImage implements Image {                   // 같은 인터페이스
 }</pre>
 
   <h2>§5 · Decorator vs Proxy — 가장 헷갈리는 쌍</h2>
-  <p>둘은 코드 모양이 거의 같다. 같은 인터페이스 + 원본을 필드로 보유 + 위임이다. 차이는 <strong>의도와 책임자</strong>에 있다.</p>
+  <p>둘은 코드 모양이 거의 같다. 같은 인터페이스를 구현하고, 원본을 필드로 들고, 호출을 원본에 위임한다. 그래서 모양으로는 못 가르고 <strong>래퍼가 원본 호출을 어떻게 다루는지</strong>와 <strong>누가 감쌌는지</strong>로 가른다.</p>
   <table>
     <thead><tr><th></th><th>Decorator</th><th>Proxy</th></tr></thead>
     <tbody>
-      <tr><td><strong>목적</strong></td><td>기능 추가</td><td>접근 통제</td></tr>
-      <tr><td><strong>원본 생성·수명</strong></td><td>클라이언트가 원본을 만들어 넘긴다</td><td>프록시가 스스로 관리하기도 한다 (§4의 <code>new RealImage</code>)</td></tr>
+      <tr><td><strong>원본 호출</strong></td><td>항상 부른다. 앞뒤에 기능만 얹는다</td><td>부를지 말지 정한다 (권한 없음, 캐시 적중이면 안 부름)</td></tr>
+      <tr><td><strong>원본 생성·수명</strong></td><td>클라이언트가 원본을 만들어 넘긴다</td><td>프록시가 스스로 만들고 관리하기도 한다 (§4의 <code>new RealImage</code>)</td></tr>
       <tr><td><strong>쌓기</strong></td><td>클라이언트가 여러 겹으로 쌓는다</td><td>보통 한 겹</td></tr>
     </tbody>
   </table>
-  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/decorator">Refactoring.Guru — Decorator</a>, <a href="https://refactoring.guru/design-patterns/proxy">Proxy</a>의 "Relations with other patterns". Proxy는 "usually manages the life cycle of its service object on its own"이고 Decorator의 구성은 "controlled by the client"라고 정리한다.</p>
+  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/decorator">Refactoring.Guru: Decorator</a>, <a href="https://refactoring.guru/design-patterns/proxy">Proxy</a>의 "Relations with other patterns". Proxy는 "usually manages the life cycle of its service object on its own"(보통 원본의 생애를 스스로 관리한다)이고 Decorator의 구성은 "controlled by the client"(클라이언트가 정한다)라고 정리한다.</p>
+  <p class="warn"><strong>가장 흔한 오해.</strong> "기능을 더하면 Decorator, 접근을 통제하면 Proxy"만 외우면 로깅·트랜잭션처럼 <strong>기능을 더하면서 호출을 가로채는 경우</strong>에서 막힌다. 이런 경우는 구조가 같아서 이름으로만 판단할 수 없다. 이때는 "누가 감쌌는가"를 본다. 클라이언트가 <code>new Whip(new Milk(...))</code>로 쌓았으면 Decorator, 프레임워크가 만들어 원본 자리에 끼워 넣었으면 Proxy다.</p>
 
   <h2>§6 · Spring·JDK에서 찾아보기</h2>
   <table>
     <thead><tr><th>어디</th><th>무엇</th><th>비고</th></tr></thead>
     <tbody>
-      <tr><td><a href="https://docs.spring.io/spring-framework/reference/core/aop/introduction-proxies.html">Spring AOP</a> (<code>@Transactional</code> 등)</td><td>Proxy</td><td>문서: "Spring AOP is proxy-based". 인터페이스가 있으면 JDK 동적 프록시, 없으면 CGLIB. 호출 앞뒤에서 트랜잭션을 열고 닫는 것은 <strong>접근 통제(가로채기)</strong>다</td></tr>
-      <tr><td><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/io/InputStreamReader.html"><code>InputStreamReader</code></a></td><td>구조상 Adapter</td><td>바이트 스트림(<code>InputStream</code>)을 문자 스트림(<code>Reader</code>)으로 <strong>인터페이스를 바꿔</strong> 준다. Javadoc은 이걸 "bridge"라고 부르는데, GoF의 Bridge 패턴과는 다른 일상적 의미의 단어다</td></tr>
+      <tr><td><a href="https://docs.spring.io/spring-framework/reference/core/aop/introduction-proxies.html">Spring AOP</a> (<code>@Transactional</code> 등)</td><td>Proxy</td><td>문서: "Spring AOP is proxy-based". 인터페이스가 있으면 JDK 동적 프록시, 없으면 CGLIB로 프록시를 <strong>Spring이 실행 중에 만들어</strong> 원본 빈 자리에 끼운다. 호출 앞뒤에 트랜잭션을 여닫는 일은 기능 추가처럼 보이지만, 클라이언트가 쌓은 것이 아니라 프레임워크가 만들어 끼웠으므로 Proxy로 센다(§5의 ③)</td></tr>
+      <tr><td><a href="https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/io/InputStreamReader.html"><code>InputStreamReader</code></a></td><td>구조상 Adapter</td><td>바이트를 읽는 <code>InputStream</code>을 글자를 읽는 <code>Reader</code>로 <strong>인터페이스를 바꿔</strong> 준다. Javadoc은 이것을 "bridge"(다리)라고 설명하는데, 여기서는 일상 단어일 뿐 GoF의 Bridge 패턴(레슨 0052)을 뜻하지 않는다</td></tr>
     </tbody>
   </table>
-  <p class="warn"><strong>주의.</strong> <code>new BufferedReader(new FileReader(...))</code>처럼 같은 종류(<code>Reader</code>)끼리 겹쳐 쓰는 Java I/O는 Decorator의 고전 사례로 흔히 인용된다. 다만 이 레슨에서는 공식 문서로 그 명칭을 직접 확인하지 않았으므로 "구조상 그렇다"까지만 말한다.</p>
+  <p class="warn"><strong>확인하지 못한 것.</strong> <code>new BufferedReader(new FileReader(...))</code>처럼 같은 <code>Reader</code> 종류끼리 겹쳐 쓰는 Java I/O는 Decorator의 대표 사례로 흔히 인용된다. 이 레슨에서는 공식 문서에서 그 명칭을 확인하지 못했으므로 "구조가 Decorator와 같다"까지만 말한다.</p>
 
   <h2>§7 · 판별 퀴즈</h2>
   <p class="sm">풀 때 신호 ①: 래퍼와 원본의 <strong>인터페이스가 같은가?</strong></p>
@@ -215,12 +224,12 @@ class LazyImage implements Image {                   // 같은 인터페이스
 
   <h2>§8 · 한 문장으로 회수</h2>
   <p>
-    <strong>인터페이스가 달라지면 Adapter.</strong> 같다면 <strong>기능을 더하면 Decorator, 접근을 통제하면 Proxy.</strong>
+    <strong>인터페이스가 달라지면 Adapter.</strong> 같다면 <strong>원본을 항상 부르며 기능을 얹으면 Decorator, 원본을 부를지 말지·언제 만들지 정하면 Proxy.</strong> 둘 다 해당하면 클라이언트가 쌓았는지(Decorator) 프레임워크·대리자가 만들었는지(Proxy)로 가른다.
   </p>
 
   <h2>더 읽을 자료 (1차 출처)</h2>
   <ul>
-    <li><a href="https://refactoring.guru/design-patterns/proxy">Refactoring.Guru — Proxy</a>: 종류(가상·보호·원격·로깅·캐싱)와 "Relations with other patterns".</li>
+    <li><a href="https://refactoring.guru/design-patterns/proxy">Refactoring.Guru: Proxy</a>: 종류(가상·보호·원격·로깅·캐싱)와 "Relations with other patterns".</li>
     <li><a href="https://docs.spring.io/spring-framework/reference/core/aop/introduction-proxies.html">Spring Framework Reference — Proxying mechanisms 입문</a>.</li>
   </ul>
 

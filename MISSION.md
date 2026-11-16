@@ -299,3 +299,24 @@ Spring에서 자주 나오는 패턴은 본 적이 있지만 **서로 구분이 
 ## Out of scope
 - GoF 외 패턴(DDD 패턴, 동시성 패턴, 클라우드 패턴)과 아키텍처 패턴은 이미 다룬 0040 외에는 제외.
 - 패턴을 직접 구현하는 대규모 실습 프로젝트.
+
+---
+
+# Mission: OSC 7501 (Program Status Protocol) — 무엇이고, 어떻게 동작하는가
+
+## Why
+Claude Code, Codex, herdr, iTerm2 등 여러 도구가 OSC 7501이라는 프로토콜을 쓰는 것을 봤다. 이 프로토콜이 무엇이고 어떻게 동작하는지 알고 싶다. 터미널 escape sequence는 오늘 처음 봤다(2026-11-12). 이후에는 내 프로그램에서 emit하고, 터미널·멀티플렉서에서 consume하는 쪽도 이해하려 한다.
+
+## Success looks like
+- 시퀀스 한 줄을 pair로 분해해 state·kind·id·msg를 읽는다(msg·title의 base64 포함).
+- 6개 state(idle/working/blocked/done/error/clear)가 언제 쓰이는지, record가 어떻게 교체·삭제·소멸하는지 설명한다.
+- OSC 9;4·알림·OSC 133·window title로는 부족한 이유를 상황 하나로 설명한다.
+- 마지막에 이 터미널(herdr)에서 `printf`로 직접 보내 보고 반응을 예측·관찰한다.
+
+## Constraints
+- 개념 설명이 먼저, 직접 실험은 마지막. 와이어 포맷 + 상태 모델 깊이까지.
+- 1차 출처는 Rex 스펙 원문(rev 0.4). 사용처 표(Codex, cmux, Herdr 등)는 원문 대조 후에만 가르친다.
+- 한국어, 기술 용어는 원문 그대로.
+
+## Out of scope
+- 구현 코드(emit 함수·파서 작성). 보안·한도·feature detection의 세부는 이름과 위치만.

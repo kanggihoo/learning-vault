@@ -1,0 +1,193 @@
+<template>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    @font-face { font-family: "EB Garamond"; src: url("../../assets/fonts/EBGaramond-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-700.woff2") format("woff2"); font-weight: 700; }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #141413;
+      font-family: "Inter", "Noto Sans KR", sans-serif;
+    }
+    .clip { position: absolute; inset: 0; }
+    #f07-bg { background: #faf9f5; }
+
+    /* tree lives in full-canvas coordinates (same geometry as Frame 02) */
+    #f07-tree { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    #f07-tree svg { position: absolute; inset: 0; }
+    .f07-anchor { position: absolute; width: 0; height: 0; }
+    .f07-box {
+      position: absolute;
+      left: 0;
+      top: 0;
+      transform: translate(-50%, -50%);
+      white-space: nowrap;
+      text-align: center;
+      background: #efe9de;
+      border: 1px solid rgba(20, 20, 19, 0.12);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-weight: 400;
+      letter-spacing: -0.012em;
+      line-height: 1.1;
+    }
+    .f07-node1 { font-size: 52px; padding: 26px 52px; }
+    .f07-node2 { font-size: 38px; padding: 22px 44px; }
+    .f07-leaf {
+      font-size: 52px;
+      width: 400px;
+      padding: 22px 0;
+      color: rgba(20, 20, 19, 0.35);
+      background: #faf9f5;
+    }
+    .f07-leaf.f07-filled { color: #141413; background: #efe9de; }
+    .f07-branch {
+      position: absolute;
+      left: 0;
+      top: 0;
+      transform: translate(-50%, -50%);
+      white-space: nowrap;
+      padding: 4px 14px;
+      background: #faf9f5;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+      font-size: 30px;
+      letter-spacing: 0.02em;
+      color: rgba(20, 20, 19, 0.6);
+    }
+
+    /* conclusion card — quote-pull register */
+    #f07-card {
+      position: absolute;
+      top: 590px;
+      left: 0;
+      right: 0;
+      width: fit-content;
+      margin: 0 auto;
+      padding: 34px 64px;
+      text-align: center;
+      background: #efe9de;
+      border: 1px solid rgba(20, 20, 19, 0.12);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.012em;
+      white-space: nowrap;
+    }
+    .f07-line1 { font-size: 56px; line-height: 1.2; }
+    .f07-rule { width: 120px; height: 1px; margin: 22px auto; background: rgba(20, 20, 19, 0.2); }
+    .f07-line2 { font-size: 42px; line-height: 1.35; }
+    .f07-coral { color: #A5614A; }
+
+    #f07-tag {
+      position: absolute;
+      right: 80px;
+      top: 864px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+      font-size: 26px;
+      letter-spacing: 0.02em;
+      color: rgba(20, 20, 19, 0.6);
+      white-space: nowrap;
+    }
+  </style>
+
+  <div data-hf-id="hf-j022" id="root" data-composition-id="07-decision-tree" data-start="0" data-duration="13" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-0xlz" id="f07-bg" class="clip" data-start="0" data-duration="13" data-track-index="0"></div>
+
+    <div data-hf-id="hf-taty" id="f07-content" class="clip" data-start="0" data-duration="13" data-track-index="1">
+      <div data-hf-id="hf-5gxz" id="f07-tree">
+        <svg data-hf-id="hf-pqiq" width="1920" height="1080" viewBox="0 0 1920 1080">
+          <g data-hf-id="hf-ftuw" stroke="rgba(20,20,19,0.3)" stroke-width="2" fill="none" stroke-linecap="round">
+            <line data-hf-id="hf-j4zf" x1="960" y1="379" x2="422" y2="663" />
+            <line data-hf-id="hf-g1s6" x1="960" y1="379" x2="1267" y2="473" />
+            <line data-hf-id="hf-sure" x1="1267" y1="563" x2="1037" y2="728" />
+            <line data-hf-id="hf-5wjq" x1="1267" y1="563" x2="1536" y2="728" />
+          </g>
+        </svg>
+
+        <div data-hf-id="hf-ytdc" class="f07-anchor" style="left: 691px; top: 521px"><div data-hf-id="hf-4g6g" class="f07-branch">상속</div></div>
+        <div data-hf-id="hf-s7lc" class="f07-anchor" style="left: 1113px; top: 426px"><div data-hf-id="hf-rqvo" class="f07-branch">합성</div></div>
+        <div data-hf-id="hf-tpzq" class="f07-anchor" style="left: 1152px; top: 645px"><div data-hf-id="hf-oays" class="f07-branch">밖에서</div></div>
+        <div data-hf-id="hf-ojpj" class="f07-anchor" style="left: 1401px; top: 645px"><div data-hf-id="hf-05oe" class="f07-branch">스스로</div></div>
+
+        <div data-hf-id="hf-0pfs" class="f07-anchor" style="left: 960px; top: 324px"><div data-hf-id="hf-woym" class="f07-box f07-node1">① 상속인가, 합성인가</div></div>
+        <div data-hf-id="hf-u8w4" class="f07-anchor" style="left: 1267px; top: 518px"><div data-hf-id="hf-3taa" class="f07-box f07-node2">② 합성이라면 — 누가 갈아끼우는가</div></div>
+
+        <div data-hf-id="hf-1q8h" class="f07-anchor" style="left: 422px; top: 713px"><div data-hf-id="hf-2m0f" id="f07-leaf-l" class="f07-box f07-leaf">?</div></div>
+        <div data-hf-id="hf-u8lx" class="f07-anchor" style="left: 1037px; top: 778px"><div data-hf-id="hf-5u30" id="f07-leaf-m" class="f07-box f07-leaf">?</div></div>
+        <div data-hf-id="hf-ejo1" class="f07-anchor" style="left: 1536px; top: 778px"><div data-hf-id="hf-fzvd" id="f07-leaf-r" class="f07-box f07-leaf">?</div></div>
+      </div>
+
+      <div data-hf-id="hf-64r9" id="f07-card">
+        <div data-hf-id="hf-50nq" class="f07-line1">상속이면 Template Method.</div>
+        <div data-hf-id="hf-okt8" class="f07-rule"></div>
+        <div data-hf-id="hf-p8ig" class="f07-line2">합성이면 <span data-hf-id="hf-qbye" class="f07-coral">누가 바꾸는지</span> 본다 —</div>
+        <div data-hf-id="hf-ru8e" class="f07-line2">밖에서 고르면 Strategy, 스스로 전이하면 State.</div>
+      </div>
+
+      <div data-hf-id="hf-ypqo" id="f07-tag">GoF 1/6 · 다음: Decorator · Proxy · Adapter</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const D = 13;
+
+      // Scene 1 (0–1.0s): same tree returns, scales to 80% into the upper ~55%
+      tl.fromTo(
+        "#f07-tree",
+        { scale: 1, y: 0, transformOrigin: "960px 0px" },
+        { scale: 0.8, y: -100, duration: 1.0, ease: "power2.inOut" },
+        0,
+      );
+
+      // Scene 2 (1.0–5.5s): discrete-text-sequence — each "?" swaps instantly in place
+      const LEAVES = [
+        { el: document.getElementById("f07-leaf-l"), t: 1.0, text: "Template Method" },
+        { el: document.getElementById("f07-leaf-m"), t: 2.5, text: "Strategy" },
+        { el: document.getElementById("f07-leaf-r"), t: 4.0, text: "State" },
+      ];
+      const driver = { t: 0 };
+      tl.to(
+        driver,
+        {
+          t: D,
+          duration: D,
+          ease: "none",
+          onUpdate: () => {
+            for (const leaf of LEAVES) {
+              const on = driver.t >= leaf.t;
+              leaf.el.textContent = on ? leaf.text : "?";
+              leaf.el.classList.toggle("f07-filled", on);
+            }
+          },
+        },
+        0,
+      );
+
+      // Scene 3 (5.5s): the one restrained move — conclusion card slides up + crossfades in
+      tl.fromTo("#f07-card", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.9, ease: "power2.out" }, 5.5);
+
+      // Scene 4 (8.5s): series tag, then hold; final fade to cream (film's only exit)
+      tl.fromTo("#f07-tag", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power1.out" }, 8.5);
+      tl.fromTo("#f07-content", { opacity: 1 }, { opacity: 0, duration: 0.6, ease: "power1.inOut" }, D - 0.6);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["07-decision-tree"] = tl;
+    })();
+  </script>
+</template>

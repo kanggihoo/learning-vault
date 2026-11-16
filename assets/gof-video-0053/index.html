@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="ko">
+<!-- Made with the Bang Motion skill by Bang Tutorial (https://youtube.com/bangtutorial) - MIT -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>네 개의 질문</title>
+<!--
+  GoF 5/6 — Iterator · Visitor · Memento · Interpreter 판별 explainer (64초, 16:9, 무음 + VO 대본 별도).
+  주인공: 한 골목의 집들(객체 구조). 상자(컬렉션)에서 하나씩 꺼내 골목을 세우고(Iterator),
+  집은 그대로 둔 채 방문자가 돌며 일하고(Visitor), 한 집의 간판 상태를 봉투로 저장·복원하고(Memento),
+  마지막엔 수식이 문법 트리로 서서 해석된다(Interpreter). 리캡은 판별 레일.
+  더블클릭으로 열기. 자동재생 + 루프, R 다시, Space 일시정지. ?debug=1 스크럽, ?clean=1 export용.
+  모든 시각 요소는 tl.time()의 순수 함수 (Date.now/Math.random 없음).
+-->
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1F2A37;--base:#EEF7F5;--amber:#E8A317;--violet:#7C4DFF;--sky:#1E88E5;--magenta:#C2255C}
+html,body{margin:0;height:100%;background:#0d1417;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;background:var(--base);color:var(--ink);font-family:'IBM Plex Sans KR',sans-serif}
+#bg{position:absolute;inset:0;overflow:hidden}
+.flood{position:absolute;width:4800px;height:4800px;border-radius:50%;transform:scale(0)}
+#grid{position:absolute;inset:-240px;background-image:linear-gradient(rgba(31,42,55,.075) 2px,transparent 2px),linear-gradient(90deg,rgba(31,42,55,.075) 2px,transparent 2px);background-size:80px 80px;background-position:center}
+.blob{position:absolute;border-radius:50%;width:1300px;height:1300px;background:radial-gradient(circle,rgba(255,255,255,.8),rgba(255,255,255,0) 65%)}
+.view{position:absolute;inset:0}
+.view svg,#hud{position:absolute;inset:0;width:1920px;height:1080px;overflow:visible}
+.plex{font-family:'IBM Plex Sans KR',sans-serif;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace;font-weight:700}
+#ui{position:absolute;inset:0;pointer-events:none}
+.say{position:absolute;font-family:'Do Hyeon',sans-serif;line-height:1.12;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
+.say .wd{display:inline-block;opacity:0;transform-origin:50% 100%}
+.hl{position:relative}
+.hl i{position:absolute;left:-.14em;right:-.14em;top:.0em;bottom:-.02em;border:.05em solid var(--c,var(--ink));border-radius:.14em;transform:scaleX(0);transform-origin:0 50%}
+.chip{position:absolute;right:64px;top:54px;padding:8px 30px 12px;border-radius:44px;color:#fff;font:600 42px 'IBM Plex Sans KR',sans-serif;opacity:0;border:5px solid var(--ink);box-shadow:8px 8px 0 var(--ink)}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(95% 95% at 50% 50%,transparent 62%,rgba(31,42,55,.16))}
+#dbg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:none;gap:12px;align-items:center;padding:10px 16px;border-radius:14px;background:rgba(14,16,22,.9);color:#cfd5e3;font:13px system-ui;z-index:50}
+#dbg input{width:420px}#dbg span{font-variant-numeric:tabular-nums;min-width:6ch}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs id="defs"></defs></svg>
+<div id="stage">
+  <div id="bg">
+    <div class="flood" id="fl1" style="left:-1800px;top:-1500px;background:#FBEFD3"></div>
+    <div class="flood" id="fl2" style="left:-1440px;top:-1860px;background:#ECE5FC"></div>
+    <div class="flood" id="fl3" style="left:-1440px;top:-1860px;background:#DCEBFB"></div>
+    <div class="flood" id="fl4" style="left:-1440px;top:-1860px;background:#F9E0EA"></div>
+    <div class="flood" id="fl5" style="left:-1440px;top:-1860px;background:#EEF7F5"></div>
+    <div class="blob" id="bl1" style="left:-300px;top:-420px"></div>
+    <div class="blob" id="bl2" style="left:1100px;top:380px"></div>
+    <div id="grid"></div>
+  </div>
+  <div id="street" class="view"><svg id="streetSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="front"  class="view" style="visibility:hidden"><svg id="frontSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="board"  class="view" style="visibility:hidden"><svg id="boardSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="rail"   class="view" style="visibility:hidden"><svg id="railSvg" viewBox="0 0 1920 1080"></svg></div>
+  <svg id="hud" viewBox="0 0 1920 1080"></svg>
+  <div id="vig"></div>
+  <div id="ui">
+    <div class="say" id="s1" style="left:0;right:0;text-align:center;top:862px;font-size:112px;--c:var(--ink)"><span class="wd">네</span> <span class="wd">패턴,</span> <span class="wd">네</span> <span class="wd hl"><i></i>질문</span></div>
+    <div class="say" id="s2" style="left:110px;top:70px;font-size:106px;--c:var(--amber)"><span class="wd">속은</span> <span class="wd">몰라도</span> <span class="wd hl"><i></i>하나씩</span> <span class="wd">꺼낸다</span></div>
+    <div class="say" id="s3" style="left:110px;top:70px;font-size:100px;--c:var(--violet)"><span class="wd">집은</span> <span class="wd">그대로,</span> <span class="wd hl"><i></i>연산이</span> <span class="wd">방문한다</span></div>
+    <div class="say" id="s4" style="left:110px;top:40px;font-size:104px;--c:var(--sky)"><span class="wd">저장했다가</span> <span class="wd hl"><i></i>되돌린다</span></div>
+    <div class="say" id="s5" style="left:1210px;top:600px;font-size:108px;--c:var(--magenta)"><span class="wd">문법을</span><br><span class="wd hl"><i></i>트리로</span> <span class="wd">해석</span></div>
+    <div class="say" id="s6" style="left:0;right:0;text-align:center;top:330px;font-size:112px;--c:var(--ink)"><span class="wd" style="color:var(--amber)">꺼내기</span> <span class="wd" style="color:var(--violet)">방문</span> <span class="wd" style="color:var(--sky)">저장</span> <span class="wd" style="color:var(--magenta)">해석</span><br><span class="wd hl"><i></i>질문이</span> <span class="wd">패턴을</span> <span class="wd">고른다</span></div>
+    <div class="chip" id="chI" style="background:var(--amber);color:var(--ink)">Iterator</div>
+    <div class="chip" id="chV" style="background:var(--violet)">Visitor</div>
+    <div class="chip" id="chM" style="background:var(--sky)">Memento</div>
+    <div class="chip" id="chN" style="background:var(--magenta)">Interpreter</div>
+  </div>
+  <div id="dbg"><button id="dPlay">Pause</button><input id="dScrub" type="range" min="0" max="1000" value="0"><span id="dClock">0.00s</span></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const W=1920,H=1080,DUR=64;
+const INK='#1F2A37',AMBER='#E8A317',VIOLET='#7C4DFF',SKY='#1E88E5',MAG='#C2255C',GRAY='#C5CFCC',LIT='#FFD34E',ROOF='#F2E6CF',RED='#D9483B',OK='#3FBF5A';
+const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg',defs=$('#defs');
+function S(tag,a={},p){const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+const T=(txt,x,y,a,p)=>{const e=S('text',{x,y,...a},p);e.textContent=txt;return e;};
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+function fit(){const s=Math.min(innerWidth/W,innerHeight/H);$('#stage').style.transform=`translate(-50%,-50%) scale(${s})`;}
+addEventListener('resize',fit);fit();
+let uid=0;
+const tl=gsap.timeline({paused:true});
+
+/* ---------- 엔진 (0049와 동일) ---------- */
+const props=[];
+function prop(el,i={}){const p={el,x:0,y:0,s:1,r:0,o:1,...i};props.push(p);return p;}
+const cams=[];
+function cam(g,z,cx,cy){const c={g,z,cx,cy,z0:z,cx0:cx,cy0:cy};cams.push(c);return c;}
+const shot=(c,at,dur,z,cx,cy,ease='power2.inOut')=>tl.to(c,{z,cx,cy,duration:dur,ease},at);
+const cutTo=(c,at,z,cx,cy)=>tl.set(c,{z,cx,cy},at);
+const blurs=[],blurMap=new Map();
+function blurOf(el,axis='y'){if(blurMap.has(el))return blurMap.get(el);const id='mb'+(uid++);
+  const f=S('filter',{id,x:'-40%',y:'-80%',width:'180%',height:'260%'},defs),g=S('feGaussianBlur',{stdDeviation:'0 0'},f);
+  const b={el,g,id,axis,v:0};blurs.push(b);blurMap.set(el,b);return b;}
+const show=(el,at,d=.25)=>tl.to(el,{opacity:1,duration:d},at), hide=(el,at,d=.25)=>tl.to(el,{opacity:0,duration:d},at);
+const pop=(p,at,{d=.6,from=0,ease='back.out(1.8)'}={})=>tl.fromTo(p,{s:from,o:0},{s:1,o:1,duration:d,ease,immediateRender:false},at);
+const fade=(p,at,d=.3)=>tl.to(p,{o:0,duration:d},at);
+function say(id,at,st=.09){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.fromTo(w,{opacity:0,yPercent:70,scaleY:1.35},{opacity:1,yPercent:0,scaleY:1,duration:.8,ease:'power4.out',stagger:st,immediateRender:false},at);
+  tl.fromTo(b,{v:20},{v:0,duration:.8+st*(w.length-1),ease:'power3.out',immediateRender:false},at);
+  el.querySelectorAll('.hl i').forEach(i=>tl.fromTo(i,{scaleX:0},{scaleX:1,duration:.5,ease:'power3.out',immediateRender:false},at+.3+st*w.length));}
+function unsay(id,at){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.to(w,{opacity:0,yPercent:-60,duration:.4,ease:'power2.in',stagger:.025},at);
+  tl.fromTo(b,{v:0},{v:16,duration:.45,ease:'power2.in',immediateRender:false},at);tl.set(b,{v:0},at+.55);}
+function chipIn(id,at){const el=$(id),b=blurOf(el,'x');
+  tl.fromTo(el,{opacity:0,x:90},{opacity:1,x:0,duration:.6,ease:'power4.out',immediateRender:false},at);
+  tl.fromTo(b,{v:24},{v:0,duration:.6,ease:'power3.out',immediateRender:false},at);}
+const chipOut=(id,at)=>tl.to($(id),{opacity:0,x:70,duration:.35,ease:'power2.in'},at);
+const flood=(id,at)=>tl.fromTo(id,{scale:0},{scale:1,duration:1.1,ease:'power2.inOut',immediateRender:false},at);
+function whip(t,from,to,dir=1){const bf=blurOf($(from)),bt=blurOf($(to));
+  tl.to(from,{y:-150*dir,duration:.28,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:24,duration:.28,ease:'power2.in',immediateRender:false},t);
+  tl.set(from,{visibility:'hidden'},t+.28);tl.set(to,{visibility:'visible',y:150*dir},t+.28);tl.set(bt,{v:24},t+.28);
+  tl.to(to,{y:0,duration:.42,ease:'power3.out'},t+.28);tl.to(bt,{v:0,duration:.42,ease:'power3.out'},t+.28);
+  tl.set(from,{y:0},t+.3);tl.set(bf,{v:0},t+.3);}
+/* 코드 칩 (월드 안의 오브젝트) */
+function codeChip(p,txt,color,x,y,f=32){const w=Math.round(txt.length*f*.6)+56,g=S('g',{},p);
+  S('rect',{x:-w/2+7,y:-34+7,width:w,height:68,rx:14,fill:INK},g);S('rect',{x:-w/2,y:-34,width:w,height:68,rx:14,fill:'#fff',stroke:INK,'stroke-width':5},g);
+  T(txt,0,11,{class:'mono','font-size':f,'text-anchor':'middle',fill:color},g);return prop(g,{x,y,s:0,o:0});}
+function pill(p,txt,bg,fg,x,y,{f=32,mono=true}={}){const w=Math.round(txt.length*f*(mono?.6:.95))+48,g=S('g',{},p);
+  S('rect',{x:-w/2,y:-30,width:w,height:60,rx:30,fill:bg,stroke:INK,'stroke-width':5},g);
+  T(txt,0,f*.36,{class:mono?'mono':'plex','font-size':f,'text-anchor':'middle',fill:fg},g);return prop(g,{x,y,s:0,o:0});}
+
+/* ================= VIEW 1: 골목 (측면) ================= */
+const stCam=S('g',{},$('#streetSvg')),CS=cam(stCam,1.15,700,600);
+S('rect',{x:-800,y:830,width:4200,height:600,fill:'#CBD2CF'},stCam);
+S('rect',{x:-800,y:790,width:4200,height:40,fill:'#E6E9E4',stroke:INK,'stroke-width':6},stCam);
+const dashes=[];for(let i=0;i<40;i++)dashes.push(S('rect',{x:-800+i*120,y:956,width:64,height:12,rx:6,fill:'#fff',opacity:.8},stCam));
+/* 상자 = 컬렉션. 안이 List인지 Tree인지 Hash인지 바깥에선 모른다 */
+const crateG=S('g',{},stCam);
+S('rect',{x:-190+12,y:-340+12,width:380,height:340,rx:18,fill:INK},crateG);
+S('rect',{x:-190,y:-340,width:380,height:340,rx:18,fill:'#E3B778',stroke:INK,'stroke-width':8},crateG);
+for(const y of [-255,-170,-85])S('line',{x1:-186,y1:y,x2:186,y2:y,stroke:INK,'stroke-width':4,opacity:.35},crateG);
+S('rect',{x:150,y:-280,width:40,height:250,rx:8,fill:INK},crateG);
+S('rect',{x:-135,y:-250,width:250,height:90,rx:14,fill:'#fff',stroke:INK,'stroke-width':5},crateG);
+const crateTxt=T('List?',-10,-190,{class:'mono','font-size':44,'text-anchor':'middle',fill:INK},crateG);
+const crate=prop(crateG,{x:380,y:790,s:1,o:1});
+/* 집: 원점 = 바닥 중앙, 지붕 모양 = 요소 타입 */
+const houses=[];
+function drawHouse(p,type){const g=S('g',{},p);
+  S('rect',{x:-130+10,y:-230+10,width:260,height:230,fill:INK},g);
+  if(type==='Circle')S('path',{d:'M-150 -228 A150 125 0 0 1 150 -228 Z',fill:ROOF,stroke:INK,'stroke-width':7},g);
+  if(type==='Square')S('rect',{x:-150,y:-310,width:300,height:84,rx:8,fill:ROOF,stroke:INK,'stroke-width':7},g);
+  if(type==='Triangle')S('path',{d:'M-160 -228 L0 -372 L160 -228 Z',fill:ROOF,stroke:INK,'stroke-width':7,'stroke-linejoin':'round'},g);
+  if(type==='Hexagon')S('path',{d:'M-150 -228 L-110 -320 L110 -320 L150 -228 Z',fill:ROOF,stroke:INK,'stroke-width':7,'stroke-linejoin':'round'},g);
+  S('rect',{x:-130,y:-230,width:260,height:230,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  S('rect',{x:-104,y:-196,width:76,height:70,rx:8,fill:'#CFE7F2',stroke:INK,'stroke-width':5},g);
+  S('rect',{x:20,y:-124,width:70,height:124,fill:INK},g);
+  const door=S('g',{},g);S('rect',{x:20,y:-124,width:70,height:124,fill:'#F7F3EA',stroke:INK,'stroke-width':6},door);S('circle',{cx:78,cy:-60,r:5,fill:INK},door);
+  T(type,-62,-52,{class:'mono','font-size':30,'text-anchor':'middle',fill:INK},g);
+  return {g,door};}
+const HX=[900,1300,1700];
+['Circle','Square','Triangle'].forEach((t,k)=>{const h=drawHouse(stCam,t);houses.push({...h,hx:HX[k],m:{o:0},p:prop(h.g,{x:550,y:720,s:.25,o:0})});});
+const hexH=drawHouse(stCam,'Hexagon');const hexP=prop(hexH.g,{x:2330,y:-500,o:0});houses.push({...hexH,hx:2330,m:{o:0},p:hexP});
+/* 커서 */
+const curG=S('g',{},stCam);S('path',{d:'M-34 -44 L34 -44 L0 0 Z',fill:AMBER,stroke:INK,'stroke-width':6,'stroke-linejoin':'round'},curG);
+T('next()',0,-62,{class:'mono','font-size':30,'text-anchor':'middle',fill:INK},curG);
+const cur=prop(curG,{x:900,y:400,s:0,o:0});
+/* 방문자 */
+const walkers=[];
+function drawWalker(p,color,name){const g=S('g',{},p),bob=S('g',{},g);
+  const legs=[-16,16].map(x=>{const l=S('g',{},bob);S('rect',{x:x-11,y:-74,width:22,height:74,rx:10,fill:INK},l);return l;});
+  S('rect',{x:-46+7,y:-206+7,width:92,height:146,rx:28,fill:INK},bob);
+  S('rect',{x:-46,y:-206,width:92,height:146,rx:28,fill:color,stroke:INK,'stroke-width':7},bob);
+  S('rect',{x:30,y:-170,width:46,height:60,rx:6,fill:'#fff',stroke:INK,'stroke-width':5},bob);
+  S('circle',{cx:0,cy:-250,r:40,fill:'#F6D3B3',stroke:INK,'stroke-width':6},bob);
+  S('path',{d:'M-42 -256 A42 40 0 0 1 42 -256 L56 -256 L56 -246 L-42 -246 Z',fill:color,stroke:INK,'stroke-width':6,'stroke-linejoin':'round'},bob);
+  const w=Math.round(name.length*30*.6)+40;S('rect',{x:-w/2,y:-350,width:w,height:52,rx:26,fill:'#fff',stroke:INK,'stroke-width':5},bob);
+  T(name,0,-313,{class:'mono','font-size':30,'text-anchor':'middle',fill:color},bob);
+  const bang=S('g',{style:'opacity:0'},bob);S('circle',{cx:0,cy:-400,r:30,fill:RED,stroke:INK,'stroke-width':5},bang);T('!',0,-388,{class:'plex','font-size':38,'text-anchor':'middle',fill:'#fff'},bang);
+  const wk={p:prop(g,{x:-300,y:905}),bob,legs,m:{v:0},bang,ph:walkers.length*1.7};walkers.push(wk);return wk;}
+const wA=drawWalker(stCam,VIOLET,'AreaVisitor'),wP=drawWalker(stCam,'#5B3FC4','PrintVisitor');
+const visits=['visit(Circle)','visit(Square)','visit(Triangle)'].map((s,k)=>pill(stCam,s,VIOLET,'#fff',HX[k],380));
+const acceptP=pill(stCam,'accept(v)',INK,'#fff',HX[0]-10,502,{f:30});
+const tags=[['꺼내기',AMBER,INK],['연산 추가',VIOLET,'#fff'],['되돌리기',SKY,'#fff'],['해석',MAG,'#fff']].map(([s,bg,fg],k)=>pill(stCam,s,bg,fg,170+k*300,300,{f:38,mono:false}));
+const chipIt=codeChip(stCam,'while (it.hasNext()) it.next();','#9A6A00',1450,975);
+const chipAc=codeChip(stCam,'accept(v) { v.visit(this); }',VIOLET,1250,1010);
+const fixAll=pill(stCam,'Visitor 전부 수정',RED,'#fff',1820,330,{f:36,mono:false});
+/* HUD: 리모컨 (화면 고정) */
+const hud=$('#hud'),remG=S('g',{},hud);
+S('rect',{x:-100+10,y:-180+10,width:200,height:360,rx:40,fill:INK},remG);
+S('rect',{x:-100,y:-180,width:200,height:360,rx:40,fill:'#2B3646',stroke:INK,'stroke-width':7},remG);
+const lamp=S('circle',{cx:0,cy:-122,r:20,fill:OK,stroke:INK,'stroke-width':5},remG);
+T('hasNext',0,-68,{class:'mono','font-size':30,'text-anchor':'middle',fill:'#fff'},remG);
+const btnG=S('g',{transform:'translate(0 50)'},remG),btnI=S('g',{},btnG);
+S('circle',{r:60,fill:AMBER,stroke:INK,'stroke-width':7},btnI);T('next',0,11,{class:'mono','font-size':32,'text-anchor':'middle',fill:INK},btnI);
+const falseT=T('false',0,150,{class:'mono','font-size':34,'text-anchor':'middle',fill:'#FF8A80',style:'opacity:0'},remG);
+const remote=prop(remG,{x:-260,y:905,s:.85});const btn=prop(btnI);
+function press(at){tl.to(btn,{s:.86,duration:.1,yoyo:true,repeat:1},at);}
+
+/* ================= VIEW 2: 정면 — Square 집의 간판 ================= */
+const frCam=S('g',{},$('#frontSvg')),CF=cam(frCam,1.3,680,440);
+S('rect',{x:-600,y:1010,width:3200,height:400,fill:'#E6E9E4',stroke:INK,'stroke-width':6},frCam);
+S('rect',{x:274,y:244,width:840,height:780,fill:INK},frCam);
+S('rect',{x:260,y:230,width:840,height:780,fill:'#fff',stroke:INK,'stroke-width':8},frCam);
+S('rect',{x:220,y:166,width:920,height:80,rx:10,fill:ROOF,stroke:INK,'stroke-width':8},frCam);
+for(const x of [330,840])S('rect',{x,y:570,width:190,height:150,rx:10,fill:'#CFE7F2',stroke:INK,'stroke-width':6},frCam);
+S('rect',{x:600,y:780,width:160,height:230,fill:'#F7F3EA',stroke:INK,'stroke-width':7},frCam);
+T('Square',680,950,{class:'mono','font-size':32,'text-anchor':'middle',fill:INK},frCam);
+const signG=S('g',{},frCam);
+S('rect',{x:-320+10,y:-90+10,width:640,height:180,rx:18,fill:INK},signG);
+S('rect',{x:-320,y:-90,width:640,height:180,rx:18,fill:'#FFFDF6',stroke:INK,'stroke-width':7},signG);
+const signTxt=T('hello',0,28,{class:'mono','font-size':84,'text-anchor':'middle',fill:INK},signG);
+const sign=prop(signG,{x:680,y:400});
+{const g=S('g',{transform:'translate(300 288)'},frCam);S('path',{d:'M6 0 v-8 a10 10 0 0 1 20 0 v8',fill:'none',stroke:INK,'stroke-width':5},g);S('rect',{x:0,y:0,width:32,height:24,rx:5,fill:INK},g);
+  T('private',46,22,{class:'mono','font-size':30,fill:INK},g);}
+/* Caretaker 선반: 봉투를 쌓아 두기만 한다 (자물쇠) */
+S('rect',{x:1390,y:450,width:330,height:560,rx:20,fill:INK},frCam);
+S('rect',{x:1380,y:440,width:330,height:560,rx:20,fill:'#F1F4F3',stroke:INK,'stroke-width':8},frCam);
+for(const y of [580,720,860])S('rect',{x:1396,y,width:298,height:12,fill:INK,opacity:.5},frCam);
+T('Caretaker',1545,410,{class:'mono','font-size':36,'text-anchor':'middle',fill:INK},frCam);
+{const g=S('g',{transform:'translate(1545 515)'},frCam);S('path',{d:'M-20 0 v-14 a20 20 0 0 1 40 0 v14',fill:'none',stroke:INK,'stroke-width':8},g);S('rect',{x:-30,y:0,width:60,height:46,rx:8,fill:SKY,stroke:INK,'stroke-width':6},g);S('circle',{cx:0,cy:20,r:6,fill:INK},g);}
+const envG=S('g',{},frCam);
+S('rect',{x:-110+8,y:-70+8,width:220,height:140,rx:12,fill:INK},envG);
+S('rect',{x:-110,y:-70,width:220,height:140,rx:12,fill:SKY,stroke:INK,'stroke-width':7},envG);
+S('path',{d:'M-110 -70 L0 6 L110 -70',fill:'none',stroke:INK,'stroke-width':6,'stroke-linejoin':'round'},envG);
+const seal=S('circle',{cx:0,cy:8,r:20,fill:'#0D47A1',stroke:INK,'stroke-width':5},envG);
+T('Snapshot',0,54,{class:'mono','font-size':30,'text-anchor':'middle',fill:'#fff'},envG);
+const env=prop(envG,{x:680,y:400,s:.2,o:0});
+const chipSave=codeChip(frCam,'undo.push(editor.save());',SKY,680,108);
+const chipRest=codeChip(frCam,'editor.restore(undo.pop());',SKY,680,108);
+const signState={i:0},SIGN=['hello','hell','hel','hel@','h@#%!','hello'];
+
+/* ================= VIEW 3: 보드 — 문법 트리 ================= */
+const bdCam=S('g',{},$('#boardSvg')),CB=cam(bdCam,1.25,760,330);
+const EXPR='(1 + 2) * 3',EX0=760-EXPR.length*84*.6/2,cx=i=>EX0+84*.6*(i+.5);
+const exprG=S('g',{},bdCam);const exprChars=[...EXPR].map((c,i)=>T(c,cx(i),220,{class:'mono','font-size':84,'text-anchor':'middle',fill:INK,style:'opacity:0'},exprG));
+const NODES={mul:[760,440,'Mul',1,8],add:[500,650,'Add',1,3],n3:[1020,650,'Num 3',0,10],n1:[360,870,'Num 1',0,1],n2:[640,870,'Num 2',0,5]};
+const EDGES=[['mul','add'],['mul','n3'],['add','n1'],['add','n2']];
+const edgeEls=EDGES.map(([a,b])=>{const e=S('line',{x1:NODES[a][0],y1:NODES[a][1],x2:NODES[b][0],y2:NODES[b][1],stroke:INK,'stroke-width':8,'stroke-linecap':'round'},bdCam);
+  const L=Math.hypot(NODES[a][0]-NODES[b][0],NODES[a][1]-NODES[b][1]);e.setAttribute('stroke-dasharray',L);e.setAttribute('stroke-dashoffset',L);return {e,L};});
+const pulses=EDGES.map(([a,b])=>{const c=S('circle',{r:16,fill:LIT,stroke:INK,'stroke-width':5},bdCam);return {c,a,b,q:{v:0,o:0}};});
+const nodeP={},resP={};
+for(const k in NODES){const [x,y,lab,nt,ci]=NODES[k],g=S('g',{},bdCam),w=nt?200:180;
+  S('rect',{x:-w/2+9,y:-45+9,width:w,height:90,rx:nt?20:45,fill:INK},g);
+  S('rect',{x:-w/2,y:-45,width:w,height:90,rx:nt?20:45,fill:nt?MAG:'#fff',stroke:INK,'stroke-width':7},g);
+  T(lab,0,12,{class:'mono','font-size':34,'text-anchor':'middle',fill:nt?'#fff':INK},g);
+  nodeP[k]=prop(g,{x:cx(ci),y:220,s:.3,o:0,tx:x,ty:y});
+  if(nt){const r=S('g',{},bdCam);S('rect',{x:-62,y:-30,width:124,height:60,rx:30,fill:LIT,stroke:INK,'stroke-width':5},r);T(k==='add'?'= 3':'= 9',0,12,{class:'mono','font-size':34,'text-anchor':'middle',fill:INK},r);
+    resP[k]=prop(r,{x:x+150,y:y-56,s:0,o:0});}}
+const lblBranch=pill(bdCam,'가지',MAG,'#fff',190,650,{f:34,mono:false}),lblLeaf=pill(bdCam,'끝',ROOF,INK,190,870,{f:34,mono:false});
+
+/* ================= VIEW 4: 판별 레일 ================= */
+const railCam=S('g',{},$('#railSvg')),CR=cam(railCam,1.2,420,540);
+const GX=[240,560,880,1200],DY=[170,390,910,690];
+const K=GX.map((g,k)=>`M-100 540 L${g} 540 C${g+90} 540 ${g+110} ${DY[k]} ${g+200} ${DY[k]} L1470 ${DY[k]}`);
+S('path',{d:'M-100 540 L1300 540',fill:'none',stroke:INK,'stroke-width':30,'stroke-linecap':'round'},railCam);
+for(const d of K)S('path',{d,fill:'none',stroke:INK,'stroke-width':30,'stroke-linecap':'round'},railCam);
+S('path',{d:'M-100 540 L1300 540',fill:'none',stroke:'#fff','stroke-width':14,'stroke-linecap':'round'},railCam);
+for(const d of K)S('path',{d,fill:'none',stroke:'#fff','stroke-width':14,'stroke-linecap':'round'},railCam);
+const DEST=[[AMBER,'Iterator',INK],[VIOLET,'Visitor','#fff'],[SKY,'Memento','#fff'],[MAG,'Interpreter','#fff']];
+const trails=K.map((d,k)=>{const e=S('path',{d,fill:'none',stroke:DEST[k][0],'stroke-width':12,'stroke-linecap':'round'},railCam);const L=e.getTotalLength();e.setAttribute('stroke-dasharray',L);e.setAttribute('stroke-dashoffset',L);return {e,L};});
+const QS=[['하나씩 꺼내나?',610],['accept / visit?',610],['저장 · 복원?',488],['문법 트리?',488]];
+const gates=GX.map((x,k)=>{const g=S('g',{},railCam);const c=S('circle',{r:44,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  T(String(k+1),0,13,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},g);
+  T(QS[k][0],0,QS[k][1]-540+(QS[k][1]>540?14:0),{class:'plex','font-size':34,'text-anchor':'middle',fill:INK},g);
+  return {p:prop(g,{x,y:540,s:0,o:0}),c,len:x+100};});
+const dests=DEST.map(([c,n,f],k)=>{const g=S('g',{},railCam);S('rect',{x:-190+9,y:-55+9,width:380,height:110,rx:28,fill:INK},g);S('rect',{x:-190,y:-55,width:380,height:110,rx:28,fill:c,stroke:INK,'stroke-width':7},g);
+  T(n,0,14,{class:'plex','font-size':40,'text-anchor':'middle',fill:f},g);return prop(g,{x:1660,y:DY[k],s:0,o:0});});
+const cards=['it.next()','accept(v)','save()','interpret()'].map((s,k)=>{const g=S('g',{},railCam);
+  S('rect',{x:-130+7,y:-38+7,width:260,height:76,rx:14,fill:INK},g);S('rect',{x:-130,y:-38,width:260,height:76,rx:14,fill:'#fff',stroke:INK,'stroke-width':6},g);
+  T(s,0,11,{class:'mono','font-size':32,'text-anchor':'middle',fill:k===0?'#9A6A00':DEST[k][0]},g);
+  const path=S('path',{d:K[k]});return {g,path,L:trails[k].L,k,p:0,o:0};});
+
+/* ================= 타임라인 ================= */
+for(const c of cams)cutTo(c,0,c.z0,c.cx0,c.cy0);
+tl.set('.flood',{scale:0},0);
+/* --- 0–6 훅: 상자 하나, 질문 넷 --- */
+tl.fromTo(crate,{y:300,s:.85},{y:790,s:1,duration:.7,ease:'bounce.out',immediateRender:false},.2);
+tags.forEach((t,k)=>pop(t,1.4+k*.25));
+say('#s1',2.4);
+unsay('#s1',5.2);
+tags.forEach((t,k)=>tl.to(t,{y:-200,r:(k-1.5)*14,o:0,duration:.45,ease:'power2.in'},5.4+k*.05));
+/* --- 6–18 Iterator --- */
+chipIn('#chI',6.0);
+tl.to(remote,{x:600,duration:.7,ease:'power3.out'},6.1);flood('#fl1',6.4);
+shot(CS,6.6,3.6,1,1100,600,'sine.inOut');
+houses.slice(0,3).forEach((h,k)=>{const at=7.0+k*1.6;press(at);
+  tl.set(h.p,{o:1},at+.1);tl.to(h.p,{x:h.hx,s:1,duration:.75,ease:'power3.out'},at+.1);tl.to(h.p,{y:790,duration:.75,ease:'bounce.out'},at+.1);
+  tl.fromTo(crate,{s:1},{s:1.05,duration:.1,yoyo:true,repeat:1,immediateRender:false},at+.05);
+  if(k===0)pop(cur,at+.7);else tl.to(cur,{x:h.hx,y:h.hx===1700?336:400,duration:.5,ease:'power3.inOut'},at+.5);});
+press(11.9);tl.set(lamp,{attr:{fill:RED}},12.0);show(falseT,12.0,.15);
+tl.to(crate,{r:3,duration:.07,yoyo:true,repeat:5},12.0);tl.to(cur,{r:10,duration:.1,yoyo:true,repeat:3},12.0);
+say('#s2',12.6);
+pop(chipIt,13.6,{from:.6});
+unsay('#s2',17.2);fade(chipIt,17.2);fade(cur,17.2);
+tl.to(remote,{x:-260,duration:.5,ease:'power2.in'},17.4);chipOut('#chI',17.6);
+/* --- 18–32 Visitor: 집은 그대로, 방문자가 돈다 --- */
+chipIn('#chV',18.0);flood('#fl2',18.2);
+shot(CS,18.0,.9,1.3,980,620);
+tl.set(wA.p,{x:420},18.0);
+const walk=(w,at,dur,x,ease='power1.inOut')=>{tl.to(w.p,{x,duration:dur,ease},at);tl.set(w.m,{v:1},at);tl.set(w.m,{v:0},at+dur);};
+walk(wA,18.3,1.3,HX[0]+190);
+pop(acceptP,19.6);pop(visits[0],20.0);
+fade(acceptP,21.0);fade(visits[0],21.0);
+shot(CS,20.9,1.0,1.3,1380,620);walk(wA,21.0,1.0,HX[1]+190);pop(visits[1],22.05);fade(visits[1],23.0);
+shot(CS,22.9,1.0,1.3,1780,620);walk(wA,23.0,1.0,HX[2]+190);pop(visits[2],24.05);fade(visits[2],25.0);
+shot(CS,24.9,1.0,1,1300,600);
+walk(wA,25.1,1.0,2030);
+tl.set(wP.p,{x:300},25.0);walk(wP,25.2,2.6,1500,'none');
+say('#s3',25.6);
+pop(chipAc,26.6,{from:.6});
+fade(chipAc,28.3);
+shot(CS,28.2,.8,1,1700,600);
+tl.set(hexP,{o:1},28.6);tl.to(hexP,{y:790,duration:.7,ease:'bounce.out'},28.6);
+for(const w of [wA,wP])tl.to(w.bang,{opacity:1,duration:.2},29.3);
+tl.to([wA.p,wP.p],{r:-4,duration:.1,yoyo:true,repeat:3},29.3);
+pop(fixAll,29.6);
+unsay('#s3',31.0);chipOut('#chV',31.1);fade(fixAll,31.0);
+/* push-through: Square 집 문 안으로 */
+tl.set(houses[1].m,{o:1},31.3);
+shot(CS,31.6,.8,6,HX[1]+55,730,'power2.in');
+tl.set('#street',{visibility:'hidden'},32.4);tl.set('#front',{visibility:'visible'},32.4);
+flood('#fl3',32.2);
+/* --- 32–42 Memento --- */
+cutTo(CF,32.4,1.3,680,440);shot(CF,32.4,1.0,1,960,540,'power3.out');
+chipIn('#chM',32.8);
+pop(chipSave,33.5,{from:.6});
+tl.fromTo(env,{x:680,y:400,s:.2,o:0},{s:1,o:1,duration:.5,ease:'back.out(1.6)',immediateRender:false},33.8);
+tl.fromTo(seal,{attr:{r:0}},{attr:{r:20},duration:.25,ease:'back.out(3)',immediateRender:false},34.2);
+tl.to(env,{x:1545,y:800,s:.95,duration:.7,ease:'power3.inOut'},34.5);
+tl.to(env,{r:-4,duration:.2},35.2);
+[1,2,3,4].forEach((i,k)=>tl.set(signState,{i},35.7+k*.32));
+tl.to(sign,{r:2,duration:.06,yoyo:true,repeat:9},35.7);
+fade(chipSave,36.6,.2);pop(chipRest,37.0,{from:.6});
+tl.to(env,{x:680,y:400,r:0,duration:.7,ease:'power3.inOut'},37.4);
+tl.to(env,{s:1.35,o:0,duration:.4,ease:'power2.out'},38.2);tl.set(signState,{i:5},38.35);
+tl.fromTo(sign,{s:1.08},{s:1,duration:.4,ease:'back.out(2)',immediateRender:false},38.35);
+fade(chipRest,39.2,.2);
+say('#s4',39.4);
+unsay('#s4',41.4);chipOut('#chM',41.5);
+/* --- 42–52 Interpreter --- */
+whip(41.8,'#front','#board',1);flood('#fl4',42.0);
+cutTo(CB,41.8,1.25,760,330);
+chipIn('#chN',42.3);
+exprChars.forEach((c,i)=>tl.to(c,{opacity:1,duration:.05},42.4+i*.07));
+shot(CB,43.3,1.0,1,960,540);
+['mul','add','n3','n1','n2'].forEach((k,j)=>{const p=nodeP[k],at=43.7+j*.22;
+  tl.fromTo(p,{x:p.x,y:220,s:.3,o:0},{x:p.tx,y:p.ty,s:1,o:1,duration:.7,ease:'back.out(1.4)',immediateRender:false},at);});
+exprChars.forEach(c=>tl.to(c,{opacity:.25,duration:.3},44.0));
+edgeEls.forEach((e,k)=>tl.to(e.e,{attr:{'stroke-dashoffset':0},duration:.4},44.6+k*.1));
+pop(lblBranch,45.2);pop(lblLeaf,45.4);
+pulses.forEach((p,k)=>{const at=46.0+(k>1?.5:0);tl.set(p.q,{o:1},at);tl.fromTo(p.q,{v:0},{v:1,duration:.5,ease:'power1.inOut',immediateRender:false},at);tl.set(p.q,{o:0},at+.5);});
+pop(resP.add,47.2);tl.fromTo(nodeP.add,{s:1.12},{s:1,duration:.3,immediateRender:false},47.2);
+pop(resP.mul,47.9);tl.fromTo(nodeP.mul,{s:1.12},{s:1,duration:.3,immediateRender:false},47.9);
+say('#s5',48.4);
+unsay('#s5',51.2);chipOut('#chN',51.3);
+/* rack focus → 레일 */
+{const bb=blurOf($('#board'),'xy'),br=blurOf($('#rail'),'xy');
+  tl.to('#board',{scale:.86,opacity:0,duration:.7,ease:'power2.in'},51.6);tl.fromTo(bb,{v:0},{v:16,duration:.7,ease:'power2.in',immediateRender:false},51.6);
+  tl.set('#rail',{visibility:'visible',scale:1.18,opacity:0},52.0);tl.set(br,{v:16},52.0);
+  tl.to('#rail',{scale:1,opacity:1,duration:.85,ease:'power3.out'},52.0);tl.to(br,{v:0,duration:.85,ease:'power3.out'},52.0);
+  tl.set('#board',{visibility:'hidden'},52.3);tl.set(bb,{v:0},52.3);}
+flood('#fl5',51.9);
+/* --- 52–64 판별 레일 --- */
+cutTo(CR,52.0,1.2,420,540);
+gates.forEach((g,k)=>pop(g.p,52.4+k*.15));dests.forEach((d,k)=>pop(d,52.7+k*.12));
+shot(CR,52.8,2.0,1,960,540,'sine.inOut');
+cards.forEach((c,k)=>{const at=53.2+k*1.35;tl.set(c,{p:0,o:0},0);tl.set(c,{o:1},at);
+  tl.fromTo(c,{p:0},{p:1,duration:1.3,ease:'sine.inOut',immediateRender:false},at);tl.to(c,{o:0,duration:.2},at+1.3);
+  tl.fromTo(dests[k],{s:1.18},{s:1,duration:.45,ease:'power2.out',immediateRender:false},at+1.3);});
+{const br=blurOf($('#rail'),'xy');tl.to('#rail',{opacity:.2,duration:.6},59.0);tl.fromTo(br,{v:0},{v:8,duration:.6,immediateRender:false},59.0);}
+say('#s6',59.3,.1);
+unsay('#s6',63.2);
+tl.to({},{duration:.01},DUR-.01);
+
+/* ================= render: tl.time()의 순수 함수 ================= */
+const grid=$('#grid'),bl1=$('#bl1'),bl2=$('#bl2');
+const viewCam={street:CS,front:CF,board:CB,rail:CR};
+function render(){const t=tl.time();
+  for(const p of props){p.el.setAttribute('transform',`translate(${p.x} ${p.y}) rotate(${p.r}) scale(${p.s})`);p.el.setAttribute('opacity',p.o);}
+  for(const c of cams){const z=c.z*(1+.006*Math.sin(t*.9));c.g.setAttribute('transform',`translate(960 540) scale(${z}) translate(${-c.cx} ${-c.cy})`);}
+  for(const b of blurs){if(b.v>.25){b.g.setAttribute('stdDeviation',b.axis==='y'?`${b.v*.12} ${b.v}`:b.axis==='x'?`${b.v} ${b.v*.08}`:`${b.v} ${b.v}`);b.el.style.filter=`url(#${b.id})`;}else b.el.style.filter='none';}
+  let cz=1;for(const k in viewCam)if(document.getElementById(k).style.visibility!=='hidden'){cz=viewCam[k].z;break;}
+  grid.style.transform=`scale(${(1+.022*Math.sin(t*.8))*(1+(cz-1)*.18)}) translate(${Math.sin(t*.21)*18}px,${Math.cos(t*.17)*14}px)`;
+  bl1.style.transform=`translate(${Math.sin(t*.31)*90}px,${Math.cos(t*.27)*60}px)`;bl2.style.transform=`translate(${Math.cos(t*.23)*80}px,${Math.sin(t*.29)*70}px)`;
+  /* 골목 */
+  crateTxt.textContent=['List?','Tree?','Hash?'][Math.floor(t/.7)%3];
+  for(const w of walkers){const s=Math.sin(t*11+w.ph);w.legs[0].setAttribute('transform',`rotate(${s*24*w.m.v} 0 -74)`);w.legs[1].setAttribute('transform',`rotate(${-s*24*w.m.v} 0 -74)`);
+    w.bob.setAttribute('transform',`translate(0 ${-Math.abs(s)*7*w.m.v+Math.sin(t*2+w.ph)*2})`);}
+  for(const h of houses){let o=h.m.o;for(const w of walkers)o=Math.max(o,clamp(1-(Math.abs(w.p.x-(h.p.x+55))-150)/60));
+    h.door.setAttribute('transform',`translate(${o*64} 0)`);}
+  /* 정면 간판 */
+  signTxt.textContent=SIGN[signState.i];signTxt.setAttribute('fill',signState.i>=3&&signState.i<5?RED:INK);
+  /* 문법 트리: interpret() 신호가 가지를 타고 내려간다 */
+  for(const p of pulses){const A=NODES[p.a],B=NODES[p.b];p.c.setAttribute('cx',A[0]+(B[0]-A[0])*p.q.v);p.c.setAttribute('cy',A[1]+(B[1]-A[1])*p.q.v);p.c.setAttribute('opacity',p.q.o);}
+  /* 레일 */
+  for(const c of cards){const tr=trails[c.k];tr.e.setAttribute('stroke-dashoffset',tr.L*(1-c.p));
+    const pt=c.path.getPointAtLength(c.L*c.p);c.g.setAttribute('transform',`translate(${pt.x} ${pt.y-64})`);c.g.setAttribute('opacity',c.o);}
+  for(const [gi,g] of gates.entries()){let lit=false;for(const c of cards){if(c.o<=0||c.k<gi)continue;if(Math.abs(c.p*c.L-g.len)<70)lit=true;}g.c.setAttribute('fill',lit?LIT:'#fff');}
+}
+gsap.ticker.add(render);
+
+/* ---------- 컨트롤: 자동재생 + 루프, 플레이어 없음. ?debug=1 스크럽, ?clean=1 export ---------- */
+const q=new URLSearchParams(location.search);
+const start=()=>tl.play(0);
+tl.eventCallback('onComplete',start);
+window.OPENER={W,H,DURATION:DUR,tl,ready:false,seek(t){tl.pause(t,false);render();},play:start};
+window.OPENER.seekFrame=t=>{window.OPENER.seek(t);return Promise.resolve();};
+addEventListener('keydown',e=>{if(/^[rR]$/.test(e.key))start();if(e.code==='Space'){e.preventDefault();tl.paused()?tl.play():tl.pause();}});
+if(q.has('debug')){const dbg=$('#dbg');dbg.style.display='flex';const sc=$('#dScrub'),ck=$('#dClock');let drag=false;
+  gsap.ticker.add(()=>{if(!drag)sc.value=String(tl.time()/DUR*1000);ck.textContent=tl.time().toFixed(2)+'s';$('#dPlay').textContent=tl.paused()?'Play':'Pause';});
+  sc.addEventListener('pointerdown',()=>{drag=true;tl.pause();});addEventListener('pointerup',()=>drag=false);
+  sc.addEventListener('input',()=>{tl.pause();tl.time(sc.value/1000*DUR);});$('#dPlay').onclick=()=>tl.paused()?tl.play():tl.pause();}
+document.fonts.ready.then(()=>{render();window.OPENER.ready=true;if(!q.has('clean'))start();});
+</script>
+</body>
+</html>

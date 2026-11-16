@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #FAF9F5;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-nuwr"
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="89"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div data-hf-id="hf-49mr"
+        id="el-01-look-alike"
+        class="scene"
+        data-composition-id="01-look-alike"
+        data-composition-src="compositions/frames/01-look-alike.html"
+        data-start="0"
+        data-duration="7.5"
+        data-track-index="0"
+      ></div>
+
+      <div data-hf-id="hf-llwj"
+        id="el-02-two-signals"
+        class="scene"
+        data-composition-id="02-two-signals"
+        data-composition-src="compositions/frames/02-two-signals.html"
+        data-start="7"
+        data-duration="11.5"
+        data-track-index="1"
+      ></div>
+
+      <div data-hf-id="hf-e3hw"
+        id="el-03-strategy"
+        class="scene"
+        data-composition-id="03-strategy"
+        data-composition-src="compositions/frames/03-strategy.html"
+        data-start="18"
+        data-duration="15.5"
+        data-track-index="0"
+      ></div>
+
+      <div data-hf-id="hf-o5ax"
+        id="el-04-state"
+        class="scene"
+        data-composition-id="04-state"
+        data-composition-src="compositions/frames/04-state.html"
+        data-start="33"
+        data-duration="15.5"
+        data-track-index="1"
+      ></div>
+
+      <div data-hf-id="hf-q4ub"
+        id="el-05-template-method"
+        class="scene"
+        data-composition-id="05-template-method"
+        data-composition-src="compositions/frames/05-template-method.html"
+        data-start="48"
+        data-duration="14.5"
+        data-track-index="0"
+      ></div>
+
+      <div data-hf-id="hf-slst"
+        id="el-06-compare-table"
+        class="scene"
+        data-composition-id="06-compare-table"
+        data-composition-src="compositions/frames/06-compare-table.html"
+        data-start="62"
+        data-duration="14.5"
+        data-track-index="1"
+      ></div>
+
+      <div data-hf-id="hf-84rt"
+        id="el-07-decision-tree"
+        class="scene"
+        data-composition-id="07-decision-tree"
+        data-composition-src="compositions/frames/07-decision-tree.html"
+        data-start="76"
+        data-duration="13"
+        data-track-index="0"
+      ></div>
+
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+      // ── frame transitions (injected by transitions.mjs) ──
+      (function () { var tl = window.__timelines["main"];
+        tl.to("#el-01-look-alike", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 7);
+        tl.fromTo("#el-02-two-signals", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 7);
+        tl.addLabel("hf:transition:01-look-alike:02-two-signals:crossfade", 7);
+        tl.to("#el-02-two-signals", { x: -1920, duration: 0.5, ease: "power3.inOut" }, 18);
+        tl.fromTo("#el-03-strategy", { x: 1920, opacity: 1 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.inOut" }, 18);
+        tl.addLabel("hf:transition:02-two-signals:03-strategy:push-slide", 18);
+        tl.to("#el-03-strategy", { x: -1920, duration: 0.5, ease: "power3.inOut" }, 33);
+        tl.fromTo("#el-04-state", { x: 1920, opacity: 1 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.inOut" }, 33);
+        tl.addLabel("hf:transition:03-strategy:04-state:push-slide", 33);
+        tl.to("#el-04-state", { x: -1920, duration: 0.5, ease: "power3.inOut" }, 48);
+        tl.fromTo("#el-05-template-method", { x: 1920, opacity: 1 }, { x: 0, opacity: 1, duration: 0.5, ease: "power3.inOut" }, 48);
+        tl.addLabel("hf:transition:04-state:05-template-method:push-slide", 48);
+        tl.to("#el-05-template-method", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 62);
+        tl.fromTo("#el-06-compare-table", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 62);
+        tl.addLabel("hf:transition:05-template-method:06-compare-table:crossfade", 62);
+        tl.to("#el-06-compare-table", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, 76);
+        tl.fromTo("#el-07-decision-tree", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, 76);
+        tl.addLabel("hf:transition:06-compare-table:07-decision-tree:crossfade", 76);
+        tl.to({}, { duration: 89 }, 0); // full-span anchor — main.duration() == composition total (Studio master duration)
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,258 @@
+<template>
+  <style>
+    @font-face { font-family: "EB Garamond"; src: url("../../assets/fonts/EBGaramond-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-700.woff2") format("woff2"); font-weight: 700; }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #141413;
+      font-family: "Inter", "Noto Sans KR", sans-serif;
+    }
+    [data-composition-id="05-template-method"] .tm05-abs { position: absolute; }
+    [data-composition-id="05-template-method"] .tm05-bg { position: absolute; inset: 0; background: #faf9f5; }
+    [data-composition-id="05-template-method"] .tm05-mono { font-family: "JetBrains Mono", "Noto Sans KR", monospace; }
+
+    /* ---------- left analogy zone ---------- */
+    [data-composition-id="05-template-method"] .tm05-box {
+      background: #efe9de;
+      border: 1px solid rgba(20, 20, 19, 0.12);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+    }
+    [data-composition-id="05-template-method"] .tm05-label {
+      font-size: 26px; font-weight: 500; letter-spacing: 0.02em; color: #141413;
+    }
+    [data-composition-id="05-template-method"] .tm05-sublabel {
+      font-size: 20px; letter-spacing: 0.02em; color: rgba(20, 20, 19, 0.55);
+    }
+    [data-composition-id="05-template-method"] .tm05-cell {
+      width: 146px; height: 96px;
+      display: flex; align-items: center; justify-content: center;
+      background: #faf9f5;
+      border: 1px solid rgba(20, 20, 19, 0.2);
+      border-radius: 8px;
+      font-size: 28px; color: #141413; white-space: nowrap;
+    }
+    [data-composition-id="05-template-method"] .tm05-slot {
+      background: transparent;
+      border: 2px dashed rgba(20, 20, 19, 0.3);
+      flex-direction: column;
+    }
+    [data-composition-id="05-template-method"] .tm05-filled {
+      background: #ece3d4;
+      border: 1px solid rgba(20, 20, 19, 0.3);
+      box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+      font-weight: 700;
+    }
+    [data-composition-id="05-template-method"] .tm05-method {
+      width: 146px; text-align: center;
+      font-size: 20px; color: rgba(20, 20, 19, 0.55);
+    }
+    [data-composition-id="05-template-method"] .tm05-pill-final {
+      padding: 4px 16px;
+      border: 1px solid rgba(20, 20, 19, 0.2);
+      border-radius: 6px;
+      background: #faf9f5;
+      font-size: 24px; font-weight: 700; color: #141413; white-space: nowrap;
+    }
+    [data-composition-id="05-template-method"] .tm05-inherit-label {
+      font-size: 28px; font-weight: 700; color: #cc785c;
+    }
+
+    /* ---------- right rail ---------- */
+    [data-composition-id="05-template-method"] .tm05-kicker {
+      font-size: 28px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase;
+      color: #141413; white-space: nowrap;
+    }
+    [data-composition-id="05-template-method"] .tm05-spike { color: #cc785c; }
+    [data-composition-id="05-template-method"] .tm05-headline {
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-weight: 400; font-size: 66px; line-height: 1.06; letter-spacing: -0.018em;
+      color: #141413; white-space: nowrap;
+    }
+    [data-composition-id="05-template-method"] .tm05-card {
+      background: #181715;
+      border: 1px solid rgba(250, 249, 245, 0.14);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    [data-composition-id="05-template-method"] .tm05-bar {
+      height: 32px; background: #252320;
+      border-bottom: 1px solid rgba(250, 249, 245, 0.14);
+      display: flex; align-items: center; padding: 0 18px;
+      font-size: 18px; color: rgba(250, 249, 245, 0.55);
+    }
+    [data-composition-id="05-template-method"] .tm05-code { padding: 10px 24px 8px; }
+    [data-composition-id="05-template-method"] .tm05-line {
+      font-size: 32px; line-height: 36px; height: 36px;
+      white-space: pre; color: #faf9f5;
+    }
+    [data-composition-id="05-template-method"] .tm05-kw { color: #cc785c; }
+    [data-composition-id="05-template-method"] .tm05-ty { color: #e8a55a; }
+    [data-composition-id="05-template-method"] .tm05-cm { color: rgba(250, 249, 245, 0.55); }
+    [data-composition-id="05-template-method"] .tm05-tags { display: flex; gap: 12px; height: 56px; }
+    [data-composition-id="05-template-method"] .tm05-tag {
+      height: 56px; padding: 0 18px;
+      display: flex; align-items: center; gap: 8px;
+      border: 1px solid rgba(20, 20, 19, 0.12);
+      border-radius: 9999px;
+      background: #faf9f5;
+      font-size: 27px; color: #141413; white-space: nowrap;
+    }
+    [data-composition-id="05-template-method"] .tm05-tag b { font-weight: 400; color: rgba(20, 20, 19, 0.55); }
+  </style>
+
+  <div data-hf-id="hf-kb2x" id="root" data-composition-id="05-template-method" data-width="1920" data-height="1080" data-duration="14.5">
+    <div data-hf-id="hf-1sh8" id="tm05-bg" class="clip tm05-bg" data-start="0" data-duration="14.5" data-track-index="0"></div>
+
+    <!-- ===== left: parent class Ramen with the 4-step rail ===== -->
+    <div data-hf-id="hf-y11p" id="tm05-ramen" class="tm05-abs tm05-box" style="left: 177px; top: 238px; width: 760px; height: 432px">
+      <div data-hf-id="hf-zgg9" class="tm05-abs tm05-mono tm05-label" style="left: 24px; top: 18px">Ramen</div>
+      <div data-hf-id="hf-bzow" class="tm05-abs tm05-mono tm05-sublabel" style="left: 124px; top: 22px">abstract class</div>
+
+      <!-- final bracket over the rail (the order is locked) -->
+      <svg data-hf-id="hf-8odz" class="tm05-abs" style="left: 0; top: 0" width="760" height="432" viewBox="0 0 760 432">
+        <path data-hf-id="hf-a12u" id="tm05-bracket" d="M 28 186 L 28 168 L 732 168 L 732 186" fill="none"
+              stroke="rgba(20,20,19,0.35)" stroke-width="1.5" stroke-linejoin="round" />
+        <g data-hf-id="hf-wykm" id="tm05-arrows" fill="none" stroke="rgba(20,20,19,0.4)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path data-hf-id="hf-lons" class="tm05-arrow" d="M 180 238 L 208 238 M 201 232 L 208 238 L 201 244" />
+          <path data-hf-id="hf-7og2" class="tm05-arrow" d="M 366 238 L 394 238 M 387 232 L 394 238 L 387 244" />
+          <path data-hf-id="hf-igsl" class="tm05-arrow" d="M 552 238 L 580 238 M 573 232 L 580 238 L 573 244" />
+        </g>
+      </svg>
+      <div data-hf-id="hf-sjfv" id="tm05-final" class="tm05-abs tm05-mono tm05-pill-final" style="left: 278px; top: 148px">final cook()</div>
+
+      <div data-hf-id="hf-hct3" class="tm05-abs tm05-cell tm05-step" style="left: 28px; top: 190px">물 끓이기</div>
+      <div data-hf-id="hf-wbpf" class="tm05-abs tm05-cell tm05-step" style="left: 214px; top: 190px">면</div>
+      <div data-hf-id="hf-dl9p" class="tm05-abs tm05-cell tm05-slot tm05-step" style="left: 400px; top: 190px">
+        <span data-hf-id="hf-5678" id="tm05-soup-ph" style="font-size: 28px; color: rgba(20,20,19,0.45)">스프</span>
+        <span data-hf-id="hf-zzda" id="tm05-abstract" class="tm05-mono" style="font-size: 18px; color: rgba(20,20,19,0.55); margin-top: 4px">abstract</span>
+      </div>
+      <div data-hf-id="hf-w88y" class="tm05-abs tm05-cell tm05-step" style="left: 586px; top: 190px">먹기</div>
+
+      <div data-hf-id="hf-np1z" class="tm05-abs tm05-mono tm05-method" style="left: 28px; top: 300px">boilWater()</div>
+      <div data-hf-id="hf-xg1v" class="tm05-abs tm05-mono tm05-method" style="left: 214px; top: 300px">addNoodle()</div>
+      <div data-hf-id="hf-t338" class="tm05-abs tm05-mono tm05-method" style="left: 400px; top: 300px">addSoup()</div>
+      <div data-hf-id="hf-ij0q" class="tm05-abs tm05-mono tm05-method" style="left: 586px; top: 300px">serve()</div>
+    </div>
+
+    <!-- inheritance arrow (UML hollow head) — the frame's one coral -->
+    <svg data-hf-id="hf-wzcx" class="tm05-abs" style="left: 0; top: 0" width="1920" height="1080" viewBox="0 0 1920 1080">
+      <path data-hf-id="hf-94px" id="tm05-inherit-line" d="M 450 734 L 450 690" fill="none" stroke="#cc785c" stroke-width="3" stroke-linecap="round" />
+      <path data-hf-id="hf-q1py" id="tm05-inherit-head" d="M 450 671 L 438 690 L 462 690 Z" fill="#faf9f5" stroke="#cc785c" stroke-width="3" stroke-linejoin="round" />
+    </svg>
+    <div data-hf-id="hf-a9wq" id="tm05-inherit-label" class="tm05-abs tm05-inherit-label" style="left: 378px; top: 684px">상속</div>
+
+    <!-- child class ShinRamen -->
+    <div data-hf-id="hf-d6i5" id="tm05-shin" class="tm05-abs tm05-box" style="left: 357px; top: 734px; width: 400px; height: 130px">
+      <div data-hf-id="hf-dwxg" class="tm05-abs tm05-mono tm05-label" style="left: 24px; top: 26px">ShinRamen</div>
+      <div data-hf-id="hf-niek" class="tm05-abs tm05-mono tm05-sublabel" style="left: 24px; top: 70px">extends Ramen</div>
+    </div>
+    <!-- the one cell that changes: travels from ShinRamen into the empty slot -->
+    <div data-hf-id="hf-lioi" id="tm05-soup" class="tm05-abs tm05-cell tm05-filled" style="left: 577px; top: 751px">매운 스프</div>
+
+    <!-- ===== right rail ===== -->
+    <div data-hf-id="hf-t6ds" id="tm05-kicker" class="tm05-abs tm05-mono tm05-kicker" style="left: 1114px; top: 130px">
+      <span data-hf-id="hf-h9fz" class="tm05-spike">✱</span> TEMPLATE METHOD · 템플릿 메서드
+    </div>
+    <div data-hf-id="hf-eyhw" id="tm05-headline" class="tm05-abs tm05-headline" style="left: 1114px; top: 224px">순서는 부모, 일부는 자식</div>
+
+    <div data-hf-id="hf-iw51" id="tm05-card" class="tm05-abs tm05-card" style="left: 1114px; top: 389px; width: 729px; height: 302px">
+      <div data-hf-id="hf-iixb" class="tm05-bar tm05-mono">Ramen.java</div>
+      <div data-hf-id="hf-tqli" class="tm05-code tm05-mono">
+        <div data-hf-id="hf-v288" class="tm05-line"><span data-hf-id="hf-eg32" class="tm05-kw">abstract class</span> <span data-hf-id="hf-27au" class="tm05-ty">Ramen</span> {</div>
+        <div data-hf-id="hf-uo59" class="tm05-line">  <span data-hf-id="hf-jvuu" class="tm05-kw">final void</span> cook() {</div>
+        <div data-hf-id="hf-ok2s" class="tm05-line">    boilWater(); addNoodle();</div>
+        <div data-hf-id="hf-kn67" class="tm05-line">    addSoup(); serve(); }</div>
+        <div data-hf-id="hf-4s6b" class="tm05-line">  <span data-hf-id="hf-ohy1" class="tm05-cm">// 이 단계만 자식이</span></div>
+        <div data-hf-id="hf-5mmz" class="tm05-line">  <span data-hf-id="hf-jark" class="tm05-kw">abstract void</span> addSoup();</div>
+        <div data-hf-id="hf-soe2" class="tm05-line">}</div>
+      </div>
+    </div>
+
+    <div data-hf-id="hf-3vij" class="tm05-abs tm05-tags" style="left: 1114px; top: 761px">
+      <div data-hf-id="hf-ht6h" class="tm05-tag"><b data-hf-id="hf-cv9d">관계:</b>상속</div>
+      <div data-hf-id="hf-8nru" class="tm05-tag"><b data-hf-id="hf-8cyp">교체:</b>컴파일 시점 고정</div>
+      <div data-hf-id="hf-v969" class="tm05-tag"><b data-hf-id="hf-gvt5">누가:</b>바꾸지 않음</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      const R = document.querySelector('[data-composition-id="05-template-method"]');
+      const $ = (s) => R.querySelector(s);
+      const $$ = (s) => Array.from(R.querySelectorAll(s));
+      const tl = gsap.timeline({ paused: true });
+
+      // dynamic-content-sequencing: start times pre-computed once from content length
+      function seq(texts, t0, base, perChar) {
+        let t = t0;
+        return texts.map((s) => { const st = t; t += base + s.length * perChar; return st; });
+      }
+
+      // svg-path-draw setup: measured lengths
+      const drawPaths = [$("#tm05-bracket"), $("#tm05-inherit-line"), $("#tm05-inherit-head")];
+      drawPaths.forEach((p) => {
+        const len = p.getTotalLength() * 1.05;
+        p.style.strokeDasharray = `${len}`;
+        p.style.strokeDashoffset = `${len}`;
+      });
+      $("#tm05-inherit-head").style.fillOpacity = 0;
+
+      // ---- Scene 1 (0–3s): kicker + headline, Ramen box, cells left→right ----
+      const [kT, hT] = seq([$("#tm05-kicker").textContent.trim(), $("#tm05-headline").textContent], 0.15, 0.35, 0.025);
+      tl.fromTo("#tm05-ramen", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 0.05);
+      tl.fromTo("#tm05-kicker", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, kT);
+      tl.fromTo("#tm05-headline", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, hT);
+      tl.fromTo("#tm05-card", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, hT + 0.6);
+
+      const steps = $$(".tm05-step");
+      const methods = $$(".tm05-method");
+      const arrows = $$(".tm05-arrow");
+      const cellT = seq(steps.map((c) => c.textContent.trim()), 0.7, 0.25, 0.06);
+      steps.forEach((c, i) => {
+        tl.fromTo(c, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, cellT[i]);
+        tl.fromTo(methods[i], { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power1.out" }, cellT[i] + 0.1);
+        if (i > 0) tl.fromTo(arrows[i - 1], { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out" }, cellT[i] - 0.1);
+      });
+
+      // ---- Scene 2 (3–6.5s): final lock, child box, inheritance arrow draws up ----
+      tl.to("#tm05-bracket", { strokeDashoffset: 0, duration: 0.6, ease: "power2.out" }, 2.7);
+      tl.fromTo("#tm05-final", { opacity: 0, y: -14 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 3.0);
+      tl.fromTo(["#tm05-shin", "#tm05-soup"], { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 3.9);
+      tl.to("#tm05-inherit-line", { strokeDashoffset: 0, duration: 0.5, ease: "power2.out" }, 4.7);
+      tl.to("#tm05-inherit-head", { strokeDashoffset: 0, duration: 0.35, ease: "power2.out" }, 5.05);
+      tl.to("#tm05-inherit-head", { fillOpacity: 1, duration: 0.2, ease: "power1.out" }, 5.4);
+      tl.fromTo("#tm05-inherit-label", { opacity: 0, x: 10 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" }, 5.45);
+
+      // ---- Scene 3 (6.5–10s): 매운 스프 travels into the slot; code reveals line by line ----
+      tl.to("#tm05-soup", { y: -323, duration: 0.9, ease: "power2.inOut" }, 6.6);
+      tl.to(["#tm05-abstract", "#tm05-soup-ph"], { opacity: 0, duration: 0.2, ease: "power1.out" }, 7.3);
+      const lineT = [7.0, 7.35, 7.6, 7.85, 8.5, 8.75, 9.1];
+      $$(".tm05-line").forEach((l, i) => {
+        tl.fromTo(l, { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.35, ease: "power2.out" }, lineT[i]);
+      });
+
+      // ---- Scene 4 (10–14s): signal tags fill, then hold still ----
+      $$(".tm05-tag").forEach((t, i) => {
+        tl.fromTo(t, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }, 10.0 + i * 0.5);
+      });
+
+      tl.set({}, {}, 14);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["05-template-method"] = tl;
+    })();
+  </script>
+</template>

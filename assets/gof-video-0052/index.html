@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="ko">
+<!-- Made with the Bang Motion skill by Bang Tutorial (https://youtube.com/bangtutorial) - MIT -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>호텔 하나, 질문 넷</title>
+<!--
+  GoF 4/6 — Composite · Facade · Bridge · Flyweight 판별 explainer (68초, 16:9, 무음 + VO 대본 별도).
+  주인공: 호텔 한 채. 같은 호텔이 네 가지 질문에 답한다.
+    Composite : 호텔 → 층 → 객실 트리, 모두 같은 count()로 합계가 올라온다
+    Facade    : 로비 컨시어지 — 벨 한 번에 식당·택시·공연이 순서대로 (직접 가는 길도 열려 있다)
+    Bridge    : 객실의 리모컨 ↔ TV를 잇는 다리(device 필드) + 클래스 수 계기판 (곱하기 → 더하기)
+    Flyweight : 호텔 옥상에서 내려다본 숲 — 나무 1만 그루가 모델 하나를 공유
+    리캡      : 판별 레일 ① 같은 타입 목록? ② 새 창구? ③ 양쪽 계층 확장? ④ 공유 캐시?
+  더블클릭으로 열기. 자동재생 + 루프, R 다시, Space 일시정지. ?debug=1 스크럽, ?clean=1 export용.
+  모든 시각 요소는 tl.time()의 순수 함수.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1F2A37;--base:#EEF7F5;--green:#4C9A2A;--amber:#E09A12;--violet:#8B4FD8;--sky:#1E8FD8}
+html,body{margin:0;height:100%;background:#0d1417;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;background:var(--base);color:var(--ink);font-family:'IBM Plex Sans KR',sans-serif}
+#bg{position:absolute;inset:0;overflow:hidden}
+.flood{position:absolute;width:4800px;height:4800px;border-radius:50%;transform:scale(0)}
+#grid{position:absolute;inset:-240px;background-image:linear-gradient(rgba(31,42,55,.075) 2px,transparent 2px),linear-gradient(90deg,rgba(31,42,55,.075) 2px,transparent 2px);background-size:80px 80px;background-position:center}
+.blob{position:absolute;border-radius:50%;width:1300px;height:1300px;background:radial-gradient(circle,rgba(255,255,255,.8),rgba(255,255,255,0) 65%)}
+.view{position:absolute;inset:0}
+.view svg{position:absolute;inset:0;width:1920px;height:1080px;overflow:visible}
+.plex{font-family:'IBM Plex Sans KR',sans-serif;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace;font-weight:700}
+#ui{position:absolute;inset:0;pointer-events:none}
+.say{position:absolute;font-family:'Do Hyeon',sans-serif;line-height:1.12;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
+.say .wd{display:inline-block;opacity:0;transform-origin:50% 100%}
+.say.halo{text-shadow:0 0 16px #E3EED6,0 0 34px #E3EED6,0 0 60px #E3EED6}
+.hl{position:relative}
+.hl i{position:absolute;left:-.14em;right:-.14em;top:.0em;bottom:-.02em;border:.05em solid var(--c,var(--ink));border-radius:.14em;transform:scaleX(0);transform-origin:0 50%}
+.chip{position:absolute;right:64px;top:54px;padding:8px 30px 12px;border-radius:44px;color:#fff;font:600 42px 'IBM Plex Sans KR',sans-serif;opacity:0;border:5px solid var(--ink);box-shadow:8px 8px 0 var(--ink)}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(95% 95% at 50% 50%,transparent 62%,rgba(31,42,55,.16))}
+#dbg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:none;gap:12px;align-items:center;padding:10px 16px;border-radius:14px;background:rgba(14,16,22,.9);color:#cfd5e3;font:13px system-ui;z-index:50}
+#dbg input{width:420px}#dbg span{font-variant-numeric:tabular-nums;min-width:6ch}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs id="defs"></defs></svg>
+<div id="stage">
+  <div id="bg">
+    <div class="flood" id="fl1" style="left:-1440px;top:-1860px;background:#E4F1DA"></div>
+    <div class="flood" id="fl2" style="left:-1440px;top:-1860px;background:#FBEFD4"></div>
+    <div class="flood" id="fl3" style="left:-1440px;top:-1860px;background:#EEE5FB"></div>
+    <div class="flood" id="fl4" style="left:-1440px;top:-1860px;background:#DDEEFA"></div>
+    <div class="flood" id="fl5" style="left:-1440px;top:-1860px;background:#EEF7F5"></div>
+    <div class="blob" id="bl1" style="left:-300px;top:-420px"></div>
+    <div class="blob" id="bl2" style="left:1100px;top:380px"></div>
+    <div id="grid"></div>
+  </div>
+  <div id="ext"    class="view"><svg id="extSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="tree"   class="view" style="visibility:hidden"><svg id="treeSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="lobby"  class="view" style="visibility:hidden"><svg id="lobbySvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="room"   class="view" style="visibility:hidden"><svg id="roomSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="forest" class="view" style="visibility:hidden"><svg id="forestSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="rail"   class="view" style="visibility:hidden"><svg id="railSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="vig"></div>
+  <div id="ui">
+    <div class="say" id="s1" style="left:110px;top:70px;font-size:100px"><span class="wd">구조</span> <span class="wd">패턴</span> <span class="wd">네</span> <span class="wd">개</span></div>
+    <div class="say" id="s2" style="left:0;right:0;text-align:center;top:905px;font-size:108px"><span class="wd hl"><i></i>질문이</span> <span class="wd">다</span> <span class="wd">다르다</span></div>
+    <div class="say" id="s3" style="left:0;right:0;text-align:center;top:872px;font-size:100px;--c:var(--green)"><span class="wd">부분도</span> <span class="wd">전체도</span> <span class="wd hl"><i></i>똑같이</span></div>
+    <div class="say" id="s4" style="left:0;right:0;text-align:center;top:866px;font-size:104px;--c:var(--amber)"><span class="wd hl"><i></i>창구</span> <span class="wd">하나로</span> <span class="wd">한</span> <span class="wd">번에</span></div>
+    <div class="say" id="s5" style="left:0;right:0;text-align:center;top:850px;font-size:104px;--c:var(--violet)"><span class="wd">곱하기를</span> <span class="wd hl"><i></i>더하기로</span></div>
+    <div class="say halo" id="s6" style="left:0;right:0;text-align:center;top:866px;font-size:104px;--c:var(--sky)"><span class="wd">같은</span> <span class="wd">건</span> <span class="wd">하나로</span> <span class="wd hl"><i></i>공유</span></div>
+    <div class="say" id="s7" style="left:0;right:0;text-align:center;top:330px;font-size:100px"><span class="wd">트리면</span> <span class="wd" style="color:var(--green)">Composite,</span> <span class="wd">창구면</span> <span class="wd" style="color:#C07F05">Facade</span><br><span class="wd">두</span> <span class="wd">계층이면</span> <span class="wd" style="color:var(--violet)">Bridge,</span> <span class="wd">공유면</span> <span class="wd" style="color:var(--sky)">Flyweight</span></div>
+    <div class="chip" id="chC" style="background:var(--green)">Composite</div>
+    <div class="chip" id="chF" style="background:var(--amber);color:var(--ink)">Facade</div>
+    <div class="chip" id="chB" style="background:var(--violet)">Bridge</div>
+    <div class="chip" id="chW" style="background:var(--sky)">Flyweight</div>
+  </div>
+  <div id="dbg"><button id="dPlay">Pause</button><input id="dScrub" type="range" min="0" max="1000" value="0"><span id="dClock">0.00s</span></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const W=1920,H=1080,DUR=68;
+const INK='#1F2A37',GREEN='#4C9A2A',AMBER='#E09A12',VIOLET='#8B4FD8',SKY='#1E8FD8',LIT='#FFD34E',DARKWIN='#3A4A5E';
+const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg',defs=$('#defs');
+function S(tag,a={},p){const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+const T=(txt,x,y,a,p)=>{const e=S('text',{x,y,...a},p);e.textContent=txt;return e;};
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const hash=i=>{const s=Math.sin(i*127.1+311.7)*43758.5453;return s-Math.floor(s);};
+const backOut=x=>{const c=1.70158,u=x-1;return 1+(c+1)*u*u*u+c*u*u;};
+function fit(){const s=Math.min(innerWidth/W,innerHeight/H);$('#stage').style.transform=`translate(-50%,-50%) scale(${s})`;}
+addEventListener('resize',fit);fit();
+let uid=0;
+const tl=gsap.timeline({paused:true});
+
+/* ---------- prop: SVG 그룹 변환을 수동으로 쓴다 ---------- */
+const props=[];
+function prop(el,i={}){const p={el,x:0,y:0,s:1,r:0,o:1,...i};props.push(p);return p;}
+/* ---------- 카메라 ---------- */
+const cams=[];
+function cam(g,z,cx,cy){const c={g,z,cx,cy,z0:z,cx0:cx,cy0:cy};cams.push(c);return c;}
+const shot=(c,at,dur,z,cx,cy,ease='power2.inOut')=>tl.to(c,{z,cx,cy,duration:dur,ease},at);
+const cutTo=(c,at,z,cx,cy)=>tl.set(c,{z,cx,cy},at);
+/* ---------- 방향성 모션 블러 ---------- */
+const blurs=[],blurMap=new Map();
+function blurOf(el,axis='y'){if(blurMap.has(el))return blurMap.get(el);const id='mb'+(uid++);
+  const f=S('filter',{id,x:'-40%',y:'-80%',width:'180%',height:'260%'},defs),g=S('feGaussianBlur',{stdDeviation:'0 0'},f);
+  const b={el,g,id,axis,v:0};blurs.push(b);blurMap.set(el,b);return b;}
+
+/* ================= 공용 부품 ================= */
+function drawHand(p,dir=1,point=false,label='Client'){
+  const g=S('g',{},p),m=S('g',{transform:`scale(${dir} 1)${point?' translate(-62 0)':''}`},g);
+  S('rect',{x:-1700,y:-40,width:1560,height:80,fill:'#55657A',stroke:INK,'stroke-width':7},m);
+  S('rect',{x:-160,y:-52,width:44,height:104,rx:10,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  S('rect',{x:-120,y:-56,width:120,height:112,rx:46,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  if(point)S('rect',{x:-16,y:-15,width:78,height:30,rx:15,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  else S('path',{d:'M-66 -56 C-46 -90 -8 -84 -6 -54',fill:'#fff',stroke:INK,'stroke-width':7},m);
+  if(label)T(label,dir*(-620-(point?62:0)),13,{class:'mono','font-size':36,'text-anchor':'middle',fill:'#fff'},g);
+  return g;}
+function sparks(p,n=8,r0=40,r1=80){const g=S('g',{},p);for(let k=0;k<n;k++){const a=Math.PI*2*k/n;S('line',{x1:Math.cos(a)*r0,y1:Math.sin(a)*r0,x2:Math.cos(a)*r1,y2:Math.sin(a)*r1,stroke:INK,'stroke-width':7,'stroke-linecap':'round'},g);}return g;}
+/* 알약 라벨: 원점 = 중심 */
+function pill(p,txt,{fill='#fff',color=INK,stroke=INK,font='plex',size=34,w,x=0,y=0,o=0,s=0}={}){const g=S('g',{},p);
+  const ww=w||txt.length*size*(font==='mono'?.62:.9)+56;
+  S('rect',{x:-ww/2+7,y:-34+7,width:ww,height:68,rx:16,fill:INK},g);S('rect',{x:-ww/2,y:-34,width:ww,height:68,rx:16,fill,stroke,'stroke-width':5},g);
+  T(txt,0,size*.36,{class:font,'font-size':size,'text-anchor':'middle',fill:color},g);return prop(g,{x,y,s,o});}
+function treeTop(p,r=34){const g=S('g',{},p);S('circle',{cx:6,cy:7,r,fill:INK,opacity:.9},g);S('circle',{r,fill:'#3F7F3A',stroke:INK,'stroke-width':5},g);S('circle',{cx:-8,cy:-8,r:r*.5,fill:'#5FA052'},g);return g;}
+
+/* ---------- 타임라인 헬퍼 ---------- */
+const show=(el,at,d=.25)=>tl.to(el,{opacity:1,duration:d},at), hide=(el,at,d=.25)=>tl.to(el,{opacity:0,duration:d},at);
+const pop=(p,at,{d=.6,from=0,ease='back.out(1.8)'}={})=>tl.fromTo(p,{s:from,o:0},{s:1,o:1,duration:d,ease,immediateRender:false},at);
+const bump=(p,at)=>tl.to(p,{s:1.12,duration:.12,yoyo:true,repeat:1,ease:'sine.inOut'},at);
+function say(id,at,st=.09){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.fromTo(w,{opacity:0,yPercent:70,scaleY:1.35},{opacity:1,yPercent:0,scaleY:1,duration:.8,ease:'power4.out',stagger:st,immediateRender:false},at);
+  tl.fromTo(b,{v:20},{v:0,duration:.8+st*(w.length-1),ease:'power3.out',immediateRender:false},at);
+  el.querySelectorAll('.hl i').forEach(i=>tl.fromTo(i,{scaleX:0},{scaleX:1,duration:.5,ease:'power3.out',immediateRender:false},at+.3+st*w.length));}
+function unsay(id,at){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.to(w,{opacity:0,yPercent:-60,duration:.4,ease:'power2.in',stagger:.025},at);
+  tl.fromTo(b,{v:0},{v:16,duration:.45,ease:'power2.in',immediateRender:false},at);tl.set(b,{v:0},at+.55);}
+function chipIn(id,at){const el=$(id),b=blurOf(el,'x');
+  tl.fromTo(el,{opacity:0,x:90},{opacity:1,x:0,duration:.6,ease:'power4.out',immediateRender:false},at);
+  tl.fromTo(b,{v:24},{v:0,duration:.6,ease:'power3.out',immediateRender:false},at);}
+const chipOut=(id,at)=>tl.to($(id),{opacity:0,x:70,duration:.35,ease:'power2.in'},at);
+const flood=(id,at)=>tl.fromTo(id,{scale:0},{scale:1,duration:1.1,ease:'power2.inOut',immediateRender:false},at);
+function whip(t,from,to,dir=1){const bf=blurOf($(from)),bt=blurOf($(to));
+  tl.to(from,{y:-150*dir,duration:.28,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:24,duration:.28,ease:'power2.in',immediateRender:false},t);
+  tl.set(from,{visibility:'hidden'},t+.28);tl.set(to,{visibility:'visible',y:150*dir},t+.28);tl.set(bt,{v:24},t+.28);
+  tl.to(to,{y:0,duration:.42,ease:'power3.out'},t+.28);tl.to(bt,{v:0,duration:.42,ease:'power3.out'},t+.28);
+  tl.set(from,{y:0},t+.3);tl.set(bf,{v:0},t+.3);}
+function rack(t,from,to){const bf=blurOf($(from),'xy'),bt=blurOf($(to),'xy');
+  tl.to(from,{scale:.86,opacity:0,duration:.7,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:16,duration:.7,ease:'power2.in',immediateRender:false},t);
+  tl.set(to,{visibility:'visible',scale:1.18,opacity:0},t+.4);tl.set(bt,{v:16},t+.4);
+  tl.to(to,{scale:1,opacity:1,duration:.85,ease:'power3.out'},t+.4);tl.to(bt,{v:0,duration:.85,ease:'power3.out'},t+.4);
+  tl.set(from,{visibility:'hidden'},t+.7);tl.set(bf,{v:0},t+.7);}
+/* 그어지는 선: 원점→끝 방향으로 dashoffset */
+function drawLine(d,p,a){const e=S('path',{d,fill:'none','stroke-linecap':'round',...a},p);const L=e.getTotalLength();e.setAttribute('stroke-dasharray',L);e.setAttribute('stroke-dashoffset',L);return {e,L};}
+const draw=(ln,at,dur=.5,ease='power2.inOut')=>tl.to(ln.e,{attr:{'stroke-dashoffset':0},duration:dur,ease},at);
+
+/* ================= VIEW 1: 호텔 외관 ================= */
+const extCam=S('g',{},$('#extSvg')),CE=cam(extCam,1.55,960,300);
+S('rect',{x:-900,y:860,width:3720,height:700,fill:'#DCEACF'},extCam);S('rect',{x:-900,y:856,width:3720,height:8,fill:INK,opacity:.18},extCam);
+S('path',{d:'M900 860 L1020 860 L1120 1100 L800 1100 Z',fill:'#EFE6D2'},extCam);
+for(const [x,r] of [[150,70],[300,54],[1640,62],[1790,74]]){S('rect',{x:x-10,y:860-r-60,width:20,height:r+60,fill:'#7A5236',stroke:INK,'stroke-width':4},extCam);
+  S('circle',{cx:x+8,cy:860-r-70+8,r,fill:INK},extCam);S('circle',{cx:x,cy:860-r-70,r,fill:'#5FA052',stroke:INK,'stroke-width':6},extCam);}
+S('rect',{x:634,y:314,width:680,height:560,rx:20,fill:INK},extCam);
+S('rect',{x:620,y:300,width:680,height:560,rx:20,fill:'#fff',stroke:INK,'stroke-width':8},extCam);
+S('rect',{x:880,y:178,width:160,height:92,rx:12,fill:'#fff',stroke:INK,'stroke-width':7},extCam);
+S('rect',{x:922,y:198,width:76,height:52,rx:8,fill:LIT,stroke:INK,'stroke-width':5},extCam);
+S('rect',{x:600,y:256,width:720,height:62,rx:16,fill:INK},extCam);
+T('HOTEL',960,302,{class:'plex','font-size':44,'text-anchor':'middle',fill:'#fff','letter-spacing':'.3em'},extCam);
+S('line',{x1:624,y1:470,x2:1296,y2:470,stroke:INK,'stroke-width':6},extCam);S('line',{x1:624,y1:640,x2:1296,y2:640,stroke:INK,'stroke-width':6},extCam);
+const FLOORS=[[350,[1,0,1,1]],[510,[1,0,0,1]]],WX=[670,820,970,1120];
+for(const [y,lit] of FLOORS)lit.forEach((l,i)=>S('rect',{x:WX[i],y,width:110,height:100,rx:10,fill:l?LIT:DARKWIN,stroke:INK,'stroke-width':6},extCam));
+for(const x of [680,1120])S('rect',{x,y:690,width:120,height:90,rx:10,fill:'#DDEFF0',stroke:INK,'stroke-width':6},extCam);
+const door=S('rect',{x:890,y:690,width:140,height:170,rx:12,fill:AMBER,stroke:INK,'stroke-width':7},extCam);
+S('circle',{cx:1005,cy:780,r:7,fill:INK},extCam);
+const extFront=S('g',{},extCam);
+const QC=[['트리로 묶기',GREEN,'#fff',330,420],['창구 하나',AMBER,INK,330,640],['두 갈래로',VIOLET,'#fff',1590,420],['공유로 아끼기',SKY,'#fff',1590,640]]
+  .map(([t,f,c,x,y])=>({p:pill(extFront,t,{fill:f,color:c,size:42,w:380,x,y}),x}));
+const badgeExt=pill(extFront,'count() = 1',{font:'mono',fill:'#fff',color:GREEN,size:34,x:455,y:400});
+
+/* ================= VIEW 2: 트리 — 호텔 → 층 → 객실 ================= */
+const treeCam=S('g',{},$('#treeSvg')),CTR=cam(treeCam,1.3,960,450);
+const tEdges=S('g',{},treeCam),tNodes=S('g',{},treeCam);
+const ROOT=[960,190],F3=[560,450],F2=[1260,450],PH=[1660,450];
+const ROOMS=[[380,1],[500,0],[620,1],[740,1]].map(([x,v])=>({x,v,par:F3})).concat([[1080,1],[1200,0],[1320,0],[1440,1]].map(([x,v])=>({x,v,par:F2})));
+function edge(a,b){S('path',{d:`M${a[0]} ${a[1]} L${b[0]} ${b[1]}`,stroke:INK,'stroke-width':6},tEdges);
+  return drawLine(`M${a[0]} ${a[1]} L${b[0]} ${b[1]}`,tEdges,{stroke:GREEN,'stroke-width':12});}   // 자식 → 부모 방향으로 빛남
+const eRooms=ROOMS.map(r=>edge([r.x,760],r.par)),eF3=edge(F3,ROOT),eF2=edge(F2,ROOT),ePH=edge(PH,ROOT);
+const edgeBase=[...tEdges.querySelectorAll('path[stroke="'+INK+'"]')];edgeBase.forEach(e=>e.setAttribute('style','opacity:0'));
+function nodeBox(p,[x,y],w,h,fill,txt,col){const g=S('g',{},p);S('rect',{x:-w/2+8,y:-h/2+8,width:w,height:h,rx:18,fill:INK},g);
+  S('rect',{x:-w/2,y:-h/2,width:w,height:h,rx:18,fill,stroke:INK,'stroke-width':7},g);T(txt,0,13,{class:'plex','font-size':40,'text-anchor':'middle',fill:col},g);return prop(g,{x,y,s:0,o:0});}
+const nRoot=nodeBox(tNodes,ROOT,300,100,GREEN,'Hotel','#fff'),nF3=nodeBox(tNodes,F3,220,90,'#CFE6BF','3층',INK),nF2=nodeBox(tNodes,F2,220,90,'#CFE6BF','2층',INK);
+function roomTile(p,x,y,v,roof=false){const g=S('g',{},p);S('rect',{x:-50+7,y:-50+7,width:100,height:100,rx:12,fill:INK},g);
+  if(roof)S('path',{d:'M-62 -50 L0 -96 L62 -50 Z',fill:'#fff',stroke:INK,'stroke-width':6,'stroke-linejoin':'round'},g);
+  S('rect',{x:-50,y:-50,width:100,height:100,rx:12,fill:v?LIT:DARKWIN,stroke:INK,'stroke-width':6},g);
+  T(String(v),0,16,{class:'plex','font-size':46,'text-anchor':'middle',fill:v?INK:'#fff'},g);return prop(g,{x,y,s:0,o:0});}
+const nRooms=ROOMS.map(r=>roomTile(tNodes,r.x,760,r.v));
+const nPH=roomTile(tNodes,PH[0],PH[1],1,true);
+const phLab=T('펜트하우스',PH[0],PH[1]+96,{class:'plex','font-size':34,'text-anchor':'middle',fill:INK,style:'opacity:0'},tNodes);
+function badge(p,x,y,n){const g=S('g',{},p);S('circle',{r:34,fill:'#fff',stroke:GREEN,'stroke-width':7},g);T(String(n),0,14,{class:'plex','font-size':40,'text-anchor':'middle',fill:GREEN},g);return prop(g,{x,y,s:0,o:0});}
+const bF3=badge(tNodes,F3[0]+150,F3[1],3),bF2=badge(tNodes,F2[0]+150,F2[1],2),bRoot=badge(tNodes,ROOT[0]+200,ROOT[1],6);
+const chipTree=pill(tNodes,'List<Node> children',{font:'mono',color:GREEN,size:32,x:420,y:190});
+
+/* ================= VIEW 3: 로비 — 컨시어지 창구 ================= */
+const lobbyCam=S('g',{},$('#lobbySvg')),CL=cam(lobbyCam,1.3,960,600);
+S('rect',{x:-900,y:620,width:3720,height:900,fill:'#EADDBF'},lobbyCam);
+for(let i=-6;i<20;i++)S('line',{x1:i*160,y1:620,x2:i*160-(i-6)*60,y2:1100,stroke:INK,'stroke-width':3,opacity:.12},lobbyCam);
+S('rect',{x:-900,y:612,width:3720,height:10,fill:INK,opacity:.2},lobbyCam);
+const DOORS=[['식당',420],['택시',960],['공연',1420]].map(([name,x],k)=>{const g=S('g',{},lobbyCam);
+  S('rect',{x:-140+9,y:-170+9,width:280,height:340,rx:18,fill:INK},g);
+  const panel=S('rect',{x:-140,y:-170,width:280,height:340,rx:18,fill:'#F7EEDB',stroke:INK,'stroke-width':7},g);
+  T(name,0,-196,{class:'plex','font-size':40,'text-anchor':'middle',fill:INK},g);
+  if(k===0){S('line',{x1:-26,y1:-60,x2:-26,y2:60,stroke:INK,'stroke-width':10,'stroke-linecap':'round'},g);S('path',{d:'M-40 -60 v40 a14 14 0 0 0 28 0 v-40',fill:'none',stroke:INK,'stroke-width':7},g);
+    S('path',{d:'M30 60 V-60 C56 -50 56 0 30 4',fill:'none',stroke:INK,'stroke-width':10,'stroke-linecap':'round','stroke-linejoin':'round'},g);}
+  if(k===1){S('rect',{x:-70,y:-26,width:140,height:56,rx:16,fill:LIT,stroke:INK,'stroke-width':6},g);S('path',{d:'M-44 -26 L-26 -58 H26 L44 -26',fill:LIT,stroke:INK,'stroke-width':6,'stroke-linejoin':'round'},g);
+    for(const x of [-40,40])S('circle',{cx:x,cy:34,r:16,fill:INK},g);}
+  if(k===2){S('path',{d:'M-70 -40 H70 V-12 a14 14 0 0 0 0 28 V40 H-70 V16 a14 14 0 0 0 0 -28 Z',fill:'#F6A6C0',stroke:INK,'stroke-width':6,'stroke-linejoin':'round'},g);
+    S('line',{x1:-20,y1:-40,x2:-20,y2:40,stroke:INK,'stroke-width':4,'stroke-dasharray':'8 8'},g);}
+  const nb=S('g',{},g);S('circle',{r:28,fill:AMBER,stroke:INK,'stroke-width':6},nb);T(String(k+1),0,12,{class:'plex','font-size':34,'text-anchor':'middle',fill:INK},nb);
+  return {p:prop(g,{x,y:300}),panel,nb:prop(nb,{x:-112,y:-142,s:0,o:0}),x};});
+const calls=DOORS.map(d=>drawLine(`M960 520 Q ${(d.x+960)/2} ${d.x===960?500:420} ${d.x} 486`,lobbyCam,{stroke:AMBER,'stroke-width':9}));
+const conc=S('g',{},lobbyCam);
+S('rect',{x:880,y:590,width:160,height:120,rx:40,fill:'#B9770A',stroke:INK,'stroke-width':7},conc);
+S('circle',{cx:960,cy:556,r:46,fill:'#F2C9A0',stroke:INK,'stroke-width':7},conc);
+S('circle',{cx:944,cy:552,r:6,fill:INK},conc);S('circle',{cx:976,cy:552,r:6,fill:INK},conc);S('path',{d:'M946 574 Q960 584 974 574',fill:'none',stroke:INK,'stroke-width':5,'stroke-linecap':'round'},conc);
+S('path',{d:'M916 524 Q960 488 1004 524 Z',fill:INK},conc);
+const concP=prop(conc);
+S('rect',{x:654,y:674,width:640,height:160,rx:22,fill:INK},lobbyCam);
+S('rect',{x:640,y:660,width:640,height:160,rx:22,fill:AMBER,stroke:INK,'stroke-width':8},lobbyCam);
+T('Concierge',960,760,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},lobbyCam);
+const bellG=S('g',{},lobbyCam);S('path',{d:'M-34 0 A34 34 0 0 1 34 0 Z',fill:LIT,stroke:INK,'stroke-width':6},bellG);S('rect',{x:-44,y:0,width:88,height:12,rx:6,fill:INK},bellG);S('circle',{cx:0,cy:-40,r:7,fill:INK},bellG);
+const bell=prop(bellG,{x:1180,y:648});
+const bellSpark=prop(sparks(lobbyCam,8,50,82),{x:1180,y:630,o:0});
+const chipLobby=pill(lobbyCam,'concierge.book()',{font:'mono',color:'#B9770A',size:32,x:1560,y:600});
+const pillDirect=pill(lobbyCam,'직접 호출도 OK',{fill:'#fff',color:INK,size:34,x:420,y:560});
+const hBell=prop(drawHand(lobbyCam,-1,true,'손님'),{x:2200,y:630});
+const hDir=prop(drawHand(lobbyCam,1,false,'손님'),{x:-1400,y:300});
+
+/* ================= VIEW 4: 객실 — 리모컨 ↔ TV 다리 + 클래스 수 계기판 ================= */
+const roomCam=S('g',{},$('#roomSvg')),CR=cam(roomCam,1.15,960,330);
+const bridgeLn=drawLine('M450 330 C 700 170 1000 170 1240 320',roomCam,{stroke:VIOLET,'stroke-width':18});
+const planks=S('path',{d:'M450 330 C 700 170 1000 170 1240 320',fill:'none',stroke:INK,'stroke-width':30,'stroke-dasharray':'6 34',style:'opacity:0'},roomCam);
+const bridgeLab=pill(roomCam,'다리 = device 필드',{fill:'#fff',color:VIOLET,size:34,x:845,y:150});
+function remote(p,label,adv){const g=S('g',{},p);S('rect',{x:-60+9,y:-130+9,width:120,height:260,rx:30,fill:INK},g);
+  S('rect',{x:-60,y:-130,width:120,height:260,rx:30,fill:adv?'#B48CF0':'#E3D6FA',stroke:INK,'stroke-width':7},g);
+  S('circle',{cy:-84,r:20,fill:'#E5533D',stroke:INK,'stroke-width':5},g);
+  for(let i=0;i<3;i++)S('rect',{x:-32,y:-40+i*34,width:64,height:20,rx:10,fill:'#fff',stroke:INK,'stroke-width':4},g);
+  if(adv){S('rect',{x:-32,y:64,width:64,height:36,rx:12,fill:LIT,stroke:INK,'stroke-width':4},g);}
+  T(label,0,184,{class:'plex','font-size':38,'text-anchor':'middle',fill:INK},g);return g;}
+function tv(p,label,col){const g=S('g',{},p);S('rect',{x:-210+10,y:-130+10,width:420,height:260,rx:22,fill:INK},g);
+  S('rect',{x:-210,y:-130,width:420,height:260,rx:22,fill:'#fff',stroke:INK,'stroke-width':8},g);
+  S('rect',{x:-180,y:-104,width:360,height:200,rx:12,fill:col},g);S('path',{d:'M-150 60 L-60 -40 L20 40 L80 -10 L150 60 Z',fill:'#fff',opacity:.25},g);
+  S('rect',{x:-50,y:130,width:100,height:22,fill:INK},g);
+  T(label,0,200,{class:'plex','font-size':38,'text-anchor':'middle',fill:INK},g);return g;}
+const rB=prop(remote(roomCam,'기본',false),{x:380,y:330,s:0,o:0}),rA=prop(remote(roomCam,'고급',true),{x:380,y:-500});
+const tvS=prop(tv(roomCam,'삼성','#2F4A8A'),{x:1460,y:320,s:0,o:0}),tvL=prop(tv(roomCam,'LG','#8A2F4F'),{x:2500,y:320});
+const chipRoom=pill(roomCam,'new AdvancedRemote(new LgTv())',{font:'mono',color:VIOLET,size:32,x:845,y:560});
+/* 계기판 */
+function panel(x,title){const g=S('g',{},roomCam);S('rect',{x:10,y:10,width:780,height:410,rx:26,fill:INK},g);S('rect',{width:780,height:410,rx:26,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  T(title,40,62,{class:'plex','font-size':40,fill:INK},g);return prop(g,{x,y:640,s:0,o:0});}
+const pL=panel(140,'상속만'),pR=panel(1000,'쪼개기');
+const cntL={v:0},cntR={v:0};
+const numL=T('0',800,900,{class:'plex','font-size':120,'text-anchor':'middle',fill:VIOLET,style:'font-variant-numeric:tabular-nums'},roomCam),numR=T('0',1660,900,{class:'plex','font-size':120,'text-anchor':'middle',fill:VIOLET,style:'font-variant-numeric:tabular-nums'},roomCam);
+const unitL=T('클래스',800,962,{class:'plex','font-size':34,'text-anchor':'middle',fill:INK},roomCam),unitR=T('클래스',1660,962,{class:'plex','font-size':34,'text-anchor':'middle',fill:INK},roomCam);
+const numsG=[numL,numR,unitL,unitR];numsG.forEach(e=>e.setAttribute('style',(e.getAttribute('style')||'')+';opacity:0'));
+function blk(x,y,label,fill,col){const g=S('g',{},roomCam);S('rect',{x:-60+6,y:-35+6,width:120,height:70,rx:12,fill:INK},g);
+  if(label==null){S('rect',{x:-60,y:-35,width:120,height:70,rx:12,fill:'#E3D6FA',stroke:INK,'stroke-width':5},g);S('rect',{x:0,y:-35,width:60,height:70,rx:12,fill:VIOLET},g);S('rect',{x:-60,y:-35,width:120,height:70,rx:12,fill:'none',stroke:INK,'stroke-width':5},g);}
+  else{S('rect',{x:-60,y:-35,width:120,height:70,rx:12,fill,stroke:INK,'stroke-width':5},g);T(label,0,12,{class:'plex','font-size':32,'text-anchor':'middle',fill:col},g);}
+  return prop(g,{x:x+60,y:y+35,s:0,o:0});}
+const GL=[];for(let r=0;r<3;r++)for(let c=0;c<3;c++)GL.push({r,c,p:blk(200+c*134,730+r*84,null)});
+const RR=['기본','고급','프로'].map((l,r)=>blk(1060,730+r*84,l,'#E3D6FA',INK)),RT=['삼성','LG','소니'].map((l,r)=>blk(1240,730+r*84,l,VIOLET,'#fff'));
+const plusT=T('+',1210,868,{class:'plex','font-size':48,'text-anchor':'middle',fill:INK,style:'opacity:0'},roomCam);
+
+/* ================= VIEW 5: 숲 (탑다운) — 나무 1만 그루가 모델 하나 공유 ================= */
+const forestCam=S('g',{},$('#forestSvg')),CF=cam(forestCam,1.6,960,560);
+S('rect',{x:-1500,y:-1200,width:4900,height:3600,fill:'#E3EED6'},forestCam);
+const CARD=[360,190],linesG=S('g',{},forestCam),treesG=S('g',{},forestCam);
+const trees=[];
+for(let j=0;j<7;j++)for(let i=0;i<17;i++){const n=j*17+i,x=60+i*114+(hash(n)-.5)*56+(j%2)*44,y=104+j*104+(hash(n+77)-.5)*40;
+  if(x>720&&x<1210&&y>400&&y<730)continue;if(x<690&&y<330)continue;if(x>1890)continue;
+  const d=Math.hypot(x-960,y-560),dc=Math.hypot(x-CARD[0],y-CARD[1]),r=26+hash(n+5)*10;
+  const g=treeTop(treesG,r),box=S('rect',{x:-11,y:-11,width:22,height:22,rx:4,fill:'#fff',stroke:INK,'stroke-width':4},g);
+  const ln=S('line',{x1:CARD[0],y1:CARD[1],x2:x,y2:y,stroke:SKY,'stroke-width':3,opacity:0},linesG);
+  trees.push({g,box,ln,x,y,tPop:45.5+d/1100*1.4,tBox:46.8+d/1100*1.6,tGone:49.4+dc/1800*1.0});}
+{const g=S('g',{},forestCam);S('rect',{x:794,y:464,width:360,height:240,rx:18,fill:INK},g);S('rect',{x:780,y:450,width:360,height:240,rx:18,fill:'#fff',stroke:INK,'stroke-width':8},g);
+  S('circle',{cx:960,cy:570,r:64,fill:'none',stroke:AMBER,'stroke-width':10},g);T('H',960,594,{class:'plex','font-size':64,'text-anchor':'middle',fill:AMBER},g);
+  T('HOTEL',960,670,{class:'plex','font-size':32,'text-anchor':'middle',fill:INK,'letter-spacing':'.2em'},g);}
+const cardP=(()=>{const g=S('g',{},forestCam);S('rect',{x:-170+9,y:-80+9,width:340,height:160,rx:22,fill:INK},g);S('rect',{x:-170,y:-80,width:340,height:160,rx:22,fill:SKY,stroke:INK,'stroke-width':7},g);
+  const tt=treeTop(g,34);tt.setAttribute('transform','translate(-108 0)');
+  T('소나무 모델',36,-8,{class:'plex','font-size':36,'text-anchor':'middle',fill:'#fff'},g);T('1MB',36,40,{class:'mono','font-size':36,'text-anchor':'middle',fill:'#fff'},g);
+  return prop(g,{x:CARD[0],y:CARD[1],s:0,o:0});})();
+const gauge=(()=>{const g=S('g',{},forestCam);S('rect',{x:9,y:9,width:420,height:170,rx:24,fill:INK},g);S('rect',{width:420,height:170,rx:24,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  T('메모리',30,52,{class:'plex','font-size':34,fill:INK},g);return prop(g,{x:1440,y:860,s:0,o:0});})();
+const mem={v:0},memT=T('0 MB',1834,1000,{class:'plex','font-size':70,'text-anchor':'end',fill:INK,style:'font-variant-numeric:tabular-nums;opacity:0'},forestCam);
+const treeCount=pill(forestCam,'나무 10,000그루',{fill:'#fff',color:INK,size:36,x:250,y:980});
+const tgt=trees.reduce((a,b)=>Math.hypot(b.x-740,b.y-340)<Math.hypot(a.x-740,a.y-340)?b:a);
+const ring=prop((()=>{const g=S('g',{},forestCam);S('circle',{r:58,fill:'none',stroke:SKY,'stroke-width':8},g);return g;})(),{x:tgt.x,y:tgt.y,s:0,o:0});
+const extL=pill(forestCam,'외재 · 위치(x, y)',{fill:'#fff',color:INK,stroke:INK,size:34,x:tgt.x+40,y:tgt.y+86});
+const intL=pill(forestCam,'내재 · 공유 모델',{fill:'#fff',color:SKY,size:34,x:CARD[0],y:CARD[1]-122});
+
+/* ================= VIEW 6: 판별 레일 ================= */
+const railCam=S('g',{},$('#railSvg')),CRL=cam(railCam,1.2,400,700);
+const GX=[260,660,1060,1460],K=GX.map(g=>`M-100 760 L${g} 760 C${g+120} 760 ${g+220} 640 ${g+220} 360`);
+for(const d of K)S('path',{d,fill:'none',stroke:INK,'stroke-width':30,'stroke-linecap':'round'},railCam);
+for(const d of K)S('path',{d,fill:'none',stroke:'#fff','stroke-width':14,'stroke-linecap':'round'},railCam);
+const DEST=[[GREEN,'Composite','#fff'],[AMBER,'Facade',INK],[VIOLET,'Bridge','#fff'],[SKY,'Flyweight','#fff']];
+const trails=K.map((d,k)=>drawLine(d,railCam,{stroke:DEST[k][0],'stroke-width':12}));
+const gates=[['1','같은 타입 목록?'],['2','새 창구 메서드?'],['3','양쪽 계층 확장?'],['4','공유 캐시?']].map(([n,q],k)=>{const g=S('g',{},railCam);
+  const c=S('circle',{r:44,fill:'#fff',stroke:INK,'stroke-width':7},g);T(n,0,13,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},g);T(q,0,100,{class:'plex','font-size':36,'text-anchor':'middle',fill:INK},g);
+  return {p:prop(g,{x:GX[k],y:760,s:0,o:0}),c,len:GX[k]+100};});
+const dests=DEST.map(([c,n,tc],k)=>{const g=S('g',{},railCam);S('rect',{x:-170+9,y:-55+9,width:340,height:110,rx:28,fill:INK},g);S('rect',{x:-170,y:-55,width:340,height:110,rx:28,fill:c,stroke:INK,'stroke-width':7},g);
+  T(n,0,14,{class:'plex','font-size':40,'text-anchor':'middle',fill:tc},g);return prop(g,{x:GX[k]+220,y:300,s:0,o:0});});
+const cards=['List<Node> children','watchMovie()','Remote(Device d)','TreeFactory.get()'].map((s,k)=>{const g=S('g',{},railCam);
+  S('rect',{x:-195+7,y:-40+7,width:390,height:80,rx:14,fill:INK},g);S('rect',{x:-195,y:-40,width:390,height:80,rx:14,fill:'#fff',stroke:INK,'stroke-width':6},g);
+  T(s,0,11,{class:'mono','font-size':32,'text-anchor':'middle',fill:k===1?'#B9770A':DEST[k][0]},g);
+  const path=S('path',{d:K[k]});return {g,path,L:trails[k].L,k,p:0,o:0};});
+
+/* ================= 타임라인 ================= */
+for(const c of cams)cutTo(c,0,c.z0,c.cx0,c.cy0);
+tl.set('.flood',{scale:0},0);
+/* --- 0–8 훅 --- */
+say('#s1',.8);
+shot(CE,2.4,1.2,1,960,540);
+unsay('#s1',3.6);
+QC.forEach((q,k)=>pop(q.p,3.9+k*.18,{from:.4}));
+say('#s2',4.6);
+unsay('#s2',7.3);
+QC.forEach((q,k)=>tl.to(q.p,{x:q.x<960?-400:2320,r:q.x<960?-14:14,o:0,duration:.5,ease:'power2.in'},7.5+k*.05));
+/* --- 8–19 Composite --- */
+chipIn('#chC',8.0);flood('#fl1',8.0);
+shot(CE,8.0,.9,1.9,640,410);
+pop(badgeExt,8.9,{from:.6});
+whip(9.8,'#ext','#tree',1);
+cutTo(CTR,9.8,1.3,960,450);shot(CTR,10.2,1.2,1,960,540);
+pop(nRoot,10.2);[nF3,nF2,nPH].forEach((n,k)=>pop(n,10.45+k*.15));nRooms.forEach((n,k)=>pop(n,10.9+k*.07));
+edgeBase.forEach(e=>show(e,10.3,.4));show(phLab,10.9,.3);
+shot(CTR,12.0,.8,1.35,910,620);
+eRooms.forEach((e,k)=>draw(e,12.3+k*.03,.5));
+pop(bF3,12.9);pop(bF2,13.0);
+shot(CTR,13.4,.9,1,960,540);
+[eF3,eF2,ePH].forEach((e,k)=>draw(e,13.6+k*.05,.5));
+pop(bRoot,14.2,{d:.7});
+pop(chipTree,14.6,{from:.6});
+say('#s3',15.2);
+unsay('#s3',19.0);chipOut('#chC',19.2);
+/* --- 19–31 Facade: 외관으로 돌아와 정문 안으로 --- */
+tl.set(badgeExt,{o:0},19.4);cutTo(CE,19.4,1,960,540);
+whip(19.4,'#tree','#ext',-1);
+tl.set(door,{attr:{fill:LIT}},20.1);
+shot(CE,20.0,.75,4.6,960,790,'power2.in');
+flood('#fl2',20.5);
+tl.set('#ext',{visibility:'hidden'},20.75);tl.set('#lobby',{visibility:'visible'},20.75);
+cutTo(CL,20.75,1.3,960,600);shot(CL,20.75,1.0,1,960,540,'power3.out');
+chipIn('#chF',21.2);
+tl.to(hBell,{x:1226,duration:.45,ease:'power3.out'},21.8);tl.to(hBell,{x:1210,y:618,duration:.1,yoyo:true,repeat:1},22.3);
+tl.to(bell,{r:8,duration:.06,yoyo:true,repeat:5},22.35);tl.fromTo(bellSpark,{o:1,s:.6},{o:0,s:1.4,duration:.4,ease:'power2.out',immediateRender:false},22.35);
+tl.to(hBell,{x:2200,duration:.6,ease:'power2.in'},23.0);
+tl.to(concP,{y:-8,duration:.12,yoyo:true,repeat:1},22.6);
+DOORS.forEach((d,k)=>{const at=22.7+k*.6;draw(calls[k],at,.4);tl.set(d.panel,{attr:{fill:'#FFE7A8'}},at+.4);bump(d.p,at+.4);pop(d.nb,at+.4,{d:.4});});
+pop(chipLobby,24.6,{from:.6});
+say('#s4',25.0);
+tl.to(hDir,{x:500,duration:.7,ease:'power3.out'},27.0);bump(DOORS[0].p,27.7);pop(pillDirect,27.8,{from:.6});
+tl.to(hDir,{x:-1400,duration:.6,ease:'power2.in'},29.2);
+unsay('#s4',30.4);tl.to(pillDirect,{o:0,duration:.3},30.4);chipOut('#chF',30.6);
+/* --- 31–45 Bridge --- */
+rack(31.0,'#lobby','#room');flood('#fl3',31.3);
+cutTo(CR,31.0,1.15,960,330);shot(CR,31.4,1.0,1.06,960,400,'power3.out');
+chipIn('#chB',31.8);
+pop(rB,32.2);pop(tvS,32.4);draw(bridgeLn,32.8,.6);show(planks,33.2,.3);pop(bridgeLab,33.3,{from:.6});
+tl.to(tvS,{x:2500,duration:.5,ease:'power2.in'},34.0);tl.to(tvL,{x:1460,duration:.6,ease:'power3.out'},34.3);
+tl.to(rB,{y:1500,duration:.5,ease:'power2.in'},35.2);tl.to(rA,{y:330,duration:.6,ease:'power3.out'},35.4);
+pop(chipRoom,36.0,{from:.6});
+shot(CR,37.0,1.0,1.1,960,830);
+pop(pL,37.4,{from:.8});pop(pR,37.5,{from:.8});numsG.forEach(e=>show(e,37.7,.3));show(plusT,37.7,.3);
+const at1=37.8,at2=39.3,at3=40.8;
+GL.forEach(b=>{const at=b.r<2&&b.c<2?at1+(b.r*2+b.c)*.08:b.c===2&&b.r<2?at2+b.r*.1:at3+b.c*.1;pop(b.p,at,{d:.45});});
+[RR[0],RR[1],RT[0],RT[1]].forEach((b,k)=>pop(b,at1+k*.08,{d:.45}));pop(RT[2],at2,{d:.45});pop(RR[2],at3,{d:.45});
+tl.to(cntL,{v:4,duration:.4},at1);tl.to(cntR,{v:4,duration:.4},at1);tl.to(cntL,{v:6,duration:.4},at2);tl.to(cntR,{v:5,duration:.4},at2);tl.to(cntL,{v:9,duration:.4},at3);tl.to(cntR,{v:6,duration:.4},at3);
+say('#s5',41.8);
+unsay('#s5',44.6);chipOut('#chB',44.8);
+/* --- 45–57 Flyweight --- */
+whip(45.0,'#room','#forest',1);flood('#fl4',45.2);
+cutTo(CF,45.0,1.6,960,560);shot(CF,45.4,1.4,1,960,540);
+chipIn('#chW',46.0);
+pop(gauge,46.4,{from:.7});show(memT,46.6,.2);pop(treeCount,46.6,{from:.6});
+tl.to(mem,{v:10000,duration:1.8,ease:'power1.inOut'},46.8);
+pop(cardP,49.0);
+tl.to(mem,{v:1,duration:1.0,ease:'power3.inOut'},49.4);tl.set(memT,{attr:{fill:SKY}},50.3);
+shot(CF,51.0,.9,1.85,(CARD[0]+tgt.x)/2,(CARD[1]+tgt.y)/2+10);
+pop(intL,51.8,{from:.6});pop(ring,52.0,{from:.5});pop(extL,52.1,{from:.6});
+tl.to([intL,extL,ring],{o:0,duration:.3},53.0);
+shot(CF,53.2,.9,1,960,540);
+say('#s6',53.6);
+unsay('#s6',56.4);chipOut('#chW',56.6);
+/* --- 57–68 판별 레일 --- */
+whip(56.8,'#forest','#rail',1);flood('#fl5',57.0);
+cutTo(CRL,56.8,1.2,400,700);
+gates.forEach((g,k)=>pop(g.p,57.4+k*.12));dests.forEach((d,k)=>pop(d,57.6+k*.12));
+shot(CRL,58.0,1.8,1,960,560,'sine.inOut');
+cards.forEach((c,k)=>{const at=58.2+k*1.3;tl.set(c,{p:0,o:0},0);tl.set(c,{o:1},at);
+  tl.fromTo(c,{p:0},{p:1,duration:1.2,ease:'sine.inOut',immediateRender:false},at);tl.to(c,{o:0,duration:.25},at+1.2);
+  tl.fromTo(dests[k],{s:1.18},{s:1,duration:.45,ease:'power2.out',immediateRender:false},at+1.2);});
+{const br=blurOf($('#rail'),'xy');tl.to('#rail',{opacity:.2,duration:.6},63.6);tl.fromTo(br,{v:0},{v:8,duration:.6,immediateRender:false},63.6);}
+say('#s7',63.8,.08);
+unsay('#s7',67.2);
+tl.to({},{duration:.01},DUR-.01);
+
+/* ================= render: tl.time()의 순수 함수 ================= */
+const grid=$('#grid'),bl1=$('#bl1'),bl2=$('#bl2');
+const viewCam={ext:CE,tree:CTR,lobby:CL,room:CR,forest:CF,rail:CRL};
+const fmt=n=>String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+function render(){const t=tl.time();
+  for(const p of props){p.el.setAttribute('transform',`translate(${p.x} ${p.y}) rotate(${p.r}) scale(${p.s})`);p.el.setAttribute('opacity',p.o);}
+  for(const c of cams){const z=c.z*(1+.006*Math.sin(t*.9));c.g.setAttribute('transform',`translate(960 540) scale(${z}) translate(${-c.cx} ${-c.cy})`);}
+  for(const b of blurs){if(b.v>.25){b.g.setAttribute('stdDeviation',b.axis==='y'?`${b.v*.12} ${b.v}`:b.axis==='x'?`${b.v} ${b.v*.08}`:`${b.v} ${b.v}`);b.el.style.filter=`url(#${b.id})`;}else b.el.style.filter='none';}
+  let cz=1;for(const k in viewCam)if(document.getElementById(k).style.visibility!=='hidden'){cz=viewCam[k].z;break;}
+  grid.style.transform=`scale(${(1+.022*Math.sin(t*.8))*(1+(cz-1)*.18)}) translate(${Math.sin(t*.21)*18}px,${Math.cos(t*.17)*14}px)`;
+  bl1.style.transform=`translate(${Math.sin(t*.31)*90}px,${Math.cos(t*.27)*60}px)`;bl2.style.transform=`translate(${Math.cos(t*.23)*80}px,${Math.sin(t*.29)*70}px)`;
+  /* 계기판 숫자 */
+  numL.textContent=Math.round(cntL.v);numR.textContent=Math.round(cntR.v);memT.textContent=fmt(mem.v)+' MB';
+  /* 숲: 나무가 거리 순으로 돋아나고, 각자 모델(흰 상자)을 들었다가, 공유 모델 하나에 연결된다 */
+  for(const tr of trees){const u=(t-tr.tPop)/.35,s=u<=0?0:u>=1?1:backOut(u),sw=1+.03*Math.sin(t*1.3+tr.x*.01);
+    tr.g.setAttribute('transform',`translate(${tr.x} ${tr.y}) scale(${s*sw})`);
+    const hasBox=t>=tr.tBox&&t<tr.tGone;tr.box.setAttribute('opacity',hasBox?1:0);
+    tr.ln.setAttribute('opacity',clamp((t-tr.tGone)/.3)*.5);}
+  /* 판별 레일 */
+  for(const c of cards){const tr=trails[c.k];tr.e.setAttribute('stroke-dashoffset',tr.L*(1-c.p));
+    const pt=c.path.getPointAtLength(c.L*c.p);c.g.setAttribute('transform',`translate(${pt.x} ${pt.y-64})`);c.g.setAttribute('opacity',c.o);}
+  for(const [gi,g] of gates.entries()){let lit=false;for(const c of cards){if(c.o<=0||c.k<gi)continue;if(Math.abs(c.p*c.L-g.len)<70)lit=true;}g.c.setAttribute('fill',lit?LIT:'#fff');}
+}
+gsap.ticker.add(render);
+
+/* ---------- 컨트롤: 자동재생 + 루프, 플레이어 없음. ?debug=1 스크럽, ?clean=1 export ---------- */
+const q=new URLSearchParams(location.search);
+const start=()=>tl.play(0);
+tl.eventCallback('onComplete',start);
+window.OPENER={W,H,DURATION:DUR,tl,ready:false,seek(t){tl.pause(t,false);render();},play:start};
+window.OPENER.seekFrame=t=>{window.OPENER.seek(t);return Promise.resolve();};
+addEventListener('keydown',e=>{if(/^[rR]$/.test(e.key))start();if(e.code==='Space'){e.preventDefault();tl.paused()?tl.play():tl.pause();}});
+if(q.has('debug')){const dbg=$('#dbg');dbg.style.display='flex';const sc=$('#dScrub'),ck=$('#dClock');let drag=false;
+  gsap.ticker.add(()=>{if(!drag)sc.value=String(tl.time()/DUR*1000);ck.textContent=tl.time().toFixed(2)+'s';$('#dPlay').textContent=tl.paused()?'Play':'Pause';});
+  sc.addEventListener('pointerdown',()=>{drag=true;tl.pause();});addEventListener('pointerup',()=>drag=false);
+  sc.addEventListener('input',()=>{tl.pause();tl.time(sc.value/1000*DUR);});$('#dPlay').onclick=()=>tl.paused()?tl.play():tl.pause();}
+document.fonts.ready.then(()=>{render();window.OPENER.ready=true;if(!q.has('clean'))start();});
+</script>
+</body>
+</html>

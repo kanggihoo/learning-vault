@@ -1,0 +1,208 @@
+<template>
+  <style>
+    @font-face { font-family: "EB Garamond"; src: url("../../assets/fonts/EBGaramond-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-700.woff2") format("woff2"); font-weight: 700; }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #141413;
+      font-family: "Inter", "Noto Sans KR", sans-serif;
+    }
+    .s03-ground { position: absolute; inset: 0; background: #FAF9F5; }
+
+    /* ── left analogy zone (x 4%–54%) ── */
+    .s03-box {
+      position: absolute; left: 212px; top: 238px; width: 690px; height: 432px;
+      background: #EFE9DE; border: 1px solid rgba(20,20,19,0.12); border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(20,20,19,0.08), 0 4px 16px rgba(20,20,19,0.04);
+    }
+    .s03-box-label {
+      position: absolute; left: 24px; top: 20px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace; font-size: 26px; font-weight: 500;
+      letter-spacing: 0.02em; color: #141413;
+    }
+    .s03-slot {
+      position: absolute; left: 215px; top: 166px; width: 260px; height: 100px;
+      border: 2px dashed rgba(20,20,19,0.28); border-radius: 8px; box-sizing: border-box;
+    }
+    .s03-slot-label {
+      position: absolute; left: 0; right: 0; top: 280px; text-align: center;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace; font-size: 22px;
+      letter-spacing: 0.02em; color: rgba(20,20,19,0.7);
+    }
+    .s03-client-label {
+      position: absolute; left: 80px; top: 296px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace; font-size: 22px;
+      color: rgba(20,20,19,0.7);
+    }
+    .s03-chip {
+      position: absolute; left: 80px; width: 104px; height: 52px; box-sizing: border-box;
+      display: flex; align-items: center; justify-content: center;
+      background: #FAF9F5; border: 1px solid rgba(20,20,19,0.2); border-radius: 9999px;
+      font-family: "Inter", "Noto Sans KR", sans-serif; font-size: 27px; font-weight: 400; color: #141413;
+      box-shadow: 0 1px 3px rgba(20,20,19,0.08);
+    }
+    .s03-arrow { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: visible; }
+    .s03-arrow path { fill: none; stroke: #CC785C; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .s03-arrow-label {
+      position: absolute; left: 290px; top: 140px; width: 200px; text-align: center;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace; font-size: 26px; color: #A5614A;
+    }
+
+    /* ── right rail (x 58%–96%) ── */
+    .s03-kicker {
+      position: absolute; left: 1114px; top: 116px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace; font-size: 28px; font-weight: 500;
+      letter-spacing: 0.16em; text-transform: uppercase; color: #141413;
+    }
+    .s03-kicker .s03-spike { color: #CC785C; }
+    .s03-headline {
+      position: absolute; left: 1114px; top: 206px; width: 730px;
+      font-family: "EB Garamond", "Noto Serif KR", serif; font-size: 78px; font-weight: 400;
+      line-height: 1.06; letter-spacing: -0.018em; white-space: nowrap;
+    }
+    .s03-word { display: inline-block; }
+    .s03-code {
+      position: absolute; left: 1114px; top: 389px; width: 730px; height: 302px; box-sizing: border-box;
+      background: #181715; border: 1px solid rgba(250,249,245,0.14); border-radius: 8px; overflow: hidden;
+    }
+    .s03-code-bar {
+      height: 44px; background: #252320; border-bottom: 1px solid rgba(250,249,245,0.14);
+      display: flex; align-items: center; padding: 0 22px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace; font-size: 18px; color: rgba(250,249,245,0.55);
+    }
+    .s03-code-body { padding: 16px 0; }
+    .s03-line {
+      padding: 0 26px; height: 36px; line-height: 36px; white-space: pre;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace; font-size: 24px; color: #FAF9F5;
+    }
+    .s03-kw { color: #CC785C; }
+    .s03-ty { color: #E8A55A; }
+    .s03-cm { color: rgba(250,249,245,0.55); }
+    .s03-tags { position: absolute; left: 1114px; top: 756px; height: 65px; display: flex; align-items: center; gap: 16px; }
+    .s03-tag {
+      height: 56px; padding: 0 22px; box-sizing: border-box; display: flex; align-items: center; gap: 8px;
+      border: 1px solid rgba(20,20,19,0.2); border-radius: 9999px; background: #FAF9F5;
+      font-family: "Inter", "Noto Sans KR", sans-serif; font-size: 26px; color: #141413; white-space: nowrap;
+    }
+    .s03-tag-k { color: rgba(20,20,19,0.7); }
+  </style>
+
+  <div data-hf-id="hf-oi9x" id="root" data-composition-id="03-strategy" data-width="1920" data-height="1080" data-duration="15.5">
+    <div data-hf-id="hf-hh3h" id="s03-ground" class="s03-ground clip" data-start="0" data-duration="15.5" data-track-index="0"></div>
+
+    <div data-hf-id="hf-eo3u" class="s03-box" id="s03-box">
+      <div data-hf-id="hf-sk7d" class="s03-box-label">Navi</div>
+      <div data-hf-id="hf-uk7e" class="s03-slot" id="s03-slot"></div>
+      <div data-hf-id="hf-ru8c" class="s03-slot-label">RouteStrategy</div>
+    </div>
+
+    <div data-hf-id="hf-7sld" class="s03-client-label" id="s03-client">클라이언트</div>
+    <div data-hf-id="hf-ryj5" class="s03-chip" id="s03-chip-short" style="top: 352px;">최단</div>
+    <div data-hf-id="hf-pk1b" class="s03-chip" id="s03-chip-free" style="top: 428px;">무료</div>
+    <div data-hf-id="hf-my5t" class="s03-chip" id="s03-chip-fast" style="top: 504px;">고속</div>
+
+    <svg data-hf-id="hf-wiun" class="s03-arrow" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+      <path data-hf-id="hf-9e9k" id="s03-arrow-line" d="M 192 300 C 232 150, 520 140, 548 392" />
+      <path data-hf-id="hf-x05b" id="s03-arrow-head" d="M 534 378 L 548 394 L 560 377" />
+    </svg>
+    <div data-hf-id="hf-gnay" class="s03-arrow-label" id="s03-arrow-label">밖에서 교체</div>
+
+    <div data-hf-id="hf-a6nt" class="s03-kicker" id="s03-kicker"><span data-hf-id="hf-1knd" class="s03-spike">✱</span> STRATEGY · 전략</div>
+    <div data-hf-id="hf-8d0t" class="s03-headline"><span data-hf-id="hf-l9ke" class="s03-word">밖에서</span> <span data-hf-id="hf-z0og" class="s03-word">갈아끼운다</span></div>
+
+    <div data-hf-id="hf-fo2q" class="s03-code" id="s03-code">
+      <div data-hf-id="hf-8tyg" class="s03-code-bar">Navi.java</div>
+      <div data-hf-id="hf-pjp7" class="s03-code-body">
+        <div data-hf-id="hf-w0fw" class="s03-line"><span data-hf-id="hf-7lxi" class="s03-kw">class</span> <span data-hf-id="hf-1snl" class="s03-ty">Navi</span> {</div>
+        <div data-hf-id="hf-19oe" class="s03-line s03-hl">  <span data-hf-id="hf-d7s5" class="s03-kw">private</span> <span data-hf-id="hf-1ohj" class="s03-ty">RouteStrategy</span> strategy;  <span data-hf-id="hf-3y4k" class="s03-cm">// 합성</span></div>
+        <div data-hf-id="hf-t6ik" class="s03-line s03-hl">  <span data-hf-id="hf-l36g" class="s03-kw">void</span> setStrategy(<span data-hf-id="hf-gf93" class="s03-ty">RouteStrategy</span> s) {</div>
+        <div data-hf-id="hf-9kyu" class="s03-line s03-hl">    <span data-hf-id="hf-sb7y" class="s03-kw">this</span>.strategy = s;  <span data-hf-id="hf-x8vk" class="s03-cm">// 밖에서 교체</span></div>
+        <div data-hf-id="hf-wt1y" class="s03-line">  }</div>
+        <div data-hf-id="hf-ary2" class="s03-line">}</div>
+      </div>
+    </div>
+
+    <div data-hf-id="hf-i4ym" class="s03-tags">
+      <div data-hf-id="hf-qxpd" class="s03-tag"><span data-hf-id="hf-pge6" class="s03-tag-k">관계:</span> 합성</div>
+      <div data-hf-id="hf-2o2b" class="s03-tag"><span data-hf-id="hf-2bum" class="s03-tag-k">교체:</span> 실행 중</div>
+      <div data-hf-id="hf-piu1" class="s03-tag"><span data-hf-id="hf-ou12" class="s03-tag-k">누가:</span> 클라이언트</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      const root = document.querySelector('[data-composition-id="03-strategy"]');
+      const $ = (s) => root.querySelector(s);
+      const $$ = (s) => Array.from(root.querySelectorAll(s));
+      const tl = gsap.timeline({ paused: true });
+
+      // Slot center in root coords: box (212,238) + slot (215,166) + half (130,50) = (557,454).
+      // Chip home center x = 80 + 52 = 132; y = top + 26. Seated scale 1.5.
+      const SLOT = { x: 557, y: 454 };
+      const seat = (top) => ({ x: SLOT.x - 132, y: SLOT.y - (top + 26), scale: 1.5 });
+
+      // Scene 1 (0–3s): box rises, kicker + per-word headline.
+      tl.fromTo("#s03-box", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.9, ease: "power3.out" }, 0.1);
+      tl.fromTo("#s03-kicker", { y: 16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" }, 0.3);
+      // dynamic-content-sequencing: each word's start computed from its length.
+      let t = 0.7;
+      $$(".s03-headline .s03-word").forEach((w) => {
+        tl.fromTo(w, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "power3.out" }, t);
+        t += 0.3 + w.textContent.length * 0.06;
+      });
+
+      // Scene 2 (3–6.5s): chips rise under 클라이언트, 최단 seats, coral arrow draws.
+      tl.fromTo("#s03-client", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 3.0);
+      ["#s03-chip-short", "#s03-chip-free", "#s03-chip-fast"].forEach((id, i) => {
+        tl.fromTo(id, { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 3.15 + i * 0.15);
+      });
+      tl.to("#s03-chip-short", { ...seat(352), duration: 1.0, ease: "power3.inOut" }, 4.1);
+
+      const line = $("#s03-arrow-line");
+      const head = $("#s03-arrow-head");
+      [line, head].forEach((p) => {
+        const len = p.getTotalLength();
+        p.style.strokeDasharray = `${len}`;
+        p.style.strokeDashoffset = `${len}`;
+      });
+      tl.to(line, { strokeDashoffset: 0, duration: 0.8, ease: "power2.out" }, 4.3);
+      tl.to(head, { strokeDashoffset: 0, duration: 0.25, ease: "power2.out" }, 4.9);
+      tl.fromTo("#s03-arrow-label", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 5.2);
+
+      // Scene 3 (6.5–10s): swap 최단 → 고속; code card + line-by-line reveal.
+      tl.to("#s03-chip-short", { x: 0, y: 0, scale: 1, duration: 0.7, ease: "power3.inOut" }, 6.5);
+      tl.to("#s03-chip-fast", { ...seat(504), duration: 0.9, ease: "power3.inOut" }, 6.9);
+      tl.fromTo("#s03-code", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 6.8);
+      // dynamic-content-sequencing: pre-computed starts from line length.
+      let c = 7.2;
+      $$(".s03-line").forEach((el) => {
+        tl.fromTo(el, { x: -12, opacity: 0 }, { x: 0, opacity: 1, duration: 0.35, ease: "power2.out" }, c);
+        c += 0.2 + el.textContent.length * 0.012;
+      });
+      // Emphasis on the composition field + setStrategy lines once all lines are in.
+      tl.fromTo(".s03-hl", { backgroundColor: "rgba(250,249,245,0)" }, { backgroundColor: "rgba(250,249,245,0.08)", duration: 0.4, ease: "power1.out" }, c);
+
+      // Scene 4 (10–15s): signal tags fill left → right, then hold.
+      $$(".s03-tag").forEach((el, i) => {
+        tl.fromTo(el, { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 10.2 + i * 0.45);
+      });
+      tl.set({}, {}, 15);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-strategy"] = tl;
+    })();
+  </script>
+</template>

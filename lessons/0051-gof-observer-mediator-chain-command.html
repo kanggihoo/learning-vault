@@ -31,7 +31,7 @@
   <section class="quiz">
     <p><strong>R2.</strong> <code>class Bold implements Text { private Text t; public String render(){ return "&lt;b&gt;" + t.render() + "&lt;/b&gt;"; } }</code> — 클라이언트가 <code>new Bold(new Italic(new Plain("hi")))</code>처럼 겹쳐 쌓는다.</p>
     <button type="button" data-target="answer-r2" data-answer="correct">Decorator</button>
-    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 같은 Service 인터페이스다. 모양을 바꾸지 않았다.">Adapter</button>
+    <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 같은 Text 인터페이스다. 모양을 바꾸지 않았다.">Adapter</button>
     <button type="button" data-target="answer-r2" data-answer="wrong" data-hint="오답. 접근을 통제하는 코드가 아니라 태그를 더하는 기능 추가이고, 클라이언트가 쌓는다.">Proxy</button>
     <p class="answer" id="answer-r2"></p>
   </section>
@@ -62,11 +62,12 @@
       <tr><td><strong>Command</strong></td><td>요청을 <strong>물건(객체)으로 포장</strong>해서 저장·전달</td><td>식당 주문서</td></tr>
     </tbody>
   </table>
-  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/mediator">Refactoring.Guru — Mediator</a>의 "Relations with other patterns"가 이 네 패턴을 "보내는 쪽과 받는 쪽을 연결하는 서로 다른 방식"으로 비교한다.</p>
+  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/mediator">Refactoring.Guru: Mediator</a>의 "Relations with other patterns"가 이 네 패턴을 "보내는 쪽과 받는 쪽을 연결하는 서로 다른 방식"으로 비교한다.</p>
 
   <h2>§2 · Observer (옵서버) — 바뀌면 구독자 전원에게 알린다</h2>
-  <p><strong>이론.</strong> 한 객체(Subject, 주제)의 상태가 바뀌면 <strong>미리 등록한 모든 구독자(Observer)</strong>에게 자동으로 알린다. 구독자는 런타임에 등록·해지할 수 있다. 별칭 Publish-Subscribe, Dependents.</p>
-  <p><strong>비유.</strong> 유튜브 구독. 채널(주제)이 영상을 올리면 구독 버튼 누른 사람 전원에게 알림이 간다. 채널은 구독자가 누군지 몰라도 되고, 구독자는 언제든 해지한다.</p>
+  <p><strong>한 문장.</strong> 한 객체(Subject, 주제)의 상태가 바뀌면, 미리 등록해 둔 구독자(Observer) 전원에게 자동으로 알려 주는 패턴이다. 별칭 Publish-Subscribe, Dependents.</p>
+  <p><strong>구조.</strong> Subject는 구독자 목록을 들고 있고, 구독자는 실행 중에 등록하거나 해지할 수 있다. Subject는 구독자가 누구인지 몰라도 되고, <code>update()</code> 같은 공통 메서드만 호출한다.</p>
+  <p><strong>비유.</strong> 유튜브 구독. 채널이 영상을 올리면 구독한 사람 전원에게 알림이 간다. 비유가 맞지 않는 곳: 유튜브 알림은 나중에 도착하지만, Observer는 기본적으로 <code>upload()</code> 안에서 구독자 메서드를 하나씩 직접 호출한다. 즉 구독자 코드가 다 끝나야 <code>upload()</code>가 끝난다(§7의 Spring 예에서 다시 나온다).</p>
 <pre>interface Observer { void update(String news); }
 class Channel {                                    // Subject
     private final List&lt;Observer&gt; subs = new ArrayList&lt;&gt;();
@@ -75,8 +76,9 @@ class Channel {                                    // Subject
 }</pre>
 
   <h2>§3 · Mediator (중재자) — 허브를 거친다</h2>
-  <p><strong>이론.</strong> 객체들이 서로를 직접 참조하면 선이 N×N으로 얽힌다. 중재자 한 객체를 두고 <strong>모두가 중재자하고만</strong> 소통하게 해서 얽힘을 N:1로 줄인다. 목표는 "서로에 대한 의존 제거"다.</p>
-  <p><strong>비유.</strong> 공항 관제탑. 비행기끼리 무전하지 않고 관제탑하고만 통신한다. 채팅방도 같다. 참가자끼리 직접 보내지 않고 방(중재자)이 전달한다.</p>
+  <p><strong>한 문장.</strong> 객체들이 서로 직접 말하지 않고, 중재자 객체 하나를 거쳐서만 말하게 하는 패턴이다.</p>
+  <p><strong>왜 필요한가.</strong> 객체 10개가 서로를 직접 참조하면 연결이 최대 45개(10×9÷2)다. 중재자를 두면 각 객체는 중재자 하나만 알면 되어 연결이 10개로 줄고, 객체끼리는 서로의 존재를 몰라도 된다. 목표는 "서로에 대한 의존 제거"다.</p>
+  <p><strong>비유.</strong> 공항 관제탑. 비행기끼리 무전하지 않고 관제탑하고만 통신한다. 채팅방도 같다. 참가자끼리 직접 보내지 않고 방(중재자)이 전달한다. 비유가 맞지 않는 곳: 관제탑은 사람이 판단하지만, 코드의 중재자는 "누가 누구에게 어떤 순서로 보낼지"를 정한 규칙을 가진 클래스다. 그래서 중재자에 규칙이 몰려 커지기 쉽다.</p>
 <pre>class ChatRoom {                                   // Mediator
     private final List&lt;User&gt; users = new ArrayList&lt;&gt;();
     void join(User u) { users.add(u); }
@@ -86,8 +88,8 @@ class Channel {                                    // Subject
 }</pre>
 
   <h2>§4 · Chain of Responsibility (책임 연쇄) — 한 줄로 넘긴다</h2>
-  <p><strong>이론.</strong> 요청을 <strong>핸들러의 사슬</strong>에 흘려보낸다. 각 핸들러는 "내가 처리한다" 또는 "다음 핸들러로 넘긴다"를 고른다. 보내는 쪽은 누가 처리할지 모른다.</p>
-  <p><strong>비유.</strong> 결재 라인. 100만 원 이하는 대리가, 아니면 과장에게, 그래도 안 되면 부장에게 넘어간다.</p>
+  <p><strong>한 문장.</strong> 요청을 처리자(핸들러)들이 줄지은 사슬에 보내고, 각 핸들러가 "내가 처리한다" 또는 "다음 핸들러로 넘긴다" 중 하나를 고르는 패턴이다. 요청을 보내는 쪽은 누가 처리할지 모른다.</p>
+  <p><strong>비유.</strong> 결재 라인. 100만 원 이하는 대리가 승인하고, 넘으면 과장에게, 그래도 안 되면 부장에게 올라간다. 예를 들어 300만 원 요청은 대리가 "내 한도 밖"이라 넘기고, 과장이 승인해서 끝난다. 부장에게는 가지 않는다.</p>
 <pre>abstract class Approver {
     private Approver next;
     Approver setNext(Approver n) { this.next = n; return n; }
@@ -100,8 +102,9 @@ class Channel {                                    // Subject
 }</pre>
 
   <h2>§5 · Command (커맨드) — 요청을 물건으로 만든다</h2>
-  <p><strong>이론.</strong> "무엇을 할지"를 <strong>객체 하나로 포장</strong>한다. 객체가 되었으니 변수에 담고, 큐에 줄 세우고, 기록하고, <strong>실행 취소(undo)</strong>할 수 있다. 별칭 Action, Transaction.</p>
-  <p><strong>비유.</strong> 식당 주문서. 말로 주문하면 사라지지만, 종이 한 장(요청)이 되면 줄 세우고, 취소하고, 기록으로 남긴다.</p>
+  <p><strong>한 문장.</strong> "무엇을 할지"를 메서드 호출로 바로 하지 않고 <strong>객체 하나로 포장</strong>해서, 변수에 담고 큐에 쌓고 기록하고 실행 취소(undo)할 수 있게 하는 패턴이다. 별칭 Action, Transaction.</p>
+  <p><strong>구조.</strong> 요청을 만드는 쪽(리모컨)은 <code>Command</code> 인터페이스만 알고, 실제로 일하는 객체(<code>Light</code>)는 Command 안에 들어 있다. 그래서 같은 리모컨 버튼에 다른 Command를 끼울 수 있고, 실행한 Command를 스택에 쌓으면 undo가 된다.</p>
+  <p><strong>비유.</strong> 식당 주문서. 말로 한 주문은 사라지지만, 종이 한 장이 되면 줄 세우고, 취소하고, 기록으로 남길 수 있다. 비유가 맞지 않는 곳: 종이 주문서는 되돌리는 방법이 없다. Command는 <code>undo()</code>에 되돌리는 방법을 직접 담아야 한다.</p>
 <pre>interface Command { void execute(); void undo(); }
 class LightOn implements Command {
     private final Light light;
@@ -110,16 +113,16 @@ class LightOn implements Command {
 }
 // 리모컨은 Command만 안다 (누구를 켜는지 모른다)
 Deque&lt;Command&gt; history = new ArrayDeque&lt;&gt;();  // 실행한 명령을 쌓아 undo</pre>
-  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/command">Refactoring.Guru — Command</a>. undo는 "실행 전 상태를 백업해 히스토리 스택에 쌓고, 되돌릴 때 pop해서 undo를 호출"하는 방식으로 설명한다.</p>
+  <p class="sm">출처: <a href="https://refactoring.guru/design-patterns/command">Refactoring.Guru: Command</a>. undo는 "실행 전 상태를 백업해 히스토리 스택에 쌓고, 되돌릴 때 pop해서 undo를 호출"하는 방식으로 설명한다.</p>
 
   <h2>§6 · 헷갈리는 쌍</h2>
   <table>
     <thead><tr><th>쌍</th><th>구분 질문</th></tr></thead>
     <tbody>
-      <tr><td><strong>Observer vs Mediator</strong></td><td>한 방향 1:N 방송이면 Observer, <strong>서로 주고받는</strong> 관계를 허브로 정리하는 것이면 Mediator. 가이드: 둘은 헷갈리기 쉽고 Mediator를 Observer로 구현하기도 한다(중재자=발행자, 컴포넌트=구독자)</td></tr>
+      <tr><td><strong>Observer vs Mediator</strong></td><td>한 방향 1:N 방송이면 Observer, <strong>서로 주고받는</strong> 관계를 허브로 정리하는 것이면 Mediator. 헷갈릴 수밖에 없는 이유: Mediator를 Observer 방식으로 구현하기도 한다. 이때 중재자는 알림을 보내는 쪽(Subject)이고, 각 컴포넌트는 알림을 받는 쪽(Observer)이다(Refactoring.Guru)</td></tr>
       <tr><td><strong>Observer vs Chain</strong></td><td>구독자 <strong>전원</strong>이 받으면 Observer, <strong>한 명이 처리할 때까지</strong> 넘기면 Chain</td></tr>
       <tr><td><strong>Command vs Strategy</strong></td><td>같은 일을 하는 방법을 <strong>갈아끼우면</strong> Strategy, "무엇을 할지" 자체를 <strong>물건으로 만들어 저장·취소</strong>하면 Command</td></tr>
-      <tr><td><strong>Chain vs Decorator</strong></td><td>둘 다 재귀적으로 감싼다. Chain의 핸들러는 <strong>흐름을 끊을 수 있다</strong>(처리하고 종료). Decorator는 흐름을 끊지 않는다 (Guru)</td></tr>
+      <tr><td><strong>Chain vs Decorator</strong></td><td>둘 다 재귀적으로 감싼다. Chain의 핸들러는 <strong>흐름을 끊을 수 있다</strong>(처리하고 종료). Decorator는 흐름을 끊지 않고 항상 원본까지 간다 (Refactoring.Guru)</td></tr>
     </tbody>
   </table>
 
@@ -127,11 +130,11 @@ Deque&lt;Command&gt; history = new ArrayDeque&lt;&gt;();  // 실행한 명령을
   <table>
     <thead><tr><th>어디</th><th>무엇</th><th>비고</th></tr></thead>
     <tbody>
-      <tr><td><a href="https://docs.spring.io/spring-framework/reference/core/beans/context-introduction.html">Spring <code>ApplicationListener</code></a></td><td>Observer</td><td>문서가 직접 "this is the standard Observer design pattern"이라고 쓴다. 기본은 <strong>동기</strong>라서 <code>publishEvent()</code>가 모든 리스너가 끝날 때까지 막힌다</td></tr>
+      <tr><td><a href="https://docs.spring.io/spring-framework/reference/core/beans/context-introduction.html">Spring <code>ApplicationListener</code></a></td><td>Observer</td><td>문서가 직접 "this is the standard Observer design pattern"이라고 쓴다. 기본은 <strong>동기</strong>다. <code>publishEvent()</code>를 부른 코드는 모든 리스너가 일을 끝낼 때까지 기다린다. 리스너 하나가 느리면 이벤트를 발행한 쪽도 그만큼 느려진다</td></tr>
       <tr><td><a href="https://docs.oracle.com/javaee/7/api/javax/servlet/FilterChain.html">Servlet <code>FilterChain</code></a></td><td>구조상 Chain of Responsibility</td><td>각 필터가 <code>doFilter</code>로 "사슬의 다음 필터를 호출"하거나, 마지막이면 자원을 호출한다. Javadoc이 패턴 이름을 쓰지는 않는다</td></tr>
     </tbody>
   </table>
-  <p class="warn"><strong>주의.</strong> 고전 Chain은 "처리하면 멈춘다"인데 서블릿 필터는 보통 "자기 일을 하고 <strong>다음으로도 넘긴다</strong>"는 점에서 변형이다. 이름만으로 판정하지 말고 구조(다음에게 넘기는가)로 본다.</p>
+  <p class="warn"><strong>고전 Chain과 다른 점.</strong> 고전 Chain은 핸들러 하나가 처리하면 사슬이 거기서 멈춘다. 서블릿 필터는 보통 자기 일(로그 남기기, 인증 확인)을 하고 <strong>다음 필터로도 넘기므로</strong> 변형이다. 그래도 구조("다음 핸들러에게 넘길지 내가 정한다")는 같다. 이름이 아니라 이 구조를 보고 판단한다.</p>
 
   <h2>§8 · 판별 퀴즈</h2>
 
@@ -205,7 +208,7 @@ Deque&lt;Command&gt; history = new ArrayDeque&lt;&gt;();  // 실행한 명령을
 
   <h2>더 읽을 자료 (1차 출처)</h2>
   <ul>
-    <li><a href="https://refactoring.guru/design-patterns/observer">Refactoring.Guru — Observer</a> · <a href="https://refactoring.guru/design-patterns/mediator">Mediator</a> · <a href="https://refactoring.guru/design-patterns/chain-of-responsibility">Chain of Responsibility</a> · <a href="https://refactoring.guru/design-patterns/command">Command</a></li>
+    <li><a href="https://refactoring.guru/design-patterns/observer">Refactoring.Guru: Observer</a> · <a href="https://refactoring.guru/design-patterns/mediator">Mediator</a> · <a href="https://refactoring.guru/design-patterns/chain-of-responsibility">Chain of Responsibility</a> · <a href="https://refactoring.guru/design-patterns/command">Command</a></li>
   </ul>
 
   <p class="note">

@@ -280,3 +280,21 @@ GoF 23개 패턴을 시험·실무 양쪽에서 **구분해서** 쓰기 위한 �
 - [0052 - GoF 4/6: Composite · Facade · Bridge · Flyweight](./lessons/0052-gof-composite-facade-bridge-flyweight.html)
 - [0053 - GoF 5/6: Iterator · Visitor · Memento · Interpreter](./lessons/0053-gof-iterator-visitor-memento-interpreter.html)
 - [0054 - GoF 6/6: 생성 패턴 5개](./lessons/0054-gof-creational-patterns.html)
+
+## Terminal Protocols
+
+### OSC 7501 (Program Status Protocol)
+
+**References**
+
+- [0025 - OSC 7501 스펙 지도 (rev 0.4)](./reference/0025-osc-7501-spec-map.html)
+  — 시퀀스 모양, 본문 문법, 6개 state, key, record 모델·lifetime, 다른 OSC와의 관계, 개정 이력
+
+**Lessons**
+
+- [0055 - 터미널에 글자가 아닌 명령을 보내는 법: OSC 시퀀스 해부](./lessons/0055-osc-7501-escape-sequence-anatomy.html)
+
+**Learning Records**
+
+- [0037 - OSC 7501 학습 시작](./learning-records/0037-osc-7501-baseline.md)
+- [0038 - OSC 7501 osc-basics 확인 결과: printf 표기와 실제 byte 혼동](./learning-records/0038-osc-basics-printf-notation-gap.md)

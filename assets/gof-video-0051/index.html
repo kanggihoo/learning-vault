@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ko">
+<!-- Made with the Bang Motion skill by Bang Tutorial (https://youtube.com/bangtutorial) - MIT -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>요청이 가는 길</title>
+<!--
+  GoF 3/6 — Observer · Mediator · Chain of Responsibility · Command 판별 explainer (70초, 16:9, 무음 + VO 대본 별도).
+  주인공: 요청 봉투. 네 패턴은 "봉투가 가는 길의 모양"으로 갈린다.
+    Observer  : 채널에서 봉투가 복사되어 구독자 전원에게 동시에 (1:N 방송)
+    Mediator  : 공항 탑다운 — 비행기끼리의 그물(15선)이 관제탑 하나로 정리되고, 봉투는 늘 탑을 거친다
+    Chain     : 결재 라인 측면 — 300만 원 봉투가 대리 → 과장에서 멈춘다, 부장에는 가지 않는다
+    Command   : 봉투가 펼쳐져 주문서(객체)가 된다 — 리모컨에 끼워 실행, history에 쌓고 pop해서 undo
+    리캡      : 판별 레일 ① 1:N 방송? ② 허브 경유? ③ 넘기는 사슬?
+  더블클릭으로 열기. 자동재생 + 루프, R 다시, Space 일시정지. ?debug=1 스크럽, ?clean=1 export용.
+  모든 시각 요소는 tl.time()의 순수 함수.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1F2A37;--base:#EEF7F5;--obs:#D9407A;--med:#E8930C;--chn:#1E8FD0;--cmd:#4E9A2E}
+html,body{margin:0;height:100%;background:#0d1417;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;background:var(--base);color:var(--ink);font-family:'IBM Plex Sans KR',sans-serif}
+#bg{position:absolute;inset:0;overflow:hidden}
+.flood{position:absolute;width:4800px;height:4800px;border-radius:50%;transform:scale(0)}
+#grid{position:absolute;inset:-240px;background-image:linear-gradient(rgba(31,42,55,.075) 2px,transparent 2px),linear-gradient(90deg,rgba(31,42,55,.075) 2px,transparent 2px);background-size:80px 80px;background-position:center}
+.blob{position:absolute;border-radius:50%;width:1300px;height:1300px;background:radial-gradient(circle,rgba(255,255,255,.8),rgba(255,255,255,0) 65%)}
+.view{position:absolute;inset:0}
+.view svg{position:absolute;inset:0;width:1920px;height:1080px;overflow:visible}
+.plex{font-family:'IBM Plex Sans KR',sans-serif;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace;font-weight:700}
+#ui{position:absolute;inset:0;pointer-events:none}
+.say{position:absolute;font-family:'Do Hyeon',sans-serif;line-height:1.12;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
+.say .wd{display:inline-block;opacity:0;transform-origin:50% 100%}
+.hl{position:relative}
+.hl i{position:absolute;left:-.14em;right:-.14em;top:.0em;bottom:-.02em;border:.05em solid var(--c,var(--ink));border-radius:.14em;transform:scaleX(0);transform-origin:0 50%}
+.chip{position:absolute;right:64px;top:54px;padding:8px 30px 12px;border-radius:44px;color:#fff;font:600 42px 'IBM Plex Sans KR',sans-serif;opacity:0;border:5px solid var(--ink);box-shadow:8px 8px 0 var(--ink)}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(95% 95% at 50% 50%,transparent 62%,rgba(31,42,55,.16))}
+#dbg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:none;gap:12px;align-items:center;padding:10px 16px;border-radius:14px;background:rgba(14,16,22,.9);color:#cfd5e3;font:13px system-ui;z-index:50}
+#dbg input{width:420px}#dbg span{font-variant-numeric:tabular-nums;min-width:6ch}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs id="defs"></defs></svg>
+<div id="stage">
+  <div id="bg">
+    <div class="flood" id="fl1" style="left:-1980px;top:-1840px;background:#FBE0EA"></div>
+    <div class="flood" id="fl2" style="left:-1440px;top:-1860px;background:#FCEBCF"></div>
+    <div class="flood" id="fl3" style="left:-1440px;top:-1860px;background:#D9EDF8"></div>
+    <div class="flood" id="fl4" style="left:-1440px;top:-1860px;background:#E1F0D8"></div>
+    <div class="flood" id="fl5" style="left:-1440px;top:-1860px;background:#EEF7F5"></div>
+    <div class="blob" id="bl1" style="left:-300px;top:-420px"></div>
+    <div class="blob" id="bl2" style="left:1100px;top:380px"></div>
+    <div id="grid"></div>
+  </div>
+  <div id="hook" class="view"><svg id="hookSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="obs"  class="view" style="visibility:hidden"><svg id="obsSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="med"  class="view" style="visibility:hidden"><svg id="medSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="chn"  class="view" style="visibility:hidden"><svg id="chnSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="cmd"  class="view" style="visibility:hidden"><svg id="cmdSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="rail" class="view" style="visibility:hidden"><svg id="railSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="vig"></div>
+  <div id="ui">
+    <div class="say" id="s1" style="left:110px;top:80px;font-size:100px"><span class="wd">요청은</span> <span class="wd">어떤</span> <span class="wd">길로</span> <span class="wd">갈까?</span></div>
+    <div class="say" id="s2" style="left:0;right:0;text-align:center;top:846px;font-size:116px"><span class="wd hl"><i></i>길의 모양</span><span class="wd">으로</span> <span class="wd">가른다</span></div>
+    <div class="say" id="s3" style="left:110px;top:72px;font-size:108px;--c:var(--obs)"><span class="wd hl"><i></i>전원에게</span> <span class="wd">방송</span></div>
+    <div class="say" id="s4" style="left:110px;top:72px;font-size:108px;--c:var(--med)"><span class="wd hl"><i></i>허브를</span> <span class="wd">거친다</span></div>
+    <div class="say" id="s5" style="left:0;right:0;text-align:center;top:858px;font-size:108px;--c:var(--chn)"><span class="wd">처리될</span> <span class="wd">때까지</span> <span class="wd hl"><i></i>넘긴다</span></div>
+    <div class="say" id="s6" style="left:110px;top:60px;font-size:104px;--c:var(--cmd)"><span class="wd">요청을</span> <span class="wd hl"><i></i>물건으로</span> <span class="wd">만든다</span></div>
+    <div class="say" id="s7" style="left:0;right:0;text-align:center;top:440px;font-size:120px"><span class="wd">요청이</span> <span class="wd">가는</span> <span class="wd hl"><i></i>길의 모양</span><span class="wd">을</span> <span class="wd">본다</span></div>
+    <div class="chip" id="chO" style="background:var(--obs)">Observer</div>
+    <div class="chip" id="chM" style="background:var(--med);color:var(--ink)">Mediator</div>
+    <div class="chip" id="chC" style="background:var(--chn)">Chain of Responsibility</div>
+    <div class="chip" id="chK" style="background:var(--cmd)">Command</div>
+  </div>
+  <div id="dbg"><button id="dPlay">Pause</button><input id="dScrub" type="range" min="0" max="1000" value="0"><span id="dClock">0.00s</span></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const W=1920,H=1080,DUR=70;
+const INK='#1F2A37',OBS='#D9407A',MED='#E8930C',CHN='#1E8FD0',CMD='#4E9A2E',PAPER='#FFFDF5',LIT='#FFD34E';
+const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg',defs=$('#defs');
+function S(tag,a={},p){const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+const T=(txt,x,y,a,p)=>{const e=S('text',{x,y,...a},p);e.textContent=txt;return e;};
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x)),ease=x=>{x=clamp(x);return x*x*(3-2*x);},lerp=(a,b,u)=>a+(b-a)*u;
+function fit(){const s=Math.min(innerWidth/W,innerHeight/H);$('#stage').style.transform=`translate(-50%,-50%) scale(${s})`;}
+addEventListener('resize',fit);fit();
+let uid=0;
+const tl=gsap.timeline({paused:true});
+
+/* ---------- 엔진 (0049와 동일): prop, 카메라, 방향성 블러, 텍스트 문, 전환 ---------- */
+const props=[];
+function prop(el,i={}){const p={el,x:0,y:0,s:1,r:0,o:1,...i};props.push(p);return p;}
+const cams=[];
+function cam(g,z,cx,cy){const c={g,z,cx,cy,z0:z,cx0:cx,cy0:cy};cams.push(c);return c;}
+const shot=(c,at,dur,z,cx,cy,ease='power2.inOut')=>tl.to(c,{z,cx,cy,duration:dur,ease},at);
+const cutTo=(c,at,z,cx,cy)=>tl.set(c,{z,cx,cy},at);
+const blurs=[],blurMap=new Map();
+function blurOf(el,axis='y'){if(blurMap.has(el))return blurMap.get(el);const id='mb'+(uid++);
+  const f=S('filter',{id,x:'-40%',y:'-80%',width:'180%',height:'260%'},defs),g=S('feGaussianBlur',{stdDeviation:'0 0'},f);
+  const b={el,g,id,axis,v:0};blurs.push(b);blurMap.set(el,b);return b;}
+const show=(el,at,d=.25)=>tl.to(el,{opacity:1,duration:d},at), hide=(el,at,d=.25)=>tl.to(el,{opacity:0,duration:d},at);
+const pop=(p,at,{d=.6,from=0,ease='back.out(1.8)'}={})=>tl.fromTo(p,{s:from,o:0},{s:1,o:1,duration:d,ease,immediateRender:false},at);
+function say(id,at,st=.09){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.fromTo(w,{opacity:0,yPercent:70,scaleY:1.35},{opacity:1,yPercent:0,scaleY:1,duration:.8,ease:'power4.out',stagger:st,immediateRender:false},at);
+  tl.fromTo(b,{v:20},{v:0,duration:.8+st*(w.length-1),ease:'power3.out',immediateRender:false},at);
+  el.querySelectorAll('.hl i').forEach(i=>tl.fromTo(i,{scaleX:0},{scaleX:1,duration:.5,ease:'power3.out',immediateRender:false},at+.3+st*w.length));}
+function unsay(id,at){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.to(w,{opacity:0,yPercent:-60,duration:.4,ease:'power2.in',stagger:.025},at);
+  tl.fromTo(b,{v:0},{v:16,duration:.45,ease:'power2.in',immediateRender:false},at);tl.set(b,{v:0},at+.55);}
+function chipIn(id,at){const el=$(id),b=blurOf(el,'x');
+  tl.fromTo(el,{opacity:0,x:90},{opacity:1,x:0,duration:.6,ease:'power4.out',immediateRender:false},at);
+  tl.fromTo(b,{v:24},{v:0,duration:.6,ease:'power3.out',immediateRender:false},at);}
+const chipOut=(id,at)=>tl.to($(id),{opacity:0,x:70,duration:.35,ease:'power2.in'},at);
+const flood=(id,at)=>tl.fromTo(id,{scale:0},{scale:1,duration:1.1,ease:'power2.inOut',immediateRender:false},at);
+function whip(t,from,to,dir=1){const bf=blurOf($(from)),bt=blurOf($(to));
+  tl.to(from,{y:-150*dir,duration:.28,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:24,duration:.28,ease:'power2.in',immediateRender:false},t);
+  tl.set(from,{visibility:'hidden'},t+.28);tl.set(to,{visibility:'visible',y:150*dir},t+.28);tl.set(bt,{v:24},t+.28);
+  tl.to(to,{y:0,duration:.42,ease:'power3.out'},t+.28);tl.to(bt,{v:0,duration:.42,ease:'power3.out'},t+.28);
+  tl.set(from,{y:0},t+.3);tl.set(bf,{v:0},t+.3);}
+function rack(t,from,to){const bf=blurOf($(from),'xy'),bt=blurOf($(to),'xy');
+  tl.to(from,{scale:.86,opacity:0,duration:.7,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:16,duration:.7,ease:'power2.in',immediateRender:false},t);
+  tl.set(to,{visibility:'visible',scale:1.18,opacity:0},t+.4);tl.set(bt,{v:16},t+.4);
+  tl.to(to,{scale:1,opacity:1,duration:.85,ease:'power3.out'},t+.4);tl.to(bt,{v:0,duration:.85,ease:'power3.out'},t+.4);
+  tl.set(from,{visibility:'hidden'},t+.7);tl.set(bf,{v:0},t+.7);}
+function cut(t,from,to){tl.set(from,{visibility:'hidden'},t);tl.set(to,{visibility:'visible'},t);}
+
+/* ================= 그림 부품 ================= */
+/* 주인공: 요청 봉투 (원점 = 중심) */
+function drawEnv(p,{label='',w=180,h=116,seal=INK,fs=32,mono=false}={}){
+  const g=S('g',{},p),vy=-h/2+h*.46;
+  S('rect',{x:-w/2+8,y:-h/2+8,width:w,height:h,rx:12,fill:INK},g);
+  S('rect',{x:-w/2,y:-h/2,width:w,height:h,rx:12,fill:PAPER,stroke:INK,'stroke-width':6},g);
+  S('path',{d:`M${-w/2+8} ${-h/2+8} L0 ${vy} L${w/2-8} ${-h/2+8}`,fill:'none',stroke:INK,'stroke-width':5,'stroke-linejoin':'round'},g);
+  S('circle',{cx:0,cy:vy,r:15,fill:seal,stroke:INK,'stroke-width':4},g);
+  if(label)T(label,0,h/2-14,{class:mono?'mono':'plex','font-size':fs,'text-anchor':'middle',fill:INK},g);
+  return g;}
+function chip(p,txt,color,x,y,fs=34){const g=S('g',{},p),w=txt.length*fs*.6+48;
+  S('rect',{x:-w/2+7,y:-34+7,width:w,height:68,rx:14,fill:INK},g);S('rect',{x:-w/2,y:-34,width:w,height:68,rx:14,fill:'#fff',stroke:INK,'stroke-width':5},g);
+  T(txt,0,12,{class:'mono','font-size':fs,'text-anchor':'middle',fill:color},g);return prop(g,{x,y,s:0,o:0});}
+function token(p,x,y){const g=S('g',{},p);S('circle',{cx:8,cy:8,r:115,fill:INK},g);S('circle',{r:115,fill:'#fff',stroke:INK,'stroke-width':7},g);return {g,p:prop(g,{x,y,s:0,o:0})};}
+
+/* ================= VIEW 0: 훅 — 길의 모양 네 가지 ================= */
+const hookCam=S('g',{},$('#hookSvg')),CH=cam(hookCam,1.12,960,540);
+const box=(x,lab)=>{const g=S('g',{},hookCam);S('rect',{x:-130+8,y:-90+8,width:260,height:180,rx:28,fill:INK},g);S('rect',{x:-130,y:-90,width:260,height:180,rx:28,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  T(lab,0,13,{class:'plex','font-size':40,'text-anchor':'middle',fill:INK},g);return prop(g,{x,y:560,s:0,o:0});};
+const hLine=S('path',{d:'M440 560 L1480 560',stroke:INK,'stroke-width':6,'stroke-dasharray':'16 16',opacity:.45,fill:'none',style:'opacity:0'},hookCam);
+const hSend=box(300,'보내는 쪽'),hRecv=box(1620,'받는 쪽');
+const hQ=prop((()=>{const g=S('g',{},hookCam);T('?',0,0,{class:'plex','font-size':120,'text-anchor':'middle',fill:OBS},g);return g;})(),{x:960,y:470,s:0,o:0});
+const GL=[[420,'Observer',OBS],[780,'Mediator',MED],[1140,'Chain',CHN],[1500,'Command',CMD]].map(([x,n,c],k)=>{const t=token(hookCam,x,540),g=t.g;
+  if(k===0){S('circle',{cx:-58,cy:0,r:20,fill:c,stroke:INK,'stroke-width':5},g);for(const y of [-60,-20,20,60]){S('line',{x1:-40,y1:0,x2:44,y2:y,stroke:INK,'stroke-width':5},g);S('circle',{cx:56,cy:y,r:13,fill:'#fff',stroke:INK,'stroke-width':5},g);}}
+  if(k===1){for(let i=0;i<5;i++){const a=i*Math.PI*2/5-Math.PI/2,px=Math.cos(a)*70,py=Math.sin(a)*70;S('line',{x1:0,y1:0,x2:px,y2:py,stroke:INK,'stroke-width':5},g);S('circle',{cx:px,cy:py,r:13,fill:'#fff',stroke:INK,'stroke-width':5},g);}S('circle',{r:24,fill:c,stroke:INK,'stroke-width':5},g);}
+  if(k===2){for(const x of [-30,40])S('path',{d:`M${x-12} -12 L${x} 0 L${x-12} 12`,fill:'none',stroke:INK,'stroke-width':5},g);
+    [[-72,'#fff'],[0,c],[72,'#E6EAEC']].forEach(([x,f])=>S('circle',{cx:x,cy:0,r:18,fill:f,stroke:INK,'stroke-width':5},g));}
+  if(k===3){S('rect',{x:-62,y:-44,width:124,height:92,rx:12,fill:c,stroke:INK,'stroke-width':6},g);S('rect',{x:-8,y:-44,width:16,height:92,fill:'#fff'},g);S('rect',{x:-62,y:-6,width:124,height:14,fill:'#fff'},g);
+    S('path',{d:'M0 -44 C-34 -76 -46 -46 0 -44 C46 -46 34 -76 0 -44',fill:'#fff',stroke:INK,'stroke-width':5},g);}
+  T(n,0,170,{class:'plex','font-size':42,'text-anchor':'middle',fill:c,stroke:'#EEF7F5','stroke-width':8,'paint-order':'stroke'},g);return t.p;});
+const hEnv=prop(drawEnv(hookCam,{label:'요청',seal:OBS}),{x:300,y:560,s:0,o:0});
+
+/* ================= VIEW 1: Observer — 채널이 구독자 전원에게 ================= */
+const obsCam=S('g',{},$('#obsSvg')),CO=cam(obsCam,1.3,420,560);
+const PH=[[1240,170],[1420,355],[1530,540],[1420,725],[1240,910]];
+const subLines=PH.map(([x,y])=>S('line',{x1:595,y1:557,x2:x-62,y2:y,stroke:INK,'stroke-width':5,'stroke-dasharray':'14 12',opacity:.4,style:'opacity:0'},obsCam));
+{const g=S('g',{},obsCam);
+  S('rect',{x:372,y:680,width:14,height:60,fill:INK},g);S('rect',{x:454,y:680,width:14,height:60,fill:INK},g);S('rect',{x:330,y:736,width:180,height:16,rx:8,fill:INK},g);
+  S('rect',{x:263,y:448,width:330,height:240,rx:26,fill:INK},g);S('rect',{x:255,y:440,width:330,height:240,rx:26,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  S('rect',{x:280,y:465,width:280,height:180,rx:14,fill:INK},g);S('path',{d:'M390 520 L462 557 L390 594 Z',fill:OBS,stroke:'#fff','stroke-width':4,'stroke-linejoin':'round'},g);
+  S('path',{d:'M384 410 q0 -58 36 -58 q36 0 36 58 l10 12 h-92 z',fill:OBS,stroke:INK,'stroke-width':6,'stroke-linejoin':'round'},g);S('circle',{cx:420,cy:432,r:9,fill:INK},g);
+  T('Channel',420,800,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},g);}
+const phones=PH.map(([x,y],k)=>{const g=S('g',{},obsCam),inner=S('g',{},g);
+  S('rect',{x:-55+8,y:-90+8,width:110,height:180,rx:20,fill:INK},inner);S('rect',{x:-55,y:-90,width:110,height:180,rx:20,fill:'#fff',stroke:INK,'stroke-width':6},inner);
+  S('rect',{x:-42,y:-72,width:84,height:134,rx:10,fill:'#E9EEF0'},inner);const lit=S('rect',{x:-42,y:-72,width:84,height:134,rx:10,fill:OBS,opacity:0},inner);
+  S('path',{d:'M-20 14 q0 -40 20 -40 q20 0 20 40 l7 8 h-54 z',fill:'#fff',stroke:INK,'stroke-width':4,'stroke-linejoin':'round'},inner);S('circle',{cx:0,cy:76,r:6,fill:INK,opacity:.3},inner);
+  return {p:prop(g,k===4?{x:1760,y:1220,o:0}:{x,y,s:0,o:0}),inner,lit};});
+const oHero=drawEnv(obsCam,{label:'새 영상',seal:OBS}),oCopies=PH.map(()=>drawEnv(obsCam,{seal:OBS}));
+const BC=[12.9,16.9];   // 방송: 이 시각에 복사본이 출발, +1.0초에 전원 도착
+const oSub=chip(obsCam,'subscribe(o)',OBS,960,900),oLoop=chip(obsCam,'for (o : subs) o.update(v)',OBS,420,880);
+
+/* ================= VIEW 2: Mediator — 관제탑 (탑다운) ================= */
+const medCam=S('g',{},$('#medSvg')),CMd=cam(medCam,1.25,960,560);
+for(const a of [-18,118]){const g=S('g',{transform:`rotate(${a} 960 560)`},medCam);S('rect',{x:-700,y:500,width:3320,height:120,fill:'#3E4A5A'},g);for(let i=0;i<40;i++)S('rect',{x:-700+i*90,y:555,width:50,height:10,fill:'#fff',opacity:.7},g);}
+S('circle',{cx:960,cy:560,r:200,fill:'#fff',opacity:.5},medCam);
+const meshL=[],pairs=[];for(let a=0;a<6;a++)for(let b=a+1;b<6;b++){pairs.push([a,b]);meshL.push(S('line',{stroke:INK,'stroke-width':4,opacity:.55,pathLength:1,'stroke-dasharray':1},medCam));}
+const spokeL=[0,1,2,3,4,5].map(()=>S('line',{stroke:MED,'stroke-width':8,'stroke-linecap':'round',pathLength:1,'stroke-dasharray':1},medCam));
+const net={mesh:0,meshO:1,spoke:0};
+let towerRing;const tower=(()=>{const g=S('g',{},medCam);S('circle',{cx:8,cy:8,r:96,fill:INK},g);S('circle',{r:96,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  towerRing=S('g',{},g);S('circle',{r:66,fill:MED,stroke:INK,'stroke-width':5},towerRing);S('circle',{r:26,fill:'#fff',stroke:INK,'stroke-width':5},g);
+  T('관제탑',0,150,{class:'plex','font-size':40,'text-anchor':'middle',fill:INK,stroke:'#FCEBCF','stroke-width':8,'paint-order':'stroke'},g);return prop(g,{x:960,y:560,s:0,o:0});})();
+const planes=[0,1,2,3,4,5].map(k=>{const g=S('g',{},medCam);
+  S('path',{d:'M-72 6 L0 -16 L72 6 L72 20 L0 8 L-72 20 Z',fill:'#fff',stroke:INK,'stroke-width':5,'stroke-linejoin':'round'},g);
+  S('path',{d:'M-28 48 L0 38 L28 48 L28 56 L-28 56 Z',fill:'#fff',stroke:INK,'stroke-width':5,'stroke-linejoin':'round'},g);
+  const body=S('rect',{x:-13,y:-58,width:26,height:112,rx:13,fill:'#fff',stroke:INK,'stroke-width':5},g);S('rect',{x:-7,y:-44,width:14,height:16,rx:5,fill:MED},g);
+  return {g,body,s:0};});
+const planeAt=(k,t)=>{const a=(k*60+30)*Math.PI/180+t*.07;return {x:960+430*Math.cos(a),y:560+330*Math.sin(a),h:Math.atan2(330*Math.cos(a),-430*Math.sin(a))*57.3+90};};
+const mEnv=drawEnv(medCam,{seal:MED});
+const MSG=[{a:0,b:3,t0:27.0,d1:.8,h:.4,d2:.8},{a:2,b:5,t0:31.6,d1:.6,h:.25,d2:.6},{a:4,b:1,t0:33.4,d1:.6,h:.25,d2:.6}];
+const cnt=[15,6].map(n=>{const g=S('g',{},medCam);S('rect',{x:-150+7,y:-46+7,width:300,height:92,rx:22,fill:INK},g);S('rect',{x:-150,y:-46,width:300,height:92,rx:22,fill:'#fff',stroke:INK,'stroke-width':6},g);
+  T(`연결 ${n}개`,0,16,{class:'plex','font-size':46,'text-anchor':'middle',fill:n===6?MED:INK},g);return prop(g,{x:1500,y:320,s:0,o:0});});
+const mChip=chip(medCam,'room.send(from, msg)',MED,960,790);
+
+/* ================= VIEW 3: Chain — 결재 라인 (측면) ================= */
+const chnCam=S('g',{},$('#chnSvg')),CC=cam(chnCam,1.2,600,560);
+S('rect',{x:-600,y:820,width:3120,height:12,fill:INK,opacity:.15},chnCam);
+const DX=[480,960,1440];
+const people=[['대리','≤ 100만','#9CC9E8'],['과장','≤ 500만','#5FA9DA'],['부장','제한 없음','#2E78B5']].map(([name,lim,shirt],k)=>{const x=DX[k],g=S('g',{},chnCam);
+  S('rect',{x:x-78,y:565,width:156,height:170,rx:46,fill:shirt,stroke:INK,'stroke-width':7},g);
+  const hg=S('g',{},g);S('circle',{r:52,fill:'#FFE2C6',stroke:INK,'stroke-width':7},hg);S('circle',{cx:-17,cy:-4,r:6,fill:INK},hg);S('circle',{cx:17,cy:-4,r:6,fill:INK},hg);
+  S('path',{d:'M-14 20 q14 10 28 0',stroke:INK,'stroke-width':5,fill:'none','stroke-linecap':'round'},hg);
+  S('rect',{x:x-172,y:708,width:360,height:34,rx:8,fill:INK},g);S('rect',{x:x-180,y:700,width:360,height:34,rx:8,fill:'#C98B5B',stroke:INK,'stroke-width':6},g);
+  S('rect',{x:x-150,y:734,width:300,height:86,fill:'#E3B488',stroke:INK,'stroke-width':6},g);
+  S('rect',{x:x-72,y:750,width:144,height:56,rx:10,fill:'#fff',stroke:INK,'stroke-width':4},g);T(name,x,791,{class:'plex','font-size':38,'text-anchor':'middle',fill:INK},g);
+  S('rect',{x:x-112,y:366,width:224,height:62,rx:31,fill:CHN,stroke:INK,'stroke-width':5},g);T(lim,x,408,{class:'plex','font-size':34,'text-anchor':'middle',fill:'#fff'},g);
+  return {g,head:prop(hg,{x,y:505})};});
+const arrows=[720,1200].map(x=>{const g=S('g',{},chnCam);const p=S('path',{d:'M-22 -28 L12 0 L-22 28',fill:'none',stroke:INK,'stroke-width':10,'stroke-linecap':'round','stroke-linejoin':'round'},g);return {g,p,pp:prop(g,{x,y:640})};});
+const xMark=(()=>{const g=S('g',{},chnCam);for(const d of ['M-34 -34 L34 34','M34 -34 L-34 34'])S('path',{d,stroke:OBS,'stroke-width':12,'stroke-linecap':'round'},g);return prop(g,{x:1200,y:640,s:0,o:0});})();
+const bubble=(()=>{const g=S('g',{},chnCam);S('path',{d:'M-60 38 L-84 70 L-30 38',fill:'#fff',stroke:INK,'stroke-width':5,'stroke-linejoin':'round'},g);
+  S('rect',{x:-110,y:-40,width:220,height:80,rx:36,fill:'#fff',stroke:INK,'stroke-width':5},g);S('rect',{x:-64,y:30,width:40,height:14,fill:'#fff'},g);
+  T('한도 밖',0,13,{class:'plex','font-size':38,'text-anchor':'middle',fill:INK},g);return prop(g,{x:640,y:450,s:0,o:0});})();
+const cEnv1=prop(drawEnv(chnCam,{label:'300만 원',seal:CHN,w:200}),{x:-200,y:650});
+const cEnv2=prop(drawEnv(chnCam,{label:'50만 원',seal:CHN,w:200}),{x:-200,y:650});
+const stamp=()=>{const g=S('g',{},chnCam);S('circle',{r:66,fill:'#fff','fill-opacity':.85,stroke:CHN,'stroke-width':9},g);S('circle',{r:52,fill:'none',stroke:CHN,'stroke-width':3},g);
+  T('승인',0,15,{class:'plex','font-size':44,'text-anchor':'middle',fill:CHN},g);return g;};
+const st1=prop(stamp(),{x:1060,y:612,r:-14,s:0,o:0}),st2=prop(stamp(),{x:580,y:612,r:-14,s:0,o:0});
+const cChip=chip(chnCam,'else next.handle(amount)',CHN,960,200);
+
+/* ================= VIEW 4: Command — 요청이 주문서(객체)가 된다 ================= */
+const cmdCam=S('g',{},$('#cmdSvg')),CK=cam(cmdCam,1.5,960,560);
+const playB=(()=>{const g=S('g',{},cmdCam);S('circle',{r:62,fill:CMD,stroke:'#fff','stroke-width':6},g);S('path',{d:'M-16 -26 L28 0 L-16 26 Z',fill:'#fff'},g);return prop(g,{x:380,y:540,s:0});})();
+const undoB=(()=>{const g=S('g',{},cmdCam);S('circle',{r:50,fill:'#8A96A3',stroke:'#fff','stroke-width':6},g);
+  S('path',{d:'M-18 -6 A22 22 0 1 1 -10 18',fill:'none',stroke:'#fff','stroke-width':8,'stroke-linecap':'round'},g);S('path',{d:'M-32 -10 L-18 -6 L-14 -22',fill:'none',stroke:'#fff','stroke-width':8,'stroke-linecap':'round','stroke-linejoin':'round'},g);return prop(g,{x:380,y:720,s:0});})();
+const remote=(()=>{const g=S('g',{},cmdCam);S('rect',{x:-110+9,y:-260+9,width:220,height:520,rx:50,fill:'#000',opacity:.25},g);S('rect',{x:-110,y:-260,width:220,height:520,rx:50,fill:INK},g);
+  S('rect',{x:-80,y:-232,width:160,height:22,rx:8,fill:'#5B6878'},g);T('Remote',0,322,{class:'mono','font-size':36,'text-anchor':'middle',fill:INK},g);return prop(g,{x:380,y:600,s:0,o:0});})();
+cmdCam.appendChild(playB.el);cmdCam.appendChild(undoB.el);
+const bulb={glow:null,rays:null};const bulbP=(()=>{const g=S('g',{},cmdCam);bulb.glow=S('circle',{r:160,fill:LIT,style:'opacity:0'},g);
+  bulb.rays=S('g',{style:'opacity:0'},g);for(let k=0;k<8;k++){const a=k*Math.PI/4;S('line',{x1:Math.cos(a)*104,y1:Math.sin(a)*104,x2:Math.cos(a)*140,y2:Math.sin(a)*140,stroke:INK,'stroke-width':7,'stroke-linecap':'round'},bulb.rays);}
+  bulb.glass=S('circle',{r:78,fill:'#fff',stroke:INK,'stroke-width':7},g);S('path',{d:'M-22 10 q11 -26 22 0 q11 26 22 0',fill:'none',stroke:INK,'stroke-width':5},g);
+  S('rect',{x:-34,y:72,width:68,height:46,rx:8,fill:'#AAB4C3',stroke:INK,'stroke-width':6},g);T('Light',0,180,{class:'mono','font-size':36,'text-anchor':'middle',fill:INK},g);return prop(g,{x:860,y:410,s:0,o:0});})();
+let fanBlades;const fanP=(()=>{const g=S('g',{},cmdCam);S('rect',{x:-8,y:100,width:16,height:180,fill:INK},g);S('rect',{x:-80,y:272,width:160,height:22,rx:11,fill:INK},g);
+  S('circle',{r:110,fill:'#fff',stroke:INK,'stroke-width':7},g);fanBlades=S('g',{},g);
+  for(let k=0;k<3;k++)S('path',{d:'M0 0 C 30 -30 70 -60 84 -24 C 90 -6 40 2 0 0 Z',fill:CMD,stroke:INK,'stroke-width':5,transform:`rotate(${k*120})`},fanBlades);
+  S('circle',{r:16,fill:INK},g);T('Fan',0,345,{class:'mono','font-size':36,'text-anchor':'middle',fill:INK},g);return prop(g,{x:1200,y:420,s:0,o:0});})();
+const tray=(()=>{const g=S('g',{},cmdCam);S('rect',{x:-170,y:-14,width:340,height:28,rx:10,fill:INK},g);T('history',0,70,{class:'mono','font-size':36,'text-anchor':'middle',fill:INK},g);return prop(g,{x:1560,y:856,s:0,o:0});})();
+const kEnv=prop(drawEnv(cmdCam,{label:'요청',seal:CMD}),{x:960,y:560,s:1.4});
+const ticket=(name)=>{const g=S('g',{},cmdCam);S('rect',{x:-150+8,y:-56+8,width:300,height:112,rx:14,fill:INK},g);S('rect',{x:-150,y:-56,width:300,height:112,rx:14,fill:PAPER,stroke:INK,'stroke-width':6},g);
+  S('rect',{x:-147,y:-53,width:30,height:106,rx:10,fill:CMD},g);T(name,16,-6,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},g);T('execute·undo',16,34,{class:'mono','font-size':30,'text-anchor':'middle',fill:CMD},g);return g;};
+const tk1=prop(ticket('LightOn'),{x:960,y:560,s:.4,o:0}),tk2=prop(ticket('FanOn'),{x:760,y:780,s:0,o:0});
+const kChip=chip(cmdCam,'history.pop().undo()',CMD,1560,470);
+const FAN_ON=54.6,FAN_OFF=57.3;
+
+/* ================= VIEW 5: 판별 레일 ================= */
+const railCam=S('g',{},$('#railSvg')),CR=cam(railCam,1.2,420,600);
+const K=['M-100 600 L420 600 C620 600 700 180 900 180 L1470 180','M-100 600 L820 600 C1000 600 1060 390 1220 390 L1470 390','M-100 600 L1180 600 C1300 600 1340 810 1470 810','M-100 600 L1470 600'];
+const DEST=[[OBS,'Observer',180,'#fff'],[MED,'Mediator',390,INK],[CHN,'Chain',810,'#fff'],[CMD,'Command',600,'#fff']];
+for(const d of K)S('path',{d,fill:'none',stroke:INK,'stroke-width':30,'stroke-linecap':'round'},railCam);
+for(const d of K)S('path',{d,fill:'none',stroke:'#fff','stroke-width':14,'stroke-linecap':'round'},railCam);
+const trails=K.map((d,k)=>{const e=S('path',{d,fill:'none',stroke:DEST[k][0],'stroke-width':12,'stroke-linecap':'round'},railCam);const L=e.getTotalLength();e.setAttribute('stroke-dasharray',L);e.setAttribute('stroke-dashoffset',L);return {e,L};});
+const gates=[[420,'1','1:N 방송?'],[820,'2','허브 경유?'],[1180,'3','넘기는 사슬?']].map(([x,n,q])=>{const g=S('g',{},railCam);
+  const c=S('circle',{r:44,fill:'#fff',stroke:INK,'stroke-width':7},g);T(n,0,13,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},g);
+  T(q,0,-70,{class:'plex','font-size':38,'text-anchor':'middle',fill:INK,stroke:'#EEF7F5','stroke-width':8,'paint-order':'stroke'},g);return {p:prop(g,{x,y:600,s:0,o:0}),c,len:x+100};});
+const dests=DEST.map(([c,n,y,tc])=>{const g=S('g',{},railCam);S('rect',{x:-190+9,y:-55+9,width:380,height:110,rx:28,fill:INK},g);S('rect',{x:-190,y:-55,width:380,height:110,rx:28,fill:c,stroke:INK,'stroke-width':7},g);
+  T(n,0,15,{class:'plex','font-size':42,'text-anchor':'middle',fill:tc},g);return prop(g,{x:1660,y,s:0,o:0});});
+const riders=[['o.update(v)',[0]],['room.send(m)',[0,1]],['next.handle(r)',[0,1,2]],['history.push(c)',[0,1,2]]].map(([s,pass],k)=>{
+  const g=drawEnv(railCam,{label:s,w:330,h:100,seal:DEST[k][0],fs:30,mono:true});const path=S('path',{d:K[k]});return {g,path,L:trails[k].L,k,pass,p:0,o:0};});
+
+/* ================= 타임라인 ================= */
+for(const c of cams)cutTo(c,0,c.z0,c.cx0,c.cy0);
+tl.set('.flood',{scale:0},0);
+/* --- 0–8.2 훅 --- */
+shot(CH,0,2.2,1,960,540,'sine.inOut');
+pop(hSend,.2);pop(hRecv,.35);show(hLine,.6,.4);
+say('#s1',.9);
+pop(hEnv,1.2,{d:.4});tl.to(hEnv,{x:960,duration:1.3,ease:'power2.inOut'},1.5);
+pop(hQ,2.7,{d:.5});tl.to(hQ,{y:450,duration:.5,yoyo:true,repeat:1,ease:'sine.inOut'},3.2);
+unsay('#s1',3.6);
+for(const p of [hSend,hRecv,hQ])tl.to(p,{s:.6,o:0,duration:.35,ease:'power2.in'},3.7);hide(hLine,3.7,.3);
+tl.to(hEnv,{y:300,s:.85,duration:.7,ease:'power3.inOut'},3.8);
+GL.forEach((g,k)=>pop(g,4.1+k*.18));
+say('#s2',4.9);
+tl.to(hEnv,{y:280,duration:.6,yoyo:true,repeat:3,ease:'sine.inOut'},4.6);
+unsay('#s2',7.2);
+tl.to(hEnv,{x:420,y:540,s:.5,duration:.6,ease:'power2.in'},7.3);
+shot(CH,7.6,.6,4.2,420,540,'power2.in');
+/* --- 8.2–21.7 Observer --- */
+cut(8.2,'#hook','#obs');
+cutTo(CO,8.2,1.35,420,560);shot(CO,8.2,1.1,1,960,540,'power3.out');
+chipIn('#chO',8.7);
+phones.slice(0,4).forEach((ph,k)=>pop(ph.p,8.9+k*.14));
+subLines.slice(0,4).forEach((l,k)=>show(l,9.5+k*.1,.3));
+tl.to(phones[4].p,{x:1240,y:910,o:1,duration:.7,ease:'power3.out'},10.2);
+pop(oSub,10.6,{from:.6});show(subLines[4],10.95,.3);
+shot(CO,11.6,.8,1.3,560,560);
+shot(CO,12.6,.9,1,960,540);
+flood('#fl1',13.9);
+say('#s3',14.3);
+tl.to(oSub,{o:0,duration:.25},15.2);pop(oLoop,15.4,{from:.6});
+unsay('#s3',20.6);chipOut('#chO',20.8);
+whip(21.4,'#obs','#med',1);
+/* --- 21.7–36 Mediator --- */
+flood('#fl2',21.5);
+shot(CMd,21.8,1.4,1,960,540);
+chipIn('#chM',22.0);
+planes.forEach((p,k)=>tl.fromTo(p,{s:0},{s:1,duration:.5,ease:'back.out(1.8)',immediateRender:false},22.2+k*.1));
+tl.to(net,{mesh:1,duration:1.2,ease:'power1.inOut'},23.0);
+pop(cnt[0],24.0);
+pop(tower,25.0,{d:.7});
+tl.to(net,{meshO:0,duration:.4},25.4);tl.to(net,{spoke:1,duration:.8,ease:'power2.out'},25.5);
+tl.to(cnt[0],{o:0,s:.7,duration:.2},26.0);pop(cnt[1],26.1);
+shot(CMd,26.6,.8,1.3,960,560);
+shot(CMd,29.1,.9,1,960,540);
+say('#s4',29.6);
+pop(mChip,30.6,{from:.6});
+unsay('#s4',35.0);chipOut('#chM',35.2);
+rack(35.6,'#med','#chn');
+/* --- 36–48.8 Chain --- */
+flood('#fl3',35.8);
+cutTo(CC,36.0,1.2,600,560);
+chipIn('#chC',36.4);
+tl.to(cEnv1,{x:480,duration:.8,ease:'power3.out'},37.4);
+tl.to(people[0].head,{r:12,duration:.12,yoyo:true,repeat:5,ease:'sine.inOut'},38.4);pop(bubble,38.5);
+tl.to(bubble,{o:0,s:.7,duration:.2},39.4);
+shot(CC,39.3,.9,1.2,960,560);
+tl.to(cEnv1,{x:960,duration:.7,ease:'power2.inOut'},39.5);tl.to(cEnv1,{y:520,duration:.35,ease:'power2.out'},39.5);tl.to(cEnv1,{y:650,duration:.35,ease:'power2.in'},39.85);
+tl.to(people[1].head,{y:518,duration:.12,yoyo:true,repeat:3,ease:'sine.inOut'},40.3);
+tl.fromTo(st1,{s:1.8,o:0},{s:.78,o:1,duration:.25,ease:'power4.in',immediateRender:false},40.4);
+tl.set(arrows[1].p,{attr:{stroke:'#AAB4C3'}},40.9);pop(xMark,40.9,{d:.4});
+shot(CC,41.3,.9,1,960,540);
+tl.to(people[2].g,{opacity:.4,duration:.5},41.6);
+say('#s5',42.2);
+pop(cChip,43.4,{from:.6});
+tl.to(cEnv2,{x:480,duration:.8,ease:'power3.out'},44.6);
+tl.to(people[0].head,{y:518,duration:.12,yoyo:true,repeat:3,ease:'sine.inOut'},45.4);
+tl.fromTo(st2,{s:1.8,o:0},{s:.78,o:1,duration:.25,ease:'power4.in',immediateRender:false},45.5);
+unsay('#s5',47.2);chipOut('#chC',47.4);
+tl.to(st2,{o:0,duration:.2},47.6);
+shot(CC,47.9,.85,4.6,480,650,'power2.in');
+/* --- 48.8–59.7 Command --- */
+cut(48.75,'#chn','#cmd');flood('#fl4',48.5);
+cutTo(CK,48.75,1.5,960,560);shot(CK,49.5,1.0,1,960,540);
+tl.fromTo(tk1,{s:.4,o:0,y:560},{s:1,o:1,y:430,duration:.6,ease:'back.out(1.6)',immediateRender:false},49.1);
+tl.to(kEnv,{s:1.1,o:0,y:620,duration:.45,ease:'power2.in'},49.25);
+chipIn('#chK',49.6);
+[remote,bulbP,fanP,tray].forEach((p,k)=>pop(p,49.9+k*.15));
+tl.fromTo([playB,undoB],{s:0},{s:1,duration:.5,ease:'back.out(1.8)',immediateRender:false},50.0);
+tl.to(tk1,{x:380,y:280,s:.6,duration:.7,ease:'power3.inOut'},50.8);tl.to(tk1,{y:318,duration:.2,ease:'power2.in'},51.5);
+shot(CK,51.2,.7,1.18,640,460);
+tl.to(playB,{s:.86,duration:.1,yoyo:true,repeat:1},51.85);
+show(bulb.glow,51.95,.3);tl.to(bulb.glow,{opacity:.55,duration:.3},51.95);show(bulb.rays,52.0,.2);tl.set(bulb.glass,{attr:{fill:'#FFF3B8'}},51.95);
+tl.to(tk1,{x:1560,y:782,s:1,duration:.75,ease:'power3.inOut'},52.35);
+shot(CK,52.4,.8,1,960,540);
+tl.fromTo(tk2,{s:0,o:0},{s:.6,o:1,duration:.4,ease:'back.out(1.8)',immediateRender:false},53.2);
+tl.to(tk2,{x:380,y:280,duration:.5,ease:'power3.inOut'},53.7);tl.to(tk2,{y:318,duration:.2,ease:'power2.in'},54.2);
+tl.to(playB,{s:.86,duration:.1,yoyo:true,repeat:1},54.5);
+tl.to(tk2,{x:1560,y:658,s:1,duration:.75,ease:'power3.inOut'},54.9);
+say('#s6',55.7);
+shot(CK,56.7,.8,1.1,1400,520);
+tl.to(undoB,{s:.86,duration:.1,yoyo:true,repeat:1},57.1);
+tl.to(tk2,{y:560,duration:.3,ease:'power2.out'},57.2);tl.to(tk2,{x:1200,y:420,s:.4,o:0,duration:.55,ease:'power2.in'},57.5);
+pop(kChip,57.6,{from:.6});
+shot(CK,58.3,.8,1,960,540);
+unsay('#s6',58.9);chipOut('#chK',59.1);
+whip(59.4,'#cmd','#rail',-1);
+/* --- 59.7–70 판별 레일 --- */
+flood('#fl5',59.5);
+cutTo(CR,59.4,1.2,420,600);shot(CR,60.0,2.2,1,960,540,'sine.inOut');
+gates.forEach((g,k)=>pop(g.p,59.9+k*.15));dests.forEach((d,k)=>pop(d,60.1+k*.12));
+riders.forEach((c,k)=>{const at=60.4+k*1.45;tl.set(c,{p:0,o:0},0);tl.set(c,{o:1},at);
+  tl.fromTo(c,{p:0},{p:1,duration:1.5,ease:'sine.inOut',immediateRender:false},at);tl.to(c,{o:0,duration:.25},at+1.5);
+  tl.fromTo(dests[k],{s:1.18},{s:1,duration:.45,ease:'power2.out',immediateRender:false},at+1.5);});
+{const br=blurOf($('#rail'),'xy');tl.to('#rail',{opacity:.28,duration:.6},66.4);tl.fromTo(br,{v:0},{v:6,duration:.6,immediateRender:false},66.4);}
+say('#s7',66.7,.1);
+unsay('#s7',69.3);
+tl.to({},{duration:.01},DUR-.01);
+
+/* ================= render: tl.time()의 순수 함수 ================= */
+const grid=$('#grid'),bl1=$('#bl1'),bl2=$('#bl2');
+const viewCam={hook:CH,obs:CO,med:CMd,chn:CC,cmd:CK,rail:CR};
+const place=(g,x,y,s=1,r=0,o=1)=>{g.setAttribute('transform',`translate(${x} ${y}) rotate(${r}) scale(${s})`);g.setAttribute('opacity',o);};
+function render(){const t=tl.time();
+  for(const p of props){p.el.setAttribute('transform',`translate(${p.x} ${p.y}) rotate(${p.r}) scale(${p.s})`);p.el.setAttribute('opacity',p.o);}
+  for(const c of cams){const z=c.z*(1+.006*Math.sin(t*.9));c.g.setAttribute('transform',`translate(960 540) scale(${z}) translate(${-c.cx} ${-c.cy})`);}
+  for(const b of blurs){if(b.v>.25){b.g.setAttribute('stdDeviation',b.axis==='y'?`${b.v*.12} ${b.v}`:b.axis==='x'?`${b.v} ${b.v*.08}`:`${b.v} ${b.v}`);b.el.style.filter=`url(#${b.id})`;}else b.el.style.filter='none';}
+  let cz=1;for(const k in viewCam)if(document.getElementById(k).style.visibility!=='hidden'){cz=viewCam[k].z;break;}
+  grid.style.transform=`scale(${(1+.022*Math.sin(t*.8))*(1+(cz-1)*.18)}) translate(${Math.sin(t*.21)*18}px,${Math.cos(t*.17)*14}px)`;
+  bl1.style.transform=`translate(${Math.sin(t*.31)*90}px,${Math.cos(t*.27)*60}px)`;bl2.style.transform=`translate(${Math.cos(t*.23)*80}px,${Math.sin(t*.29)*70}px)`;
+  /* Observer: 원본 봉투 → 복사본이 전원에게 동시에 → 도착하면 화면 점등 */
+  {let hv=0,hs=0;for(const b of BC)if(t>=b-.9&&t<b){hv=1;hs=ease((t-b+.9)/.4);}
+    place(oHero,560,470,.75*hs,0,hv);
+    oCopies.forEach((g,k)=>{let o=0,x=0,y=0;for(const b of BC)if(t>=b&&t<b+1){const u=ease(t-b);o=1;x=lerp(600,PH[k][0]-70,u);y=lerp(500,PH[k][1],u);}place(g,x,y,.5,0,o);});
+    phones.forEach((ph,k)=>{let pu=0;for(const b of BC)if(t>=b+1)pu=Math.max(pu,Math.exp(-(t-b-1)*1.4));ph.lit.setAttribute('opacity',pu);ph.inner.setAttribute('transform',`scale(${1+.14*pu})`);});}
+  /* Mediator: 비행기 공전, 그물선 → 바큇살, 봉투는 늘 탑을 거친다 */
+  {const P=planes.map((p,k)=>planeAt(k,t));
+    planes.forEach((p,k)=>{let f=0;for(const m of MSG){const e=m.t0+m.d1+m.h+m.d2;if(m.b===k&&t>=e)f=Math.max(f,Math.exp(-(t-e)*1.5));}
+      p.body.setAttribute('fill',f>.05?MED:'#fff');place(p.g,P[k].x,P[k].y,p.s*(1+.12*f),P[k].h,p.s>0?1:0);});
+    pairs.forEach(([a,b],i)=>{const l=meshL[i];l.setAttribute('x1',P[a].x);l.setAttribute('y1',P[a].y);l.setAttribute('x2',P[b].x);l.setAttribute('y2',P[b].y);l.setAttribute('stroke-dashoffset',1-net.mesh);l.style.opacity=net.meshO;});
+    spokeL.forEach((l,k)=>{l.setAttribute('x1',960);l.setAttribute('y1',560);l.setAttribute('x2',P[k].x);l.setAttribute('y2',P[k].y);l.setAttribute('stroke-dashoffset',1-net.spoke);});
+    let mo=0,mx=0,my=0,pulse=0;
+    for(const m of MSG){const t1=m.t0+m.d1,t2=t1+m.h,t3=t2+m.d2;
+      if(t>=m.t0&&t<t1){const u=ease((t-m.t0)/m.d1);mo=1;mx=lerp(P[m.a].x,960,u);my=lerp(P[m.a].y,560,u);}
+      else if(t>=t1&&t<t2){mo=1;mx=960;my=560;pulse=Math.sin((t-t1)/m.h*Math.PI);}
+      else if(t>=t2&&t<t3){const u=ease((t-t2)/m.d2);mo=1;mx=lerp(960,P[m.b].x,u);my=lerp(560,P[m.b].y,u);}}
+    place(mEnv,mx,my,.55,0,mo);towerRing.setAttribute('transform',`scale(${1+.22*pulse})`);}
+  /* Command: 선풍기 각도 = 켜져 있던 시간의 적분 (끄면 감속) */
+  {const w=760,on=clamp(t,FAN_ON,FAN_OFF)-FAN_ON,dec=t>FAN_OFF?(1-Math.exp(-(t-FAN_OFF)*3))/3:0;fanBlades.setAttribute('transform',`rotate(${w*(on+dec)})`);}
+  /* 레일: 지나간 자리에 색 궤적, 게이트 통과 순간 점등 */
+  for(const c of riders){trails[c.k].e.setAttribute('stroke-dashoffset',trails[c.k].L*(1-c.p));
+    const pt=c.path.getPointAtLength(c.L*c.p);c.g.setAttribute('transform',`translate(${pt.x} ${pt.y-98})`);c.g.setAttribute('opacity',c.o);}
+  gates.forEach((g,gi)=>{let lit=false;for(const c of riders){if(c.o<=0||!c.pass.includes(gi))continue;if(Math.abs(c.p*c.L-g.len)<70)lit=true;}g.c.setAttribute('fill',lit?LIT:'#fff');});
+}
+gsap.ticker.add(render);
+
+/* ---------- 컨트롤: 자동재생 + 루프, 플레이어 없음. ?debug=1 스크럽, ?clean=1 export ---------- */
+const q=new URLSearchParams(location.search);
+const start=()=>tl.play(0);
+tl.eventCallback('onComplete',start);
+window.OPENER={W,H,DURATION:DUR,tl,ready:false,seek(t){tl.pause(t,false);render();},play:start};
+window.OPENER.seekFrame=t=>{window.OPENER.seek(t);return Promise.resolve();};
+addEventListener('keydown',e=>{if(/^[rR]$/.test(e.key))start();if(e.code==='Space'){e.preventDefault();tl.paused()?tl.play():tl.pause();}});
+if(q.has('debug')){const dbg=$('#dbg');dbg.style.display='flex';const sc=$('#dScrub'),ck=$('#dClock');let drag=false;
+  gsap.ticker.add(()=>{if(!drag)sc.value=String(tl.time()/DUR*1000);ck.textContent=tl.time().toFixed(2)+'s';$('#dPlay').textContent=tl.paused()?'Play':'Pause';});
+  sc.addEventListener('pointerdown',()=>{drag=true;tl.pause();});addEventListener('pointerup',()=>drag=false);
+  sc.addEventListener('input',()=>{tl.pause();tl.time(sc.value/1000*DUR);});$('#dPlay').onclick=()=>tl.paused()?tl.play():tl.pause();}
+document.fonts.ready.then(()=>{render();window.OPENER.ready=true;if(!q.has('clean'))start();});
+</script>
+</body>
+</html>

@@ -1,0 +1,230 @@
+<template>
+  <style>
+    @font-face { font-family: "EB Garamond"; src: url("../../assets/fonts/EBGaramond-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-700.woff2") format("woff2"); font-weight: 700; }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      container-type: size;
+      color: #141413;
+      font-family: "Inter", "Noto Sans KR", sans-serif;
+    }
+    .look-alike-bg {
+      position: absolute;
+      inset: 0;
+      background: #faf9f5;
+    }
+    .look-alike-grid {
+      position: absolute;
+      inset: -80px;
+      opacity: 0.3;
+      background-image:
+        linear-gradient(to right, rgba(20, 20, 19, 0.12) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(20, 20, 19, 0.12) 1px, transparent 1px);
+      background-size: 80px 80px;
+    }
+    .look-alike-stage {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 42%;
+    }
+    .look-alike-head {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 104px;
+      text-align: center;
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-weight: 400;
+      font-size: 104px;
+      line-height: 1.14;
+      letter-spacing: -0.018em;
+    }
+    .look-alike-line { display: block; white-space: nowrap; }
+    .look-alike-word { display: inline-block; }
+    .look-alike-coral { color: #cc785c; }
+
+    .look-alike-row {
+      position: absolute;
+      left: 240px;
+      top: 400px;
+      width: 1560px;
+      display: grid;
+      grid-template-columns: repeat(3, 456px);
+      column-gap: 36px;
+    }
+    .look-alike-col { position: relative; height: 380px; }
+    .look-alike-tag {
+      position: absolute;
+      left: 153px;
+      top: 0;
+      width: 150px;
+      height: 104px;
+      border-radius: 6px;
+      background: #efe9de;
+      border: 1px solid rgba(20, 20, 19, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-size: 84px;
+      line-height: 1;
+      transform-origin: 50% 100%;
+    }
+    .look-alike-stem {
+      position: absolute;
+      left: 50%;
+      bottom: -37px;
+      width: 1px;
+      height: 36px;
+      background: rgba(20, 20, 19, 0.2);
+    }
+    .look-alike-card {
+      position: absolute;
+      left: 0;
+      top: 140px;
+      width: 496px;
+      border-radius: 8px;
+      background: #181715;
+      border: 1px solid rgba(250, 249, 245, 0.14);
+      box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+      overflow: hidden;
+    }
+    .look-alike-bar {
+      height: 52px;
+      background: #252320;
+      border-bottom: 1px solid rgba(250, 249, 245, 0.14);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 22px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+      font-size: 20px;
+      letter-spacing: 0.02em;
+      color: rgba(250, 249, 245, 0.55);
+    }
+    .look-alike-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(250, 249, 245, 0.18); }
+    .look-alike-file { margin-left: 10px; }
+    .look-alike-code {
+      padding: 30px 26px 32px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+      font-size: 23px;
+      line-height: 1.6;
+      color: #faf9f5;
+      white-space: pre;
+    }
+    .look-alike-k { color: #cc785c; }
+    .look-alike-t { color: #e8a55a; }
+    .look-alike-p { color: rgba(250, 249, 245, 0.55); }
+  </style>
+
+  <div data-hf-id="hf-sw93" id="root" data-composition-id="01-look-alike" data-start="0" data-duration="7.5" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-z8y8" id="look-alike-bg" class="look-alike-bg clip" data-start="0" data-duration="7.5" data-track-index="0">
+      <div data-hf-id="hf-ygd7" class="look-alike-grid"></div>
+    </div>
+
+    <div data-hf-id="hf-zpuj" id="look-alike-stage" class="look-alike-stage clip" data-start="0" data-duration="7.5" data-track-index="1">
+      <div data-hf-id="hf-rej5" class="look-alike-head">
+        <span data-hf-id="hf-tha6" class="look-alike-line">
+          <span data-hf-id="hf-5gqh" class="look-alike-word look-alike-w1">코드는</span>
+          <span data-hf-id="hf-3k19" class="look-alike-word look-alike-w1">닮았는데</span>
+        </span>
+        <span data-hf-id="hf-3lpe" class="look-alike-line">
+          <span data-hf-id="hf-4538" class="look-alike-word look-alike-w2">이름은</span>
+          <span data-hf-id="hf-xozw" class="look-alike-word look-alike-w2"><span data-hf-id="hf-ml2k" class="look-alike-coral">셋</span>이다</span>
+        </span>
+      </div>
+
+      <div data-hf-id="hf-t6oh" class="look-alike-row">
+        <div data-hf-id="hf-jf8j" class="look-alike-col">
+          <div data-hf-id="hf-6iia" class="look-alike-tag">?<div data-hf-id="hf-uxhk" class="look-alike-stem"></div></div>
+          <div data-hf-id="hf-2thh" class="look-alike-card">
+            <div data-hf-id="hf-97um" class="look-alike-bar"><i data-hf-id="hf-r424" class="look-alike-dot"></i><i data-hf-id="hf-xffo" class="look-alike-dot"></i><i data-hf-id="hf-w8il" class="look-alike-dot"></i><span data-hf-id="hf-ufmo" class="look-alike-file">01 · java</span></div>
+            <div data-hf-id="hf-0jvl" class="look-alike-code"><span data-hf-id="hf-mr6m" class="look-alike-k">private</span> <span data-hf-id="hf-jsu0" class="look-alike-t">RouteStrategy</span> strategy;
+strategy.find(a, b);</div>
+          </div>
+        </div>
+        <div data-hf-id="hf-l2hv" class="look-alike-col">
+          <div data-hf-id="hf-pjhy" class="look-alike-tag">?<div data-hf-id="hf-5aio" class="look-alike-stem"></div></div>
+          <div data-hf-id="hf-31uh" class="look-alike-card">
+            <div data-hf-id="hf-kogy" class="look-alike-bar"><i data-hf-id="hf-wmtm" class="look-alike-dot"></i><i data-hf-id="hf-ymcr" class="look-alike-dot"></i><i data-hf-id="hf-z0ns" class="look-alike-dot"></i><span data-hf-id="hf-8ryz" class="look-alike-file">02 · java</span></div>
+            <div data-hf-id="hf-2fkm" class="look-alike-code"><span data-hf-id="hf-2rr6" class="look-alike-k">private</span> <span data-hf-id="hf-h11y" class="look-alike-t">VendingState</span> state;
+state = state.pressButton();</div>
+          </div>
+        </div>
+        <div data-hf-id="hf-ko6u" class="look-alike-col">
+          <div data-hf-id="hf-pxsz" class="look-alike-tag">?<div data-hf-id="hf-43ll" class="look-alike-stem"></div></div>
+          <div data-hf-id="hf-48rk" class="look-alike-card">
+            <div data-hf-id="hf-l2rz" class="look-alike-bar"><i data-hf-id="hf-xtqp" class="look-alike-dot"></i><i data-hf-id="hf-y81q" class="look-alike-dot"></i><i data-hf-id="hf-07kv" class="look-alike-dot"></i><span data-hf-id="hf-fmn6" class="look-alike-file">03 · java</span></div>
+            <div data-hf-id="hf-pmf1" class="look-alike-code"><span data-hf-id="hf-o07p" class="look-alike-k">abstract void</span> addSoup();
+<span data-hf-id="hf-r6j9" class="look-alike-k">final void</span> cook() <span data-hf-id="hf-naio" class="look-alike-p">{ … }</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      const root = document.querySelector('[data-composition-id="01-look-alike"]');
+      const $$ = (sel) => Array.from(root.querySelectorAll(sel));
+      const DUR = 7;
+      const tl = gsap.timeline({ paused: true });
+
+      // Macro camera: slow push on the stage, faint grid drift underneath (no exit).
+      tl.fromTo(root.querySelector(".look-alike-stage"), { scale: 1 }, { scale: 1.02, duration: DUR, ease: "none" }, 0);
+      tl.fromTo(root.querySelector(".look-alike-grid"), { y: 0 }, { y: -24, duration: DUR, ease: "none" }, 0);
+
+      // Scene 1 (0.0–2.2s): headline line 1, per-word staggered reveal.
+      $$(".look-alike-w1").forEach((el, i) => {
+        tl.fromTo(el, { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0.1 + i * 0.18);
+      });
+      // Scene 1: triptych of code cards rises in with a short stagger.
+      $$(".look-alike-card").forEach((el, i) => {
+        tl.fromTo(el, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, 0.35 + i * 0.15);
+      });
+
+      // Scene 2 (2.2–4.4s): line 2 hard-cuts in word by word (discrete states, instant swaps).
+      const words2 = $$(".look-alike-w2");
+      const SEQUENCE = [
+        { t: 0, n: 0 },
+        { t: 2.2, n: 1 },
+        { t: 2.6, n: 2 },
+      ];
+      function stateAt(time) {
+        for (let i = SEQUENCE.length - 1; i >= 0; i--) if (time >= SEQUENCE[i].t) return SEQUENCE[i].n;
+        return 0;
+      }
+      const driver = { t: 0 };
+      let lastN = -1;
+      const render = () => {
+        const n = stateAt(driver.t);
+        if (n === lastN) return;
+        words2.forEach((el, i) => (el.style.visibility = i < n ? "visible" : "hidden"));
+        lastN = n;
+      };
+      tl.fromTo(driver, { t: 0 }, { t: DUR, duration: DUR, ease: "none", onUpdate: render, onStart: render }, 0);
+      render();
+
+      // Scene 3 (4.4–7.0s): "?" name tags pop above each card, left→right, smooth settle; then hold.
+      $$(".look-alike-tag").forEach((el, i) => {
+        tl.fromTo(el, { scale: 0, opacity: 0, y: 16 }, { scale: 1, opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, 4.4 + i * 0.2);
+      });
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["01-look-alike"] = tl;
+    })();
+  </script>
+</template>

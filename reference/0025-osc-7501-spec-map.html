@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OSC 7501 스펙 지도 (rev 0.4)</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<main class="std">
+
+  <p class="sm">레퍼런스 0025 · 출처: <a href="https://www.superlogical.com/rex/docs/build/program-status">Rex Program Status Protocol</a> rev 0.4 (2026-10-10), 2026-11-12에 전문 확인 · 레슨 <a href="../lessons/0055-osc-7501-escape-sequence-anatomy.html">0055</a>부터 하나씩 판다</p>
+  <h1>OSC 7501 스펙 지도</h1>
+  <p class="lead">스펙 한 장을 절별로 압축한 것. 레슨은 이 지도의 절을 하나씩 파고, 찾아볼 때는 여기를 연다.</p>
+
+  <h2 id="s1">§1 · 시퀀스의 모양 <span class="sm">(레슨 0055)</span></h2>
+<pre>OSC 7501 ; pairs ST        report (보고)
+OSC 7501 ; ? ST            feature detection (지원 질의)
+
+OSC = ESC ]  (0x1B 0x5D)
+ST  = ESC \  (0x1B 0x5C)  또는  BEL (0x07)</pre>
+  <p>모르는 OSC는 터미널이 <strong>반드시 무시</strong>한다(MUST). 그래서 질의 없이 보내도 된다.</p>
+
+  <h2 id="s2">§2 · 본문 문법 <span class="sm">(report-syntax, 예정)</span></h2>
+<pre>pairs := pair (":" pair)*
+pair  := key "=" value
+key   := [a-z]+
+value := [A-Za-z0-9_.,+/=-]*</pre>
+  <table>
+    <tr><th>상황</th><th>결과</th></tr>
+    <tr><td>잘못된 pair (<code>=</code> 없음, 빈 key, 허용 밖 byte)</td><td><strong>그 pair만 skip</strong>, 나머지는 처리</td></tr>
+    <tr><td>모르는 key</td><td>무시 (확장 방식)</td></tr>
+    <tr><td>key가 반복됨</td><td>마지막 값이 이김</td></tr>
+    <tr><td>한도 초과 / base64 디코딩 실패 / 디코딩 결과에 제어문자</td><td><strong>보고 전체 폐기</strong>. 아무것도 적용되지 않음</td></tr>
+  </table>
+  <p>자유 텍스트(<code>msg</code>, <code>title</code>)는 UTF-8의 표준 base64, padding 선택. 디코딩 결과에 제어문자(U+0000–001F, 007F, 0080–009F. 줄바꿈·탭 포함) 금지. 한 줄 값이다.</p>
+
+  <h2 id="s3">§3 · state <span class="sm">(states-model, 예정)</span></h2>
+  <table>
+    <tr><th>state</th><th>뜻</th><th>수명</th></tr>
+    <tr><td><code>idle</code></td><td>쉬는 중, 다음 지시를 기다림</td><td>교체·삭제될 때까지</td></tr>
+    <tr><td><code>working</code></td><td>실행 중. progress 가능</td><td>교체·삭제·프로세스 종료·다음 shell prompt</td></tr>
+    <tr><td><code>done</code></td><td>한 단위 작업 끝, 사용자가 아직 못 봄</td><td>교체·삭제될 때까지. <strong>종료·prompt 뒤에도 남음</strong></td></tr>
+    <tr><td><code>blocked</code></td><td>사용자가 뭔가 해야 진행 가능. kind, msg. progress 가능</td><td>working과 같음</td></tr>
+    <tr><td><code>error</code></td><td>실패하고 멈춤</td><td>done과 같음</td></tr>
+    <tr><td><code>clear</code></td><td>state가 아니라 삭제 명령. id 지정 시 그 record와 하위 전부, id 없으면 이 터미널의 모든 record</td><td>-</td></tr>
+  </table>
+  <p>사용자가 중단·취소하면 <code>idle</code>을 보고한다. 끝나자마자 종료하는 프로그램은 종료 직전에 done/error를 보고하는 것이 좋다(SHOULD).</p>
+
+  <h2 id="s4">§4 · key <span class="sm">(states-model, record-replace)</span></h2>
+  <table>
+    <tr><th>key</th><th>값</th><th>비고</th></tr>
+    <tr><td><code>state</code></td><td>idle|working|done|blocked|error|clear</td><td><strong>필수</strong>. 없거나 모르는 값이면 보고 전체 무시</td></tr>
+    <tr><td><code>id</code></td><td>슬래시 경로, 예 <code>build/test</code></td><td>없으면 root record. 문법 위반이면 무시(root로 폴백하지 않음)</td></tr>
+    <tr><td><code>kind</code></td><td>permission|question|auth</td><td>blocked일 때만. permission=승인, question=답 입력, auth=로그인·토큰</td></tr>
+    <tr><td><code>progress</code></td><td>정수 0~100</td><td>working·blocked일 때만. 없으면 "진행률 미정"</td></tr>
+    <tr><td><code>app</code></td><td><code>[A-Za-z0-9_.+-]{1,32}</code></td><td>프로그램 식별자(예: cargo). 라벨 아님. 없으면 가장 가까운 조상 record의 app을 물려받음</td></tr>
+    <tr><td><code>title</code></td><td>base64 UTF-8</td><td>record의 짧은 라벨. root의 라벨은 보통 window title</td></tr>
+    <tr><td><code>msg</code></td><td>base64 UTF-8</td><td>한 줄 설명. 터미널이 줄여도 되고 의미를 읽으면 안 됨</td></tr>
+  </table>
+
+  <h2 id="s5">§5 · record 모델 <span class="sm">(record-replace, lifetime)</span></h2>
+  <ul>
+    <li>터미널은 <strong>id당 record 하나</strong>를 가진다. 보고는 해당 id의 record를 <strong>통째로 교체</strong>한다. 빠진 key는 사라진다. 그래서 <code>app</code>·<code>title</code>도 매 보고에 다시 넣는다.</li>
+    <li><code>/</code>는 부모-자식 관계다: <code>build/test</code>는 <code>build</code>의 자식. clear와 app 상속에만 쓰이고, 그룹핑에는 써도 된다(MAY). 부모 record가 없어도 된다.</li>
+    <li>root와 자식 record는 동시에 존재한다. 예: root는 idle인데 worker 하나는 blocked.</li>
+    <li>record는 화면이 아니라 터미널에 속한다. primary/alternate screen 전환은 영향 없음. RIS(full reset)는 전부 삭제, DECSTR(soft reset)은 삭제하지 않음.</li>
+    <li><strong>heartbeat 없음.</strong> 다시 보내야 유지되는 방식을 요구하면 안 된다. 프로세스 종료나 새 shell prompt(OSC 133 A)에서 working·blocked는 반드시 삭제, idle은 삭제해도 됨, done·error는 살아남는다.</li>
+  </ul>
+
+  <h2 id="s6">§6 · 지원 감지·보안·한도 <span class="sm">(이름과 위치만)</span></h2>
+  <ul>
+    <li><strong>감지:</strong> <code>OSC 7501 ; ? ST</code> 직후 <code>CSI c</code>(DA)를 보낸다. DA 응답이 먼저 오면 미지원. 지원 터미널은 <code>?:states=…:kinds=…</code>로 답한다.</li>
+    <li><strong>보안:</strong> 보고 내용은 전부 untrusted 입력. 제어문자 거부, markup 금지, bidi 같은 방향 제어·보이지 않는 문자는 터미널 밖에서 보일 때 무력화(SHOULD). 터미널이 되돌려 쓰는 것은 감지 응답뿐.</li>
+    <li><strong>한도:</strong> 전체 4096 bytes(합법 최대 약 3300), key 16, msg 인코딩 2732/디코딩 2048, title 256/192, app 32, id 128(세그먼트 32, 깊이 8), record 256개(최소 64개 지원. 초과 시 가장 오래 갱신 안 된 것 삭제).</li>
+  </ul>
+
+  <h2 id="s7">§7 · 다른 시퀀스와의 관계 <span class="sm">(why-7501, 예정)</span></h2>
+  <table>
+    <tr><th>시퀀스</th><th>스펙이 말하는 한계</th></tr>
+    <tr><td>OSC 9;4 (progress)</td><td>busy·퍼센트·error만. 사용자 대기 여부, 요청 내용, 메시지, 식별 정보가 없다. iTerm2 알림과 번호 9를 공유해 출력이 깨진 사례가 있다.</td></tr>
+    <tr><td>OSC 9, 99, 777 (알림)</td><td>일회성 사건이라 "지금 무엇이 참인지"가 남지 않는다. 사용자를 방해한다는 뜻을 내포한다.</td></tr>
+    <tr><td>OSC 133 (shell integration)</td><td>shell이 보내므로 명령이 실행 중인지·종료 코드만 안다. 프로그램이 무엇을 하는지, 막혔는지는 모른다.</td></tr>
+    <tr><td>OSC 0, 2 (window title)</td><td>구조 없는 문자열 하나. 글리프·스피너로 상태를 흉내 내지만 기계가 읽기에 신뢰할 수 없다.</td></tr>
+    <tr><td>OSC 21337 (iTerm2), 9999 (Orca)</td><td>같은 아이디어의 앞선 시도. 표현(색·표시)을 기술하거나 JSON 파싱이 필요해 목표가 다르다고 스펙 저자는 본다.</td></tr>
+  </table>
+
+  <h2 id="s8">§8 · 스펙의 예 (base64는 디코딩해 병기)</h2>
+<pre>ESC ] 7501 ; state=working:app=brew:msg=SW5zdGFsbGluZyB1cGRhdGVz ESC \                      # Installing updates
+ESC ] 7501 ; state=blocked:kind=auth:app=brew:msg=UGFzc3dvcmQgcmVxdWlyZWQgdG8gaW5zdGFsbCB1cGRhdGVz ESC \  # Password required to install updates
+ESC ] 7501 ; state=working:app=brew:msg=SW5zdGFsbGluZyB1cGRhdGVz ESC \                      # Installing updates
+ESC ] 7501 ; state=done:app=brew:msg=VXBncmFkZWQgMTIgcGFja2FnZXM= ESC \                     # Upgraded 12 packages</pre>
+  <p class="sm">매 보고가 <code>app=brew</code>를 반복하는 이유는 §5의 "통째 교체" 때문이다. 마지막 done은 다음 shell prompt 뒤에도 남는다.</p>
+
+  <h2 id="s9">§9 · 개정 이력</h2>
+  <table>
+    <tr><th>날짜</th><th>rev</th><th>변경</th></tr>
+    <tr><td>2026-10-10</td><td>0.4</td><td>감지 응답에 지원 states·kinds 나열 가능. 제어문자 거부 이유와 app의 용도 명시. terminfo 제거</td></tr>
+    <tr><td>2026-10-07</td><td>0.3</td><td>progress 없음 = 미정. 감지 없이 전송 가능</td></tr>
+    <tr><td>2026-10-06</td><td>0.2</td><td>MUST NOT 등 키워드 명확화</td></tr>
+    <tr><td>2026-09-28</td><td>0.1</td><td>첫 초안</td></tr>
+  </table>
+
+  <h2>검증 노트</h2>
+  <p class="warn">
+    사용처 표(어느 도구가 emit·consume하는지)는 이 지도에 넣지 않았다. 아직 원문 대조 전이다. <code>ecosystem-map</code> 레슨에서 추적 사이트·이슈 원문으로 확인한 뒤 채운다.
+    스펙 문서(Rex)에는 저자가 적혀 있지 않다. 다만 추적 사이트(areweosc7501yet.com)는 rev 0.1(2026-09-28)의 출처를 <code>github.com/mitchellh</code> 계정의 gist(<code>spec.md</code>, secret gist, 마지막 수정 2026-09-30)로 적고 있고, 이 gist가 존재하는 것은 확인했다. 그 계정이 Mitchell Hashimoto 본인인지, Rex 문서가 이 초안에서 이어진 것인지는 미확인이다.
+  </p>
+
+</main>
+</body>
+</html>

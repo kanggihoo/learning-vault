@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ko">
+<!-- Made with the Bang Motion skill by Bang Tutorial (https://youtube.com/bangtutorial) - MIT -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>원본을 감싸는 껍데기</title>
+<!--
+  GoF 2/6 — Decorator · Proxy · Adapter 판별 explainer (60초, 16:9, 무음 + VO 대본 별도).
+  주인공: "원본" 상자. 래퍼 = 원본을 감싸는 껍데기(shell). 플러그 모양 = 인터페이스.
+    Adapter   : 둥근 플러그가 네모 구멍에 안 맞는다 → 껍데기가 바깥은 둥글게, 안은 네모로 바꿔 끼운다
+    Decorator : 위에서 본 겹 고리(Milk, Whip)를 Client가 쌓는다. 호출은 항상 원본까지 갔다가 +500씩 얹어 돌아온다
+    Proxy     : 프레임워크가 끼운 껍데기에 문(gate)이 있다. 거절하거나, 처음 필요할 때 원본을 만든다
+    리캡      : 판별 레일 ① 인터페이스 같나? ② 원본 호출은?
+  더블클릭으로 열기. 자동재생 + 루프, R 다시, Space 일시정지. ?debug=1 스크럽, ?clean=1 export용.
+  모든 시각 요소는 tl.time()의 순수 함수.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1F2A37;--base:#EEF7F5;--amber:#E08A0B;--berry:#B83F7A;--green:#2E8B47}
+html,body{margin:0;height:100%;background:#0d1417;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;background:var(--base);color:var(--ink);font-family:'IBM Plex Sans KR',sans-serif}
+#bg{position:absolute;inset:0;overflow:hidden}
+.flood{position:absolute;width:4800px;height:4800px;border-radius:50%;transform:scale(0);left:-1440px;top:-1860px}
+#grid{position:absolute;inset:-240px;background-image:linear-gradient(rgba(31,42,55,.075) 2px,transparent 2px),linear-gradient(90deg,rgba(31,42,55,.075) 2px,transparent 2px);background-size:80px 80px;background-position:center}
+.blob{position:absolute;border-radius:50%;width:1300px;height:1300px;background:radial-gradient(circle,rgba(255,255,255,.8),rgba(255,255,255,0) 65%)}
+.view{position:absolute;inset:0}
+.view svg{position:absolute;inset:0;width:1920px;height:1080px;overflow:visible}
+.plex{font-family:'IBM Plex Sans KR',sans-serif;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace;font-weight:700}
+.num{font-family:'Do Hyeon',sans-serif;font-variant-numeric:tabular-nums}
+#ui{position:absolute;inset:0;pointer-events:none}
+.say{position:absolute;font-family:'Do Hyeon',sans-serif;line-height:1.12;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
+.say .wd{display:inline-block;opacity:0;transform-origin:50% 100%}
+.hl{position:relative}
+.hl i{position:absolute;left:-.14em;right:-.14em;top:.0em;bottom:-.02em;border:.05em solid var(--c,var(--ink));border-radius:.14em;transform:scaleX(0);transform-origin:0 50%}
+.chip{position:absolute;right:64px;top:54px;padding:8px 30px 12px;border-radius:44px;color:#fff;font:600 42px 'IBM Plex Sans KR',sans-serif;opacity:0;border:5px solid var(--ink);box-shadow:8px 8px 0 var(--ink)}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(95% 95% at 50% 50%,transparent 62%,rgba(31,42,55,.16))}
+#dbg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:none;gap:12px;align-items:center;padding:10px 16px;border-radius:14px;background:rgba(14,16,22,.9);color:#cfd5e3;font:13px system-ui;z-index:50}
+#dbg input{width:420px}#dbg span{font-variant-numeric:tabular-nums;min-width:6ch}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs id="defs"></defs></svg>
+<div id="stage">
+  <div id="bg">
+    <div class="flood" id="fl1" style="background:#FCEBD0"></div>
+    <div class="flood" id="fl2" style="background:#F6DDE9"></div>
+    <div class="flood" id="fl3" style="background:#DCEFE1"></div>
+    <div class="flood" id="fl4" style="background:#EEF7F5"></div>
+    <div class="blob" id="bl1" style="left:-300px;top:-420px"></div>
+    <div class="blob" id="bl2" style="left:1100px;top:380px"></div>
+    <div id="grid"></div>
+  </div>
+  <div id="side" class="view"><svg id="sideSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="top"  class="view" style="visibility:hidden"><svg id="topSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="rail" class="view" style="visibility:hidden"><svg id="railSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="vig"></div>
+  <div id="ui">
+    <div class="say" id="s1" style="left:110px;top:80px;font-size:104px"><span class="wd">셋</span> <span class="wd">다</span> <span class="wd">원본을</span> <span class="wd hl"><i></i>감싼다</span></div>
+    <div class="say" id="s2" style="left:0;right:0;text-align:center;top:858px;font-size:112px"><span class="wd">코드</span> <span class="wd">모양은</span> <span class="wd">거의</span> <span class="wd hl"><i></i>같다</span></div>
+    <div class="say" id="s3" style="left:110px;top:76px;font-size:116px;--c:var(--amber)"><span class="wd hl"><i></i>모양을</span> <span class="wd">맞춘다</span></div>
+    <div class="say" id="s4" style="left:0;right:0;text-align:center;top:852px;font-size:106px;--c:var(--berry)"><span class="wd hl"><i></i>항상</span> <span class="wd">부르고</span> <span class="wd">위에</span> <span class="wd">얹는다</span></div>
+    <div class="say" id="s5" style="left:110px;top:76px;font-size:100px;--c:var(--green)"><span class="wd">부를지,</span> <span class="wd">언제</span> <span class="wd">만들지</span> <span class="wd hl"><i></i>정한다</span></div>
+    <div class="say" id="s6" style="left:0;right:0;text-align:center;top:858px;font-size:104px;--c:var(--green)"><span class="wd hl"><i></i>프레임워크가</span> <span class="wd">끼우면</span> <span class="wd" style="color:var(--green)">Proxy</span></div>
+    <div class="say" id="s7" style="left:0;right:0;text-align:center;top:330px;font-size:112px"><span class="wd">인터페이스가</span> <span class="wd">다르면</span> <span class="wd" style="color:var(--amber)">Adapter</span><br><span class="wd">같으면</span> <span class="wd">원본을</span> <span class="wd hl"><i></i>어떻게</span> <span class="wd">부르나</span></div>
+    <div class="chip" id="chA" style="background:var(--amber)">Adapter</div>
+    <div class="chip" id="chD" style="background:var(--berry)">Decorator</div>
+    <div class="chip" id="chP" style="background:var(--green)">Proxy</div>
+  </div>
+  <div id="dbg"><button id="dPlay">Pause</button><input id="dScrub" type="range" min="0" max="1000" value="0"><span id="dClock">0.00s</span></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const W=1920,H=1080,DUR=60;
+const INK='#1F2A37',AMBER='#E08A0B',BERRY='#B83F7A',GREEN='#2E8B47',GRAY='#C5CFCC',LIT='#FFD34E',RED='#D7263D',SLATE='#55657A';
+const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg',defs=$('#defs');
+function S(tag,a={},p){const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+const T=(txt,x,y,a,p)=>{const e=S('text',{x,y,...a},p);e.textContent=txt;return e;};
+function fit(){const s=Math.min(innerWidth/W,innerHeight/H);$('#stage').style.transform=`translate(-50%,-50%) scale(${s})`;}
+addEventListener('resize',fit);fit();
+let uid=0;
+const tl=gsap.timeline({paused:true});
+
+/* ---------- 엔진 (0049와 동일): prop / 카메라 / 방향성 블러 ---------- */
+const props=[];
+function prop(el,i={}){const p={el,x:0,y:0,s:1,r:0,o:1,...i};props.push(p);return p;}
+const cams=[];
+function cam(g,z,cx,cy){const c={g,z,cx,cy,z0:z,cx0:cx,cy0:cy};cams.push(c);return c;}
+const shot=(c,at,dur,z,cx,cy,ease='power2.inOut')=>tl.to(c,{z,cx,cy,duration:dur,ease},at);
+const cutTo=(c,at,z,cx,cy)=>tl.set(c,{z,cx,cy},at);
+const blurs=[],blurMap=new Map();
+function blurOf(el,axis='y'){if(blurMap.has(el))return blurMap.get(el);const id='mb'+(uid++);
+  const f=S('filter',{id,x:'-40%',y:'-80%',width:'180%',height:'260%'},defs),g=S('feGaussianBlur',{stdDeviation:'0 0'},f);
+  const b={el,g,id,axis,v:0};blurs.push(b);blurMap.set(el,b);return b;}
+
+/* ---------- 공용 그림 ---------- */
+function drawHand(p,dir=1,point=false,label='Client'){
+  const g=S('g',{},p),m=S('g',{transform:`scale(${dir} 1)${point?' translate(-62 0)':''}`},g);
+  S('rect',{x:-1700,y:-40,width:1560,height:80,fill:SLATE,stroke:INK,'stroke-width':7},m);
+  S('rect',{x:-160,y:-52,width:44,height:104,rx:10,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  S('rect',{x:-120,y:-56,width:120,height:112,rx:46,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  if(point)S('rect',{x:-16,y:-15,width:78,height:30,rx:15,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  else S('path',{d:'M-66 -56 C-46 -90 -8 -84 -6 -54',fill:'#fff',stroke:INK,'stroke-width':7},m);
+  if(label)T(label,dir*(-620-(point?62:0)),13,{class:'mono','font-size':36,'text-anchor':'middle',fill:'#fff'},g);
+  return g;}
+function sparks(p,n=8,r0=40,r1=80){const g=S('g',{},p);for(let k=0;k<n;k++){const a=Math.PI*2*k/n;S('line',{x1:Math.cos(a)*r0,y1:Math.sin(a)*r0,x2:Math.cos(a)*r1,y2:Math.sin(a)*r1,stroke:INK,'stroke-width':7,'stroke-linecap':'round'},g);}return g;}
+function chipG(p,txt,color,w,x,y){const g=S('g',{},p);S('rect',{x:-w/2+7,y:-34+7,width:w,height:68,rx:14,fill:INK},g);S('rect',{x:-w/2,y:-34,width:w,height:68,rx:14,fill:'#fff',stroke:INK,'stroke-width':5},g);
+  T(txt,0,12,{class:'mono','font-size':34,'text-anchor':'middle',fill:color},g);return prop(g,{x,y,s:0,o:0});}
+/* 인터페이스 모양: 둥근 코 / 네모. 구멍은 면(x0)에서 안쪽으로 파인다, 프롱은 끝이 원점 */
+const HOLE={round:x=>`M${x} -33 h32 a33 33 0 0 1 0 66 h-32 Z`,square:x=>`M${x} -31 h64 v62 h-64 Z`};
+const PRONG={round:'M-62 -29 h33 a29 29 0 0 1 0 58 h-33 Z',square:'M-62 -29 h62 v58 h-62 Z'};
+
+/* ---------- 타임라인 헬퍼 ---------- */
+const show=(el,at,d=.25)=>tl.to(el,{opacity:1,duration:d},at), hide=(el,at,d=.25)=>tl.to(el,{opacity:0,duration:d},at);
+const pop=(p,at,{d=.6,from=0,ease='back.out(1.8)'}={})=>tl.fromTo(p,{s:from,o:0},{s:1,o:1,duration:d,ease,immediateRender:false},at);
+const burst=(p,at)=>tl.fromTo(p,{o:1,s:.6},{o:0,s:1.5,duration:.42,ease:'power2.out',immediateRender:false},at);
+const jolt=(p,at,a=8)=>tl.to(p,{y:`+=${a}`,duration:.05,yoyo:true,repeat:5,ease:'sine.inOut'},at);
+function say(id,at,st=.09){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.fromTo(w,{opacity:0,yPercent:70,scaleY:1.35},{opacity:1,yPercent:0,scaleY:1,duration:.8,ease:'power4.out',stagger:st,immediateRender:false},at);
+  tl.fromTo(b,{v:20},{v:0,duration:.8+st*(w.length-1),ease:'power3.out',immediateRender:false},at);
+  el.querySelectorAll('.hl i').forEach(i=>tl.fromTo(i,{scaleX:0},{scaleX:1,duration:.5,ease:'power3.out',immediateRender:false},at+.3+st*w.length));}
+function unsay(id,at){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.to(w,{opacity:0,yPercent:-60,duration:.4,ease:'power2.in',stagger:.025},at);
+  tl.fromTo(b,{v:0},{v:16,duration:.45,ease:'power2.in',immediateRender:false},at);tl.set(b,{v:0},at+.55);}
+function chipIn(id,at){const el=$(id),b=blurOf(el,'x');
+  tl.fromTo(el,{opacity:0,x:90},{opacity:1,x:0,duration:.6,ease:'power4.out',immediateRender:false},at);
+  tl.fromTo(b,{v:24},{v:0,duration:.6,ease:'power3.out',immediateRender:false},at);}
+const chipOut=(id,at)=>tl.to($(id),{opacity:0,x:70,duration:.35,ease:'power2.in'},at);
+const flood=(id,at)=>tl.fromTo(id,{scale:0},{scale:1,duration:1.1,ease:'power2.inOut',immediateRender:false},at);
+function whip(t,from,to,dir=1){const bf=blurOf($(from)),bt=blurOf($(to));
+  tl.to(from,{y:-150*dir,duration:.28,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:24,duration:.28,ease:'power2.in',immediateRender:false},t);
+  tl.set(from,{visibility:'hidden'},t+.28);tl.set(to,{visibility:'visible',y:150*dir},t+.28);tl.set(bt,{v:24},t+.28);
+  tl.to(to,{y:0,duration:.42,ease:'power3.out'},t+.28);tl.to(bt,{v:0,duration:.42,ease:'power3.out'},t+.28);
+  tl.set(from,{y:0},t+.3);tl.set(bf,{v:0},t+.3);}
+function rack(t,from,to){const bf=blurOf($(from),'xy'),bt=blurOf($(to),'xy');
+  tl.to(from,{scale:.86,opacity:0,duration:.7,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:16,duration:.7,ease:'power2.in',immediateRender:false},t);
+  tl.set(to,{visibility:'visible',scale:1.18,opacity:0},t+.4);tl.set(bt,{v:16},t+.4);
+  tl.to(to,{scale:1,opacity:1,duration:.85,ease:'power3.out'},t+.4);tl.to(bt,{v:0,duration:.85,ease:'power3.out'},t+.4);
+  tl.set(from,{visibility:'hidden'},t+.7);tl.set(bf,{v:0},t+.7);}
+
+/* ================= VIEW 1: 측면 작업대 — 원본 상자 + 플러그 ================= */
+const sideCam=S('g',{},$('#sideSvg')),CS=cam(sideCam,1.5,1180,520);
+{S('rect',{x:-600,y:718,width:3120,height:18,rx:9,fill:INK,opacity:.08},sideCam);
+  for(const x of [430,1880])S('rect',{x:x-13,y:700,width:26,height:420,fill:INK},sideCam);
+  S('rect',{x:300,y:670,width:1720,height:34,rx:12,fill:'#D9CBB0',stroke:INK,'stroke-width':7},sideCam);}
+const L={};for(const k of ['paper','shellBack','core','shellFront','plug','pulse','front'])L[k]=S('g',{},sideCam);
+/* 원본 상자: 원점 = 상자 중심 (1240,520). 왼쪽 면에 인터페이스 구멍 */
+const coreG=S('g',{},L.core);
+S('rect',{x:-138,y:-138,width:300,height:300,rx:26,fill:INK},coreG);
+S('rect',{x:-150,y:-150,width:300,height:300,rx:26,fill:'#fff',stroke:INK,'stroke-width':8},coreG);
+const holeR=S('path',{d:HOLE.round(-154),fill:INK},coreG),holeS=S('path',{d:HOLE.square(-154),fill:INK,style:'opacity:0'},coreG);
+const coreLamp=S('circle',{cx:108,cy:-108,r:20,fill:GRAY,stroke:INK,'stroke-width':5},coreG);
+const lblO=T('원본',16,18,{class:'plex','font-size':54,'text-anchor':'middle',fill:INK},coreG);
+const lblP=T('OldPrinter',30,14,{class:'mono','font-size':32,'text-anchor':'middle',fill:INK,style:'opacity:0'},coreG);
+const pic=S('g',{style:'opacity:0'},coreG);
+S('rect',{x:-56,y:-86,width:144,height:108,rx:12,fill:'#DCEBF7',stroke:INK,'stroke-width':5},pic);
+S('path',{d:'M-50 16 L-8 -36 L18 -6 L40 -26 L82 16 Z',fill:GREEN,stroke:INK,'stroke-width':4,'stroke-linejoin':'round'},pic);S('circle',{cx:54,cy:-58,r:12,fill:LIT,stroke:INK,'stroke-width':3},pic);
+const lblR=T('RealImage',16,92,{class:'mono','font-size':34,'text-anchor':'middle',fill:INK,style:'opacity:0'},coreG);
+const core=prop(coreG,{x:1240,y:520});
+const ghostG=S('g',{},L.core);S('rect',{x:-150,y:-150,width:300,height:300,rx:26,fill:'none',stroke:INK,'stroke-width':6,'stroke-dasharray':'20 14'},ghostG);
+T('아직 없음',0,14,{class:'plex','font-size':40,'text-anchor':'middle',fill:INK},ghostG);
+const ghost=prop(ghostG,{x:1240,y:520,o:0});
+const coreSpark=prop(sparks(L.front,10,170,215),{x:1240,y:520,o:0});
+/* 래퍼 껍데기: 원본보다 큰 상자. 바깥 구멍 = 밖에 보이는 인터페이스, 안쪽 프롱 = 원본에 꽂는 모양 */
+function drawShell(color,light,name,{outer='round',inner='round',gate=false}={}){
+  const b=S('g',{},L.shellBack),f=S('g',{},L.shellFront);
+  S('rect',{x:-238,y:-218,width:460,height:380,rx:30,fill:INK},b);
+  S('rect',{x:-250,y:-230,width:460,height:380,rx:30,fill:light},b);
+  S('path',{d:'M-250 -174 V-200 a30 30 0 0 1 30 -30 H180 a30 30 0 0 1 30 30 V-174 Z',fill:color},b);
+  S('rect',{x:-250,y:-230,width:460,height:380,rx:30,fill:'none',stroke:INK,'stroke-width':8},b);
+  S('line',{x1:-250,y1:-174,x2:210,y2:-174,stroke:INK,'stroke-width':6},b);
+  T(name,-20,-188,{class:'plex','font-size':38,'text-anchor':'middle',fill:'#fff'},b);
+  if(outer)S('path',{d:HOLE[outer](-254),fill:INK},b);
+  if(inner){S('rect',{x:-196,y:-14,width:56,height:28,fill:color,stroke:INK,'stroke-width':5},f);S('path',{d:PRONG[inner],fill:color,stroke:INK,'stroke-width':5,transform:'translate(-90 0)'},f);}
+  let g=null;if(gate){const gg=S('g',{},L.shellFront);S('rect',{x:-10,y:-58,width:20,height:116,rx:6,fill:'#1E6B34',stroke:INK,'stroke-width':5},gg);g=prop(gg,{x:1240-169,y:-280});}
+  return {b:prop(b,{x:1240,y:-280}),f:prop(f,{x:1240,y:-280}),g};}
+const shellParts=sh=>[sh.b,sh.f,sh.g].filter(Boolean);
+function dropShell(sh,at,dur=.5){for(const p of shellParts(sh))tl.fromTo(p,{y:-280},{y:520,duration:dur,ease:'power3.in',immediateRender:false},at);}
+function liftShell(sh,at){for(const p of shellParts(sh))tl.to(p,{y:-380,duration:.4,ease:'power2.in'},at);}
+const hookShells=[[AMBER,'#FBE3BC','Adapter'],[BERRY,'#F3D0E1','Decorator'],[GREEN,'#CDE9D5','Proxy']].map(([c,l,n])=>drawShell(c,l,n,{outer:null,inner:null}));
+const shA=drawShell(AMBER,'#FBE3BC','Adapter',{outer:'round',inner:'square'});
+const shP=drawShell(GREEN,'#CDE9D5','Proxy',{outer:'round',inner:'round',gate:true});
+const shellSpark=prop(sparks(L.front,10,70,112),{x:1220,y:300,o:0});
+/* 종이 (프린터 출력) */
+const paperG=S('g',{},L.paper);S('rect',{x:-66,y:-170,width:132,height:170,rx:6,fill:'#fff',stroke:INK,'stroke-width':5},paperG);
+for(let i=0;i<4;i++)S('rect',{x:-44,y:-144+i*28,width:i===3?50:88,height:9,rx:4,fill:INK,opacity:.3},paperG);
+const paper=prop(paperG,{x:1240,y:560});
+/* Client 플러그: 원점 = 프롱 끝 */
+const plugG=S('g',{},L.plug);
+S('rect',{x:-1800,y:-30,width:1660,height:60,fill:SLATE,stroke:INK,'stroke-width':7},plugG);
+S('rect',{x:-150,y:-56,width:90,height:112,rx:16,fill:SLATE,stroke:INK,'stroke-width':7},plugG);
+S('path',{d:PRONG.round,fill:'#DDE3EA',stroke:INK,'stroke-width':5},plugG);
+T('Client',-560,13,{class:'mono','font-size':36,'text-anchor':'middle',fill:'#fff'},plugG);
+const plugTag=T('Printer',-240,-50,{class:'mono','font-size':34,'text-anchor':'middle',fill:INK,style:'opacity:0'},plugG);
+const plug=prop(plugG,{x:1150,y:520});
+/* 호출 펄스: 둥근 = 바깥 모양, 네모 = 변환된 모양 */
+const pulseG=S('g',{},L.pulse);const pR=S('circle',{r:18,fill:LIT,stroke:INK,'stroke-width':5},pulseG),pS=S('rect',{x:-17,y:-17,width:34,height:34,rx:4,fill:LIT,stroke:INK,'stroke-width':5,style:'opacity:0'},pulseG);
+const pulse=prop(pulseG,{x:500,y:520,o:0});
+const xG=S('g',{},L.front);for(const r of [45,-45])S('rect',{x:-40,y:-11,width:80,height:22,rx:11,fill:RED,stroke:INK,'stroke-width':4,transform:`rotate(${r})`},xG);
+const xMark=prop(xG,{x:1092,y:420,o:0});
+const lamps=[['인터페이스 같나',1080,'1'],['원본 호출은?',1400,'2']].map(([lab,x,n])=>{const g=S('g',{},L.front);
+  S('rect',{x:-6,y:24,width:12,height:40,fill:INK},g);const c=S('circle',{r:30,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  T(n,0,12,{class:'mono','font-size':34,'text-anchor':'middle',fill:INK},g);T(lab,0,-46,{class:'plex','font-size':36,'text-anchor':'middle',fill:INK},g);
+  return {p:prop(g,{x,y:226,s:0,o:0}),c};});
+const chipPrint=chipG(L.front,'old.printText(d.toText())',AMBER,560,1210,800);
+const chipNew=chipG(L.front,'new RealImage(path)',GREEN,430,1220,214);
+const chipTx=chipG(L.front,'@Transactional',GREEN,330,700,410);
+const denyG=S('g',{},L.front);S('rect',{x:-130,y:-34,width:260,height:68,rx:34,fill:RED,stroke:INK,'stroke-width':5},denyG);T('권한 없음',0,13,{class:'plex','font-size':36,'text-anchor':'middle',fill:'#fff'},denyG);
+const deny=prop(denyG,{x:1000,y:214,s:0,o:0});
+const arm=prop(drawHand(L.front,1,false,'Spring'),{x:1220,y:-514,r:90});
+
+/* ================= VIEW 2: 위에서 본 겹 고리 — Decorator ================= */
+const topCam=S('g',{},$('#topSvg')),CT=cam(topCam,1.45,900,540);
+const ring=(r,fill,lab,ly)=>{const g=S('g',{},topCam);S('rect',{x:-r+12,y:-r+12,width:2*r,height:2*r,rx:r*.2,fill:INK},g);
+  S('rect',{x:-r,y:-r,width:2*r,height:2*r,rx:r*.2,fill,stroke:INK,'stroke-width':8},g);
+  T(lab,0,ly,{class:'plex','font-size':36,'text-anchor':'middle',fill:INK},g);return prop(g,{x:-900,y:540});};
+const rWhip=ring(250,'#EBB8D1','Whip +500',-201),rMilk=ring(180,'#F6DCE8','Milk +500',-131);
+const glowG=S('g',{},topCam);S('circle',{r:150,fill:LIT,opacity:.7},glowG);const glow=prop(glowG,{x:900,y:540,o:0});
+{const g=S('g',{transform:'translate(900 540)'},topCam);
+  S('rect',{x:-98,y:-98,width:220,height:220,rx:26,fill:INK},g);S('rect',{x:-110,y:-110,width:220,height:220,rx:26,fill:'#fff',stroke:INK,'stroke-width':8},g);
+  S('circle',{cx:0,cy:-18,r:58,fill:'#6B3E26',stroke:INK,'stroke-width':5},g);S('circle',{cx:0,cy:-18,r:42,fill:'none',stroke:'#C98B4F','stroke-width':7},g);
+  T('Espresso',0,90,{class:'plex','font-size':32,'text-anchor':'middle',fill:INK},g);}
+S('line',{x1:120,y1:540,x2:790,y2:540,stroke:INK,'stroke-width':6,'stroke-dasharray':'14 14',opacity:.35},topCam);
+const tPulse=prop((()=>{const g=S('g',{},topCam);S('circle',{r:18,fill:LIT,stroke:INK,'stroke-width':5},g);return g;})(),{x:120,y:540,o:0});
+const plus=[0,1].map(()=>{const g=S('g',{},topCam);T('+500',0,0,{class:'num','font-size':70,'text-anchor':'middle',fill:BERRY,stroke:'#fff','stroke-width':8,'paint-order':'stroke'},g);return prop(g,{x:0,y:0,o:0});});
+const price={v:0,on:0};let priceTx;
+{const g=S('g',{transform:'translate(1580 540)'},topCam);S('rect',{x:-190+10,y:-120+10,width:380,height:240,rx:24,fill:INK},g);S('rect',{x:-190,y:-120,width:380,height:240,rx:24,fill:'#fff',stroke:INK,'stroke-width':8},g);
+  T('cost()',0,-62,{class:'mono','font-size':34,'text-anchor':'middle',fill:BERRY},g);priceTx=T('₩ ?',0,72,{class:'num','font-size':112,'text-anchor':'middle',fill:INK},g);}
+const hD=prop(drawHand(topCam,1),{x:-1200,y:540});
+const chipStack=chipG(topCam,'new Whip(new Milk(new Espresso()))',BERRY,740,900,170);
+
+/* ================= VIEW 3: 판별 레일 ================= */
+const railCam=S('g',{},$('#railSvg')),CR=cam(railCam,1.25,420,600);
+const K=['M-100 640 L560 640 C760 640 860 250 1060 250 L1470 250','M-100 640 L1100 640 C1260 640 1300 520 1470 520','M-100 640 L1100 640 C1260 640 1300 820 1470 820'];
+for(const d of K)S('path',{d,fill:'none',stroke:INK,'stroke-width':30,'stroke-linecap':'round'},railCam);
+for(const d of K)S('path',{d,fill:'none',stroke:'#fff','stroke-width':14,'stroke-linecap':'round'},railCam);
+const DEST=[[AMBER,'Adapter',250],[BERRY,'Decorator',520],[GREEN,'Proxy',820]];
+const trails=K.map((d,k)=>{const e=S('path',{d,fill:'none',stroke:DEST[k][0],'stroke-width':12,'stroke-linecap':'round'},railCam);const L=e.getTotalLength();e.setAttribute('stroke-dasharray',L);e.setAttribute('stroke-dashoffset',L);return {e,L};});
+const lab=(s,x,y,c=INK)=>T(s,x,y,{class:'plex','font-size':36,'text-anchor':'middle',fill:c},railCam);
+lab('다름',700,470,AMBER);lab('같음',830,712);lab('항상 부른다',1290,500,BERRY);lab('부를지 정한다',1250,890,GREEN);
+const gates=[[560,'1','인터페이스 같나?'],[1100,'2','원본 호출은?']].map(([x,n,q])=>{const g=S('g',{},railCam);
+  const c=S('circle',{r:44,fill:'#fff',stroke:INK,'stroke-width':7},g);T(n,0,13,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},g);T(q,n==='1'?-24:0,-68,{class:'plex','font-size':40,'text-anchor':n==='1'?'end':'middle',fill:INK},g);
+  return {p:prop(g,{x,y:640,s:0,o:0}),c,len:x+100};});
+const dests=DEST.map(([c,n,y])=>{const g=S('g',{},railCam);S('rect',{x:-190+9,y:-55+9,width:380,height:110,rx:28,fill:INK},g);S('rect',{x:-190,y:-55,width:380,height:110,rx:28,fill:c,stroke:INK,'stroke-width':7},g);
+  T(n,0,14,{class:'plex','font-size':40,'text-anchor':'middle',fill:'#fff'},g);return prop(g,{x:1660,y,s:0,o:0});});
+const cards=[['old.printText(…)',0],['base.cost() + 500',1],['if (real == null)',2]].map(([s,k])=>{const g=S('g',{},railCam);
+  S('rect',{x:-180+7,y:-40+7,width:360,height:80,rx:14,fill:INK},g);S('rect',{x:-180,y:-40,width:360,height:80,rx:14,fill:'#fff',stroke:INK,'stroke-width':6},g);
+  T(s,0,11,{class:'mono','font-size':32,'text-anchor':'middle',fill:DEST[k][0]},g);
+  const path=S('path',{d:K[k]});return {g,path,L:trails[k].L,k,p:0,o:0};});
+
+/* ================= 타임라인 ================= */
+for(const c of cams)cutTo(c,0,c.z0,c.cx0,c.cy0);
+tl.set('.flood',{scale:0},0);
+/* --- 0–7.6 훅: 셋 다 원본을 감싼다 --- */
+tl.set(pulse,{o:1,x:500},.3);tl.to(pulse,{x:1120,duration:.7,ease:'power1.in'},.3);tl.set(pulse,{o:0},1.0);
+tl.set(coreLamp,{attr:{fill:LIT}},1.0);tl.set(coreLamp,{attr:{fill:GRAY}},1.8);
+say('#s1',.8);
+shot(CS,1.8,1.1,1,960,540);
+tl.to(plug,{x:700,duration:.6,ease:'power2.inOut'},2.3);
+unsay('#s1',2.6);
+dropShell(hookShells[0],2.8,.45);liftShell(hookShells[0],3.4);
+dropShell(hookShells[1],3.55,.45);liftShell(hookShells[1],4.15);
+dropShell(hookShells[2],4.3,.45);
+[3.25,4.0,4.75].forEach(t=>jolt(core,t,6));
+say('#s2',3.6);
+lamps.forEach((l,k)=>{pop(l.p,5.2+k*.25);tl.set(l.c,{attr:{fill:LIT}},5.55+k*.25);});
+unsay('#s2',6.9);
+lamps.forEach(l=>tl.to(l.p,{s:0,o:0,duration:.3,ease:'power2.in'},7.1));liftShell(hookShells[2],7.15);
+/* --- 7.6–19 Adapter: 모양을 맞춘다 --- */
+tl.fromTo(core,{s:.9},{s:1,duration:.4,ease:'back.out(2)',immediateRender:false},7.6);
+hide(lblO,7.6,.1);show(lblP,7.65,.15);hide(holeR,7.6,.05);show(holeS,7.6,.05);
+chipIn('#chA',8.0);show(plugTag,8.1,.3);
+shot(CS,8.1,.9,1.55,1100,520);
+tl.to(plug,{x:1062,duration:.8,ease:'power2.out'},8.2);
+tl.to(plug,{x:1094,duration:.12,ease:'power2.in'},9.0);tl.to(plug,{x:1040,duration:.3,ease:'back.out(2)'},9.12);
+tl.to(plug,{x:1094,duration:.12,ease:'power2.in'},9.45);tl.to(plug,{x:1040,duration:.3,ease:'back.out(2)'},9.57);
+pop(xMark,9.1,{d:.35});tl.to(xMark,{o:0,duration:.25},9.95);
+tl.to(plug,{x:760,duration:.5,ease:'power2.inOut'},9.95);
+shot(CS,10.0,.8,1.15,1100,480);
+dropShell(shA,10.05,.5);jolt(core,10.55);burst(shellSpark,10.55);flood('#fl1',10.55);
+tl.to(plug,{x:1050,duration:.6,ease:'power3.out'},11.0);jolt(shA.b,11.6,4);
+function adapterPulse(at){tl.set(pR,{opacity:1},at);tl.set(pS,{opacity:0},at);tl.set(pulse,{o:1,x:560},at);
+  tl.to(pulse,{x:1020,duration:.45,ease:'power1.in'},at);tl.set(pR,{opacity:0},at+.45);tl.set(pS,{opacity:1},at+.45);
+  tl.fromTo(pulse,{s:1.5},{s:1,duration:.25,immediateRender:false},at+.45);tl.to(pulse,{x:1120,duration:.3,ease:'power1.in'},at+.5);
+  tl.set(pulse,{o:0},at+.8);tl.set(coreLamp,{attr:{fill:LIT}},at+.8);tl.set(coreLamp,{attr:{fill:GRAY}},at+1.6);}
+adapterPulse(11.8);
+tl.to(paper,{y:330,duration:.6,ease:'power2.out'},12.6);
+say('#s3',13.2);
+pop(chipPrint,14.4,{from:.6});
+adapterPulse(15.6);
+shot(CS,16.6,1.6,1.32,1080,500,'sine.inOut');
+unsay('#s3',18.3);chipOut('#chA',18.4);tl.to(chipPrint,{o:0,duration:.3},18.4);
+/* --- 19–30.5 Decorator: 위에서 본 겹 고리 --- */
+whip(18.8,'#side','#top',1);
+cutTo(CT,18.8,1.45,900,540);
+chipIn('#chD',19.6);
+tl.to(rMilk,{x:900,duration:.9,ease:'power3.out'},19.9);tl.to(hD,{x:900-180-4,duration:.9,ease:'power3.out'},19.9);
+tl.fromTo(rMilk,{s:1.06},{s:1,duration:.25,immediateRender:false},20.8);flood('#fl2',20.8);
+tl.to(hD,{x:-1300,duration:.6,ease:'power2.in'},21.0);
+shot(CT,20.0,1.0,1.2,900,540);
+tl.to(rWhip,{x:900,duration:.9,ease:'power3.out'},21.6);tl.to(hD,{x:900-250-4,duration:.9,ease:'power3.out'},21.6);
+tl.fromTo(rWhip,{s:1.05},{s:1,duration:.25,immediateRender:false},22.5);
+tl.to(hD,{x:-1300,duration:.6,ease:'power2.in'},22.7);
+shot(CT,21.8,1.0,1,960,540);
+pop(chipStack,23.2,{from:.6});
+say('#s4',24.0);
+tl.set(tPulse,{o:1,x:120},25.2);tl.to(tPulse,{x:650,duration:.55,ease:'power1.in'},25.2);tl.to(tPulse,{x:720,duration:.3,ease:'none'},25.75);tl.to(tPulse,{x:790,duration:.3,ease:'none'},26.05);
+tl.fromTo(glow,{o:.9,s:.7},{o:0,s:1.15,duration:.7,ease:'power2.out',immediateRender:false},26.35);
+tl.set(price,{on:1,v:3000},26.4);
+tl.to(tPulse,{x:720,duration:.5,ease:'sine.inOut'},26.6);tl.to(tPulse,{x:650,duration:.5,ease:'sine.inOut'},27.1);tl.to(tPulse,{x:120,duration:.5,ease:'power1.in'},27.6);tl.set(tPulse,{o:0},28.1);
+[[27.1,755,0],[27.6,685,1]].forEach(([t,x,k])=>{tl.fromTo(plus[k],{x,y:470,o:1,s:.6},{y:390,s:1,duration:.5,ease:'power3.out',immediateRender:false},t);tl.to(plus[k],{o:0,duration:.3},t+1.0);
+  tl.to(price,{v:3000+500*(k+1),duration:.35,ease:'power2.out'},t);});
+shot(CT,28.2,1.6,1.12,1080,540,'sine.inOut');
+unsay('#s4',29.6);chipOut('#chD',29.7);
+/* 옆 무대 정리 (숨겨진 동안): Proxy 준비 */
+liftShell(shA,24);tl.set(paper,{o:0},24);tl.set(plug,{x:640},24);hide(plugTag,24,.01);
+tl.set(core,{o:0},24);tl.set(ghost,{o:1},24);hide(lblP,24,.01);show(lblR,24,.01);hide(holeS,24,.01);show(holeR,24,.01);
+cutTo(CS,24,1,960,540);
+/* --- 30.5–45 Proxy --- */
+rack(30.2,'#top','#side');
+chipIn('#chP',31.0);
+for(const p of shellParts(shP))tl.fromTo(p,{y:-280},{y:520,duration:.8,ease:'power3.out',immediateRender:false},31.2);
+tl.fromTo(arm,{y:-514},{y:286,duration:.8,ease:'power3.out',immediateRender:false},31.2);
+burst(shellSpark,32.0);flood('#fl3',32.0);
+tl.to(arm,{y:-560,duration:.6,ease:'power2.in'},32.3);
+tl.to(plug,{x:1050,duration:.6,ease:'power3.out'},32.9);jolt(shP.b,33.5,4);
+shot(CS,33.2,.8,1.35,1080,470);
+tl.set(pulse,{o:1,x:560},33.8);tl.set(pR,{opacity:1,attr:{fill:GRAY}},33.8);tl.set(pS,{opacity:0},33.8);
+tl.to(pulse,{x:1046,duration:.5,ease:'power1.in'},33.8);tl.to(pulse,{x:900,o:0,duration:.4,ease:'power2.out'},34.3);
+pop(xMark,34.3,{d:.3});tl.set(xMark,{x:1071,y:430},0);tl.to(xMark,{o:0,duration:.25},35.3);
+pop(deny,34.4,{from:.6});tl.to(deny,{o:0,duration:.25},35.6);
+tl.set(pR,{attr:{fill:LIT}},35.7);tl.set(pulse,{o:1,x:560},35.7);tl.to(pulse,{x:1046,duration:.5,ease:'power1.in'},35.7);
+tl.to(shP.g,{y:420,duration:.25,ease:'power2.out'},36.15);
+shot(CS,36.2,.7,1.2,1160,480);
+tl.to(ghost,{o:0,duration:.2},36.4);tl.fromTo(core,{o:0,s:.5},{o:1,s:1,duration:.5,ease:'back.out(1.8)',immediateRender:false},36.45);burst(coreSpark,36.5);
+pop(chipNew,36.6,{from:.6});
+tl.to(pulse,{x:1120,duration:.3,ease:'power1.in'},37.0);tl.set(pulse,{o:0},37.3);tl.set(coreLamp,{attr:{fill:LIT}},37.3);show(pic,37.3,.2);
+tl.to(shP.g,{y:520,duration:.25,ease:'power2.in'},37.5);tl.set(coreLamp,{attr:{fill:GRAY}},38.1);
+shot(CS,37.8,.9,1,1000,500);
+say('#s5',38.4);
+tl.set(pulse,{o:1,x:560},39.8);tl.to(pulse,{x:1046,duration:.45,ease:'power1.in'},39.8);tl.to(shP.g,{y:420,duration:.2},40.1);
+tl.to(pulse,{x:1120,duration:.25,ease:'power1.in'},40.3);tl.set(pulse,{o:0},40.55);tl.set(coreLamp,{attr:{fill:LIT}},40.55);
+tl.to(shP.g,{y:520,duration:.2},40.7);tl.set(coreLamp,{attr:{fill:GRAY}},41.3);
+unsay('#s5',41.3);tl.to(chipNew,{o:0,duration:.3},41.3);
+tl.to(arm,{y:286,duration:.6,ease:'power3.out'},41.6);tl.to(arm,{y:300,duration:.08,yoyo:true,repeat:3},42.2);jolt(shP.b,42.2,5);
+pop(chipTx,42.3,{from:.6});
+say('#s6',42.6);
+tl.to(arm,{y:-560,duration:.5,ease:'power2.in'},43.6);
+unsay('#s6',44.3);tl.to(chipTx,{o:0,duration:.25},44.3);chipOut('#chP',44.3);
+shot(CS,44.4,.6,4.2,1060,520,'power2.in');
+flood('#fl4',44.6);
+/* --- 45–60 판별 레일 --- */
+tl.set('#side',{visibility:'hidden'},45.0);tl.set('#rail',{visibility:'visible'},45.0);
+cutTo(CR,45.0,1.25,420,600);
+gates.forEach((g,k)=>pop(g.p,45.3+k*.2));dests.forEach((d,k)=>pop(d,45.5+k*.15));
+shot(CR,45.8,2.2,1,960,540,'sine.inOut');
+cards.forEach((c,k)=>{const at=46.2+k*1.9;tl.set(c,{p:0,o:0},0);tl.set(c,{o:1},at);
+  tl.fromTo(c,{p:0},{p:1,duration:1.7,ease:'sine.inOut',immediateRender:false},at);tl.to(c,{o:0,duration:.25},at+1.7);
+  tl.fromTo(dests[k],{s:1.18},{s:1,duration:.45,ease:'power2.out',immediateRender:false},at+1.7);});
+{const br=blurOf($('#rail'),'xy');tl.to('#rail',{opacity:.2,duration:.6},52.6);tl.fromTo(br,{v:0},{v:8,duration:.6,immediateRender:false},52.6);}
+say('#s7',52.9,.1);
+unsay('#s7',59.2);
+tl.to({},{duration:.01},DUR-.01);
+
+/* ================= render: tl.time()의 순수 함수 ================= */
+const grid=$('#grid'),bl1=$('#bl1'),bl2=$('#bl2');
+const viewCam={side:CS,top:CT,rail:CR};
+function render(){const t=tl.time();
+  for(const p of props){p.el.setAttribute('transform',`translate(${p.x} ${p.y}) rotate(${p.r}) scale(${p.s})`);p.el.setAttribute('opacity',p.o);}
+  for(const c of cams){const z=c.z*(1+.006*Math.sin(t*.9));c.g.setAttribute('transform',`translate(960 540) scale(${z}) translate(${-c.cx} ${-c.cy})`);}
+  for(const b of blurs){if(b.v>.25){b.g.setAttribute('stdDeviation',b.axis==='y'?`${b.v*.12} ${b.v}`:b.axis==='x'?`${b.v} ${b.v*.08}`:`${b.v} ${b.v}`);b.el.style.filter=`url(#${b.id})`;}else b.el.style.filter='none';}
+  let cz=1;for(const k in viewCam)if(document.getElementById(k).style.visibility!=='hidden'){cz=viewCam[k].z;break;}
+  grid.style.transform=`scale(${(1+.022*Math.sin(t*.8))*(1+(cz-1)*.18)}) translate(${Math.sin(t*.21)*18}px,${Math.cos(t*.17)*14}px)`;
+  bl1.style.transform=`translate(${Math.sin(t*.31)*90}px,${Math.cos(t*.27)*60}px)`;bl2.style.transform=`translate(${Math.cos(t*.23)*80}px,${Math.sin(t*.29)*70}px)`;
+  priceTx.textContent=price.on?'₩ '+(Math.round(price.v/100)*100).toLocaleString('ko-KR'):'₩ ?';
+  for(const c of cards){const tr=trails[c.k];tr.e.setAttribute('stroke-dashoffset',tr.L*(1-c.p));
+    const pt=c.path.getPointAtLength(c.L*c.p);c.g.setAttribute('transform',`translate(${pt.x} ${pt.y-64})`);c.g.setAttribute('opacity',c.o);}
+  for(const [gi,g] of gates.entries()){let lit=false;for(const c of cards){if(c.o<=0||(gi===1&&c.k===0))continue;if(Math.abs(c.p*c.L-g.len)<70)lit=true;}g.c.setAttribute('fill',lit?LIT:'#fff');}
+}
+gsap.ticker.add(render);
+
+/* ---------- 컨트롤: 자동재생 + 루프, 플레이어 없음. ?debug=1 스크럽, ?clean=1 export ---------- */
+const q=new URLSearchParams(location.search);
+const start=()=>tl.play(0);
+tl.eventCallback('onComplete',start);
+window.OPENER={W,H,DURATION:DUR,tl,ready:false,seek(t){tl.pause(t,false);render();},play:start};
+window.OPENER.seekFrame=t=>{window.OPENER.seek(t);return Promise.resolve();};
+addEventListener('keydown',e=>{if(/^[rR]$/.test(e.key))start();if(e.code==='Space'){e.preventDefault();tl.paused()?tl.play():tl.pause();}});
+if(q.has('debug')){const dbg=$('#dbg');dbg.style.display='flex';const sc=$('#dScrub'),ck=$('#dClock');let drag=false;
+  gsap.ticker.add(()=>{if(!drag)sc.value=String(tl.time()/DUR*1000);ck.textContent=tl.time().toFixed(2)+'s';$('#dPlay').textContent=tl.paused()?'Play':'Pause';});
+  sc.addEventListener('pointerdown',()=>{drag=true;tl.pause();});addEventListener('pointerup',()=>drag=false);
+  sc.addEventListener('input',()=>{tl.pause();tl.time(sc.value/1000*DUR);});$('#dPlay').onclick=()=>tl.paused()?tl.play():tl.pause();}
+document.fonts.ready.then(()=>{render();window.OPENER.ready=true;if(!q.has('clean'))start();});
+</script>
+</body>
+</html>

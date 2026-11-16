@@ -1,0 +1,224 @@
+<template>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    @font-face { font-family: "EB Garamond"; src: url("../../assets/fonts/EBGaramond-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Inter"; src: url("../../assets/fonts/Inter-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "JetBrains Mono"; src: url("../../assets/fonts/JetBrainsMono-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Serif KR"; src: url("../../assets/fonts/NotoSerifKR-700.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-400.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "Noto Sans KR"; src: url("../../assets/fonts/NotoSansKR-700.woff2") format("woff2"); font-weight: 700; }
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #141413;
+      font-family: "Inter", "Noto Sans KR", sans-serif;
+    }
+
+    /* background: cream + hairline grid (full-bleed clip, not on #root) */
+    .two-signals-bg {
+      position: absolute;
+      inset: -40px 0 0 0;
+      background-color: #FAF9F5;
+      background-image:
+        repeating-linear-gradient(0deg, rgba(20, 20, 19, 0.045) 0 1px, transparent 1px 80px),
+        repeating-linear-gradient(90deg, rgba(20, 20, 19, 0.045) 0 1px, transparent 1px 80px);
+    }
+
+    /* headline rail (top-left) */
+    .two-signals-kicker {
+      position: absolute;
+      left: 80px;
+      top: 78px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(20, 20, 19, 0.72);
+    }
+    .two-signals-kicker .two-signals-spike { color: #CC785C; margin-right: 12px; }
+    .two-signals-headline {
+      position: absolute;
+      left: 80px;
+      top: 124px;
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-size: 88px;
+      font-weight: 400;
+      line-height: 1.06;
+      letter-spacing: -0.018em;
+      white-space: nowrap;
+    }
+    .two-signals-word { display: inline-block; margin-right: 0.26em; }
+
+    /* ===== Decision tree — SHARED GEOMETRY with Frame 07 =====
+       Centers in % of the 1920x1080 frame; boxes centered via negative margins
+       (no CSS transform — GSAP owns transform).
+       root ① (50%,30%) · leaf L (22%,66%) · node ② (66%,48%) · leaf M (54%,72%) · leaf R (80%,72%) */
+    .tree { position: absolute; inset: 0; }
+    .tree-lines { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; }
+    .tree-lines path {
+      fill: none;
+      stroke: rgba(20, 20, 19, 0.38);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+    }
+    .tree-node, .tree-leaf {
+      position: absolute;
+      box-sizing: border-box;
+      background: #EFE9DE;
+      border: 1px solid rgba(20, 20, 19, 0.12);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08), 0 4px 16px rgba(20, 20, 19, 0.04);
+      transform-origin: 50% 50%;
+      display: flex;
+      align-items: center;
+    }
+    .node-root { left: 50%; top: 30%; width: 540px; height: 104px; margin: -52px 0 0 -270px; padding: 0 36px; gap: 22px; }
+    .node-two  { left: 66%; top: 48%; width: 560px; height: 132px; margin: -66px 0 0 -280px; padding: 0 36px; gap: 22px; }
+    .tree-leaf { width: 200px; height: 150px; margin: -75px 0 0 -100px; justify-content: center; }
+    .leaf-l { left: 22%; top: 66%; }
+    .leaf-m { left: 54%; top: 72%; }
+    .leaf-r { left: 80%; top: 72%; }
+
+    .tree-num {
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-size: 52px;
+      line-height: 1;
+      color: #141413;
+      flex: none;
+    }
+    .node-two .tree-num { color: #CC785C; }
+    .tree-q {
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-size: 44px;
+      line-height: 1.15;
+      letter-spacing: -0.012em;
+      white-space: nowrap;
+    }
+    .tree-q-pre {
+      display: block;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+      font-size: 26px;
+      letter-spacing: 0.02em;
+      color: rgba(20, 20, 19, 0.6);
+      margin-bottom: 6px;
+    }
+    .tree-mark {
+      font-family: "EB Garamond", "Noto Serif KR", serif;
+      font-size: 84px;
+      line-height: 1;
+      color: rgba(20, 20, 19, 0.34);
+    }
+
+    /* branch label chips sit on the connectors */
+    .tree-chip {
+      position: absolute;
+      height: 42px;
+      margin: -21px 0 0 0;
+      padding: 0 18px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      background: #FAF9F5;
+      border: 1px solid rgba(20, 20, 19, 0.2);
+      border-radius: 9999px;
+      font-family: "JetBrains Mono", "Noto Sans KR", monospace;
+      font-size: 26px;
+      letter-spacing: 0.02em;
+      color: rgba(20, 20, 19, 0.82);
+      white-space: nowrap;
+    }
+    .chip-inherit { left: 640px; top: 410px; }
+    .chip-compose { left: 1060px; top: 410px; }
+    .chip-outside { left: 1086px; top: 636px; }
+    .chip-self    { left: 1352px; top: 636px; }
+  </style>
+
+  <div data-hf-id="hf-bwr7" id="root" data-composition-id="02-two-signals" data-start="0" data-duration="11.5" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-tc0t" id="two-signals-bg" class="two-signals-bg clip" data-start="0" data-duration="11.5" data-track-index="0"></div>
+
+    <div data-hf-id="hf-uvvw" id="two-signals-kicker" class="two-signals-kicker clip" data-start="0" data-duration="11.5" data-track-index="1"><span data-hf-id="hf-sytv" class="two-signals-spike">✱</span>판별 도구</div>
+    <div data-hf-id="hf-5jm2" id="two-signals-headline" class="two-signals-headline clip" data-start="0" data-duration="11.5" data-track-index="3"><span data-hf-id="hf-e2aq" class="two-signals-word">구조</span><span data-hf-id="hf-b0xi" class="two-signals-word">신호</span><span data-hf-id="hf-x5y2" class="two-signals-word">두</span><span data-hf-id="hf-f2mm" class="two-signals-word">개만</span><span data-hf-id="hf-2oaa" class="two-signals-word">본다</span></div>
+
+    <div data-hf-id="hf-rm9k" id="two-signals-tree" class="tree clip" data-start="0" data-duration="11.5" data-track-index="2">
+      <svg data-hf-id="hf-2sgf" class="tree-lines" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+        <!-- root ① bottom (960,376) → leaf L top (422,638) -->
+        <path data-hf-id="hf-90gi" id="two-signals-p-l" pathLength="1" d="M 960 376 V 394 Q 960 410 944 410 H 438 Q 422 410 422 426 V 638" />
+        <!-- root ① bottom → node ② top (1267,452) -->
+        <path data-hf-id="hf-5pid" id="two-signals-p-two" pathLength="1" d="M 960 376 V 394 Q 960 410 976 410 H 1251 Q 1267 410 1267 426 V 452" />
+        <!-- node ② bottom (1267,584) → leaf M top (1037,703) -->
+        <path data-hf-id="hf-4f9e" id="two-signals-p-m" pathLength="1" d="M 1267 584 V 620 Q 1267 636 1251 636 H 1053 Q 1037 636 1037 652 V 703" />
+        <!-- node ② bottom → leaf R top (1536,703) -->
+        <path data-hf-id="hf-t4t3" id="two-signals-p-r" pathLength="1" d="M 1267 584 V 620 Q 1267 636 1283 636 H 1520 Q 1536 636 1536 652 V 703" />
+      </svg>
+
+      <div data-hf-id="hf-zqp7" class="tree-chip chip-inherit" id="two-signals-c-inherit">상속</div>
+      <div data-hf-id="hf-z2m9" class="tree-chip chip-compose" id="two-signals-c-compose">합성</div>
+      <div data-hf-id="hf-gf91" class="tree-chip chip-outside" id="two-signals-c-outside">밖에서</div>
+      <div data-hf-id="hf-h5kz" class="tree-chip chip-self" id="two-signals-c-self">스스로</div>
+
+      <div data-hf-id="hf-li65" class="tree-node node-root" id="two-signals-root"><span data-hf-id="hf-x09m" class="tree-num">①</span><span data-hf-id="hf-lk9r" class="tree-q">상속인가, 합성인가</span></div>
+      <div data-hf-id="hf-glsr" class="tree-node node-two" id="two-signals-two"><span data-hf-id="hf-wlyl" class="tree-num">②</span><span data-hf-id="hf-zfmh" class="tree-q"><span data-hf-id="hf-89bv" class="tree-q-pre">합성이라면 —</span>누가 갈아끼우는가</span></div>
+
+      <div data-hf-id="hf-lh56" class="tree-leaf leaf-l" id="two-signals-leaf-l"><span data-hf-id="hf-wuma" class="tree-mark">?</span></div>
+      <div data-hf-id="hf-0x8y" class="tree-leaf leaf-m" id="two-signals-leaf-m"><span data-hf-id="hf-66au" class="tree-mark">?</span></div>
+      <div data-hf-id="hf-y2de" class="tree-leaf leaf-r" id="two-signals-leaf-r"><span data-hf-id="hf-6klv" class="tree-mark">?</span></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const scope = document.querySelector('[data-composition-id="02-two-signals"]');
+      const $ = (s) => scope.querySelector(s);
+      const tl = gsap.timeline({ paused: true });
+
+      // Scene 1 (0–3s): kicker, then headline per-word staggered reveal.
+      // Word starts pre-computed once from word length (dynamic-content-sequencing).
+      tl.fromTo($(".two-signals-kicker"), { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }, 0.1);
+      const BASE = 0.08, SEC_PER_CHAR = 0.05;
+      let at = 0.3;
+      scope.querySelectorAll(".two-signals-word").forEach((w) => {
+        tl.fromTo(w, { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.55, ease: "power3.out" }, at);
+        at += BASE + w.textContent.length * SEC_PER_CHAR;
+      });
+
+      const pop = (el, t) =>
+        tl.fromTo(el, { scale: 0, opacity: 0, y: 16 }, { scale: 1, opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, t);
+      const draw = (el, t, d) => tl.fromTo(el, { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: d, ease: "power2.out" }, t);
+      const chip = (el, t) => tl.fromTo(el, { opacity: 0, scale: 0.92 }, { opacity: 1, scale: 1, duration: 0.4, ease: "power1.out" }, t);
+
+      // Scene 2 (3–6s): root ① pops; both branches self-draw; labels; leaf L "?".
+      pop($("#two-signals-root"), 3.0);
+      draw($("#two-signals-p-l"), 3.6, 0.8);
+      draw($("#two-signals-p-two"), 3.6, 0.6);
+      chip($("#two-signals-c-inherit"), 3.95);
+      chip($("#two-signals-c-compose"), 4.0);
+      pop($("#two-signals-leaf-l"), 4.35);
+
+      // Scene 3 (6–9s): node ② pops at the end of 합성; splits to leaves M / R.
+      pop($("#two-signals-two"), 6.0);
+      draw($("#two-signals-p-m"), 6.7, 0.6);
+      draw($("#two-signals-p-r"), 6.82, 0.6);
+      chip($("#two-signals-c-outside"), 6.95);
+      chip($("#two-signals-c-self"), 7.05);
+      pop($("#two-signals-leaf-m"), 7.3);
+      pop($("#two-signals-leaf-r"), 7.4);
+
+      // Scene 4 (9–11s): deliberate hold — skeleton stays still. Background grid drifts underneath only.
+      tl.fromTo($(".two-signals-bg"), { y: 0 }, { y: 24, duration: 11, ease: "none" }, 0);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["02-two-signals"] = tl;
+    })();
+  </script>
+</template>

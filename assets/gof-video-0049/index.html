@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="ko">
+<!-- Made with the Bang Motion skill by Bang Tutorial (https://youtube.com/bangtutorial) - MIT -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Context 기계</title>
+<!--
+  GoF 1/6 — Strategy · State · Template Method 판별 explainer (60초, 16:9, 무음 + VO 대본 별도).
+  주인공: Context 기계. 슬롯에 꽂는 카트리지 = 합성 필드.
+    Strategy  : 밖(Client 손)이 카트리지를 갈아끼운다 → 지도 뷰에서 경로가 바뀐다
+    State     : 카트리지가 스스로 다음 카트리지를 만든다 (손 없음) → 자판기 정면 뷰
+    Template  : 순서(컨베이어 스테이션)는 부모가 final로 고정, 빈칸만 자식이 용접 → 탑다운 뷰
+    리캡      : 판별 레일 ① 상속? ② 누가 바꾸나?
+  더블클릭으로 열기. 자동재생 + 루프, R 다시, Space 일시정지. ?debug=1 스크럽, ?clean=1 export용.
+  모든 시각 요소는 tl.time()의 순수 함수 (Date.now/Math.random 없음).
+-->
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1F2A37;--base:#EEF7F5;--teal:#0F9F8A;--coral:#E5533D;--indigo:#3B5BDB}
+html,body{margin:0;height:100%;background:#0d1417;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;background:var(--base);color:var(--ink);font-family:'IBM Plex Sans KR',sans-serif}
+#bg{position:absolute;inset:0;overflow:hidden}
+.flood{position:absolute;width:4800px;height:4800px;border-radius:50%;transform:scale(0)}
+#grid{position:absolute;inset:-240px;background-image:linear-gradient(rgba(31,42,55,.075) 2px,transparent 2px),linear-gradient(90deg,rgba(31,42,55,.075) 2px,transparent 2px);background-size:80px 80px;background-position:center}
+.blob{position:absolute;border-radius:50%;width:1300px;height:1300px;background:radial-gradient(circle,rgba(255,255,255,.8),rgba(255,255,255,0) 65%)}
+.view{position:absolute;inset:0}
+.view svg{position:absolute;inset:0;width:1920px;height:1080px;overflow:visible}
+.plex{font-family:'IBM Plex Sans KR',sans-serif;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace;font-weight:700}
+#ui{position:absolute;inset:0;pointer-events:none}
+.say{position:absolute;font-family:'Do Hyeon',sans-serif;line-height:1.12;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
+.say .wd{display:inline-block;opacity:0;transform-origin:50% 100%}
+.say.halo{text-shadow:0 0 16px #F4F1E6,0 0 34px #F4F1E6,0 0 60px #F4F1E6}
+.hl{position:relative}
+.hl i{position:absolute;left:-.14em;right:-.14em;top:.0em;bottom:-.02em;border:.05em solid var(--c,var(--ink));border-radius:.14em;transform:scaleX(0);transform-origin:0 50%}
+.chip{position:absolute;right:64px;top:54px;padding:8px 30px 12px;border-radius:44px;color:#fff;font:600 42px 'IBM Plex Sans KR',sans-serif;opacity:0;border:5px solid var(--ink);box-shadow:8px 8px 0 var(--ink)}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(95% 95% at 50% 50%,transparent 62%,rgba(31,42,55,.16))}
+#dbg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:none;gap:12px;align-items:center;padding:10px 16px;border-radius:14px;background:rgba(14,16,22,.9);color:#cfd5e3;font:13px system-ui;z-index:50}
+#dbg input{width:420px}#dbg span{font-variant-numeric:tabular-nums;min-width:6ch}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs id="defs"></defs></svg>
+<div id="stage">
+  <div id="bg">
+    <div class="flood" id="fl1" style="left:-1440px;top:-1910px;background:#D3EEE8"></div>
+    <div class="flood" id="fl2" style="left:-1440px;top:-1860px;background:#FBE2DC"></div>
+    <div class="flood" id="fl3" style="left:-1440px;top:-1860px;background:#E1E6FA"></div>
+    <div class="flood" id="fl4" style="left:-1440px;top:-1860px;background:#EEF7F5"></div>
+    <div class="blob" id="bl1" style="left:-300px;top:-420px"></div>
+    <div class="blob" id="bl2" style="left:1100px;top:380px"></div>
+    <div id="grid"></div>
+  </div>
+  <div id="side" class="view"><svg id="sideSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="map"  class="view" style="visibility:hidden"><svg id="mapSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="vend" class="view" style="visibility:hidden"><svg id="vendSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="top"  class="view" style="visibility:hidden"><svg id="topSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="rail" class="view" style="visibility:hidden"><svg id="railSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="vig"></div>
+  <div id="ui">
+    <div class="say" id="s1" style="left:110px;top:80px;font-size:100px"><span class="wd">if/switch로</span> <span class="wd">나누던</span> <span class="wd">동작을</span></div>
+    <div class="say" id="s2" style="left:0;right:0;text-align:center;top:858px;font-size:118px"><span class="wd hl"><i></i>클래스로</span> <span class="wd">빼낸다</span></div>
+    <div class="say halo" id="s3" style="left:110px;top:72px;font-size:108px;--c:var(--teal)"><span class="wd hl"><i></i>밖에서</span> <span class="wd">갈아끼운다</span></div>
+    <div class="say" id="s4" style="left:1170px;top:690px;font-size:124px;--c:var(--coral)"><span class="wd">안에서</span><br><span class="wd hl"><i></i>스스로</span> <span class="wd">바뀐다</span></div>
+    <div class="say" id="s5" style="left:0;right:0;text-align:center;top:846px;font-size:106px;--c:var(--indigo)"><span class="wd">순서는</span> <span class="wd">부모,</span> <span class="wd hl"><i></i>빈칸은</span> <span class="wd">자식</span></div>
+    <div class="say" id="s6" style="left:0;right:0;text-align:center;top:330px;font-size:116px"><span class="wd">상속이면</span> <span class="wd" style="color:var(--indigo)">Template Method</span><br><span class="wd">합성이면</span> <span class="wd hl"><i></i>누가</span> <span class="wd">바꾸는지</span></div>
+    <div class="chip" id="chS" style="background:var(--teal)">Strategy</div>
+    <div class="chip" id="chT" style="background:var(--coral)">State</div>
+    <div class="chip" id="chM" style="background:var(--indigo)">Template Method</div>
+  </div>
+  <div id="dbg"><button id="dPlay">Pause</button><input id="dScrub" type="range" min="0" max="1000" value="0"><span id="dClock">0.00s</span></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const W=1920,H=1080,DUR=60,V=150;   // V = 컨베이어 속도(px/초)
+const INK='#1F2A37',TEAL='#0F9F8A',CORAL='#E5533D',INDIGO='#3B5BDB',GRAY='#C5CFCC',LIT='#FFD34E';
+const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg',defs=$('#defs');
+function S(tag,a={},p){const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+const T=(txt,x,y,a,p)=>{const e=S('text',{x,y,...a},p);e.textContent=txt;return e;};
+const mod=(a,n)=>((a%n)+n)%n,clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+function fit(){const s=Math.min(innerWidth/W,innerHeight/H);$('#stage').style.transform=`translate(-50%,-50%) scale(${s})`;}
+addEventListener('resize',fit);fit();
+let uid=0;
+const tl=gsap.timeline({paused:true});
+
+/* ---------- prop: SVG 그룹의 변환을 수동으로 쓴다 (GSAP transformOrigin 문제 회피) ---------- */
+const props=[];
+function prop(el,i={}){const p={el,x:0,y:0,s:1,r:0,o:1,...i};props.push(p);return p;}
+/* ---------- 카메라: 뷰마다 하나, 초점(cx,cy) + 줌 z ---------- */
+const cams=[];
+function cam(g,z,cx,cy){const c={g,z,cx,cy,z0:z,cx0:cx,cy0:cy};cams.push(c);return c;}
+const shot=(c,at,dur,z,cx,cy,ease='power2.inOut')=>tl.to(c,{z,cx,cy,duration:dur,ease},at);
+const cutTo=(c,at,z,cx,cy)=>tl.set(c,{z,cx,cy},at);
+/* ---------- 방향성 모션 블러 (feGaussianBlur x/y 분리) ---------- */
+const blurs=[],blurMap=new Map();
+function blurOf(el,axis='y'){if(blurMap.has(el))return blurMap.get(el);const id='mb'+(uid++);
+  const f=S('filter',{id,x:'-40%',y:'-80%',width:'180%',height:'260%'},defs),g=S('feGaussianBlur',{stdDeviation:'0 0'},f);
+  const b={el,g,id,axis,v:0};blurs.push(b);blurMap.set(el,b);return b;}
+
+/* ================= 그림 부품 ================= */
+/* 카트리지: 원점 = 꽂히는 선. 보이는 몸통은 원점 위 (h-50), 아래 50px은 슬롯 안에 숨는다 */
+function drawCart(p,{color,label='',sub='',w=150,h=210,title=''}){
+  const g=S('g',{},p),top=-h+50;
+  S('rect',{x:-w/2+9,y:top+9,width:w,height:h,rx:16,fill:INK},g);
+  S('rect',{x:-w/2,y:top,width:w,height:h,rx:16,fill:color,stroke:INK,'stroke-width':7},g);
+  for(let i=0;i<3;i++)S('rect',{x:-w/2+24,y:top+18+i*15,width:w-48,height:6,rx:3,fill:INK,opacity:.28},g);
+  if(label){const ph=sub?100:66;S('rect',{x:-w/2+14,y:top+70,width:w-28,height:ph,rx:10,fill:'#fff',stroke:INK,'stroke-width':4},g);
+    T(label,0,top+70+46,{class:'plex','font-size':38,'text-anchor':'middle',fill:INK},g);
+    if(sub)T(sub,0,top+70+87,{class:'mono','font-size':30,'text-anchor':'middle',fill:color},g);}
+  if(title)T(title,0,top-26,{class:'plex','font-size':40,'text-anchor':'middle',fill:INK},g);
+  return g;}
+/* 손: dir 1 = 왼쪽에서 들어옴, -1 = 오른쪽. 원점 = 장갑 앞쪽 끝(잡기) 또는 손가락 끝(point) */
+function drawHand(p,dir=1,point=false,label='Client'){
+  const g=S('g',{},p),m=S('g',{transform:`scale(${dir} 1)${point?' translate(-62 0)':''}`},g);
+  S('rect',{x:-1700,y:-40,width:1560,height:80,fill:'#55657A',stroke:INK,'stroke-width':7},m);
+  S('rect',{x:-160,y:-52,width:44,height:104,rx:10,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  S('rect',{x:-120,y:-56,width:120,height:112,rx:46,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  if(point)S('rect',{x:-16,y:-15,width:78,height:30,rx:15,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  else S('path',{d:'M-66 -56 C-46 -90 -8 -84 -6 -54',fill:'#fff',stroke:INK,'stroke-width':7},m);
+  if(label)T(label,dir*(-620-(point?62:0)),13,{class:'mono','font-size':36,'text-anchor':'middle',fill:'#fff'},g);
+  return g;}
+/* Context 기계(측면): 원점 = 바닥 중앙. 카트리지 층은 몸통 뒤 → 꽂으면 아래가 숨는다 */
+function drawMachine(p){
+  const root=S('g',{},p),cartLayer=S('g',{},root),sh=S('g',{},root),shake=prop(sh);
+  S('rect',{x:-266,y:-366,width:560,height:380,rx:36,fill:INK},sh);
+  S('rect',{x:-280,y:-380,width:560,height:380,rx:36,fill:'#fff',stroke:INK,'stroke-width':8},sh);
+  S('rect',{x:-104,y:-396,width:208,height:28,rx:10,fill:INK},sh);
+  S('rect',{x:-284,y:-116,width:26,height:116,fill:INK},sh);S('rect',{x:258,y:-116,width:26,height:116,fill:INK},sh);
+  S('rect',{x:-212,y:-334,width:424,height:204,rx:18,fill:INK},sh);
+  const id='cw'+(uid++),cp=S('clipPath',{id},defs);S('rect',{x:-212,y:-334,width:424,height:204,rx:18},cp);
+  const screen=S('g',{'clip-path':`url(#${id})`},sh);
+  const led=S('circle',{cx:206,cy:-62,r:20,fill:GRAY,stroke:INK,'stroke-width':6},sh);
+  S('circle',{cx:150,cy:-62,r:9,fill:INK,opacity:.25},sh);S('circle',{cx:114,cy:-62,r:9,fill:INK,opacity:.25},sh);
+  T('Context',-216,-48,{class:'mono','font-size':36,fill:INK},sh);
+  const sp=S('g',{},root),spark=prop(sp,{x:0,y:-392,o:0});
+  for(let k=0;k<7;k++){const a=-Math.PI*(k+.5)/7;S('line',{x1:Math.cos(a)*44,y1:Math.sin(a)*44,x2:Math.cos(a)*84,y2:Math.sin(a)*84,stroke:INK,'stroke-width':7,'stroke-linecap':'round'},sp);}
+  const front=S('g',{},root);
+  return {root,cartLayer,shake,screen,led,spark,front};}
+function sparks(p,n=8,r0=40,r1=80){const g=S('g',{},p);for(let k=0;k<n;k++){const a=Math.PI*2*k/n;S('line',{x1:Math.cos(a)*r0,y1:Math.sin(a)*r0,x2:Math.cos(a)*r1,y2:Math.sin(a)*r1,stroke:INK,'stroke-width':7,'stroke-linecap':'round'},g);}return g;}
+
+/* ---------- 타임라인 헬퍼 ---------- */
+function snap(m,at,color){   // 시그니처 모션: 철컥 — 흔들림 + LED + 스파크
+  tl.to(m.shake,{y:8,duration:.05,yoyo:true,repeat:5,ease:'sine.inOut'},at);
+  tl.set(m.led,{attr:{fill:color}},at);
+  tl.fromTo(m.spark,{o:1,s:.6},{o:0,s:1.5,duration:.42,ease:'power2.out',immediateRender:false},at);}
+function carry(hand,cart,at,dur,x,y,{ease='power3.out',dir=1,w=150}={}){
+  tl.to(cart,{x,y,duration:dur,ease},at);tl.to(hand,{x:x-dir*(w/2+4),y:y-55,duration:dur,ease},at);}
+const show=(el,at,d=.25)=>tl.to(el,{opacity:1,duration:d},at), hide=(el,at,d=.25)=>tl.to(el,{opacity:0,duration:d},at);
+const pop=(p,at,{d=.6,from=0,ease='back.out(1.8)'}={})=>tl.fromTo(p,{s:from,o:0},{s:1,o:1,duration:d,ease,immediateRender:false},at);
+function say(id,at,st=.09){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.fromTo(w,{opacity:0,yPercent:70,scaleY:1.35},{opacity:1,yPercent:0,scaleY:1,duration:.8,ease:'power4.out',stagger:st,immediateRender:false},at);
+  tl.fromTo(b,{v:20},{v:0,duration:.8+st*(w.length-1),ease:'power3.out',immediateRender:false},at);
+  el.querySelectorAll('.hl i').forEach(i=>tl.fromTo(i,{scaleX:0},{scaleX:1,duration:.5,ease:'power3.out',immediateRender:false},at+.3+st*w.length));}
+function unsay(id,at){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.to(w,{opacity:0,yPercent:-60,duration:.4,ease:'power2.in',stagger:.025},at);
+  tl.fromTo(b,{v:0},{v:16,duration:.45,ease:'power2.in',immediateRender:false},at);tl.set(b,{v:0},at+.55);}
+function chipIn(id,at){const el=$(id),b=blurOf(el,'x');
+  tl.fromTo(el,{opacity:0,x:90},{opacity:1,x:0,duration:.6,ease:'power4.out',immediateRender:false},at);
+  tl.fromTo(b,{v:24},{v:0,duration:.6,ease:'power3.out',immediateRender:false},at);}
+const chipOut=(id,at)=>tl.to($(id),{opacity:0,x:70,duration:.35,ease:'power2.in'},at);
+const flood=(id,at)=>tl.fromTo(id,{scale:0},{scale:1,duration:1.1,ease:'power2.inOut',immediateRender:false},at);
+function whip(t,from,to,dir=1){const bf=blurOf($(from)),bt=blurOf($(to));
+  tl.to(from,{y:-150*dir,duration:.28,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:24,duration:.28,ease:'power2.in',immediateRender:false},t);
+  tl.set(from,{visibility:'hidden'},t+.28);tl.set(to,{visibility:'visible',y:150*dir},t+.28);tl.set(bt,{v:24},t+.28);
+  tl.to(to,{y:0,duration:.42,ease:'power3.out'},t+.28);tl.to(bt,{v:0,duration:.42,ease:'power3.out'},t+.28);
+  tl.set(from,{y:0},t+.3);tl.set(bf,{v:0},t+.3);}
+
+/* ================= VIEW 1: 측면 — 컨베이어 + Context 기계 ================= */
+const sideCam=S('g',{},$('#sideSvg')),CS=cam(sideCam,1.75,960,530);
+const beltStripes=[],items=[];
+{const g=S('g',{},sideCam);
+  S('rect',{x:-600,y:826,width:3120,height:18,rx:9,fill:INK,opacity:.1},g);
+  for(const x of [330,1590])S('rect',{x:x-12,y:800,width:24,height:150,fill:'#2B3646'},g);
+  S('rect',{x:-600,y:760,width:3120,height:46,rx:23,fill:'#2B3646'},g);
+  for(let i=0;i<54;i++)beltStripes.push(S('rect',{x:0,y:769,width:16,height:28,rx:4,fill:'#4A5A70'},g));}
+for(let i=0;i<10;i++){const g=S('g',{},sideCam);
+  const r=S('rect',{x:-45,y:-90,width:90,height:90,rx:16,fill:'#fff',stroke:INK,'stroke-width':6},g);
+  const tx=T('{ }',0,-33,{class:'mono','font-size':34,'text-anchor':'middle',fill:INK},g);items.push({g,r,tx,i});}
+const mw=S('g',{transform:'translate(960 760)'},sideCam),M=drawMachine(mw);
+/* 화면: 엉킨 if/else 전선 + 코드 → 경로 이름 → 빨간 화면(push-through) */
+const wires=[TEAL,CORAL,INDIGO].map(c=>S('path',{fill:'none',stroke:c,'stroke-width':8,opacity:.55,'stroke-linecap':'round'},M.screen));
+const scrCode=S('g',{},M.screen);
+[['if (fast) {…}',TEAL],['else if (free) {…}',CORAL],['else {…}',INDIGO]].forEach(([s,c],k)=>{
+  S('rect',{x:-196,y:-308+k*54,width:8,height:36,rx:4,fill:c},scrCode);T(s,-176,-280+k*54,{class:'mono','font-size':31,fill:'#E6F2EF'},scrCode);});
+const scrA=T('최단 경로',0,-214,{class:'plex','font-size':52,'text-anchor':'middle',fill:'#7EE0CF',style:'opacity:0'},M.screen);
+const scrB=T('무료 경로',0,-214,{class:'plex','font-size':52,'text-anchor':'middle',fill:'#7EE0CF',style:'opacity:0'},M.screen);
+const scrRed=S('rect',{x:-220,y:-340,width:440,height:220,fill:CORAL,style:'opacity:0'},M.screen);
+/* 신호등 ① ② */
+const lamps=[['상속/합성',-200,'1'],['누가 바꾸나',200,'2']].map(([lab,x,n])=>{const g=S('g',{},M.front);
+  S('rect',{x:-6,y:24,width:12,height:36,fill:INK},g);
+  const c=S('circle',{r:30,fill:'#fff',stroke:INK,'stroke-width':7},g);
+  T(n,0,12,{class:'mono','font-size':34,'text-anchor':'middle',fill:INK},g);
+  T(lab,0,-46,{class:'plex','font-size':36,'text-anchor':'middle',fill:INK},g);
+  return {p:prop(g,{x,y:-440,s:0,o:0}),c};});
+/* 훅 카트리지 3개 (창에서 튀어나옴) */
+const HK=[[TEAL,'Strategy',-380],[CORAL,'State',0],[INDIGO,'Template Method',380]].map(([c,n,x])=>({p:prop(drawCart(M.front,{color:c,h:170,title:n}),{x:0,y:-230,s:.2,o:0}),x}));
+/* 손 + 전략 카트리지 */
+const cA=prop(drawCart(M.cartLayer,{color:TEAL,label:'최단'}),{x:-1300,y:-600});
+const cB=prop(drawCart(M.cartLayer,{color:TEAL,label:'무료'}),{x:0,y:-382,o:0});
+const hS=prop(drawHand(M.front,1),{x:-1300-79,y:-655});
+
+/* ================= VIEW 2: 지도 — 전략에 따라 경로가 바뀐다 ================= */
+const mapCam=S('g',{},$('#mapSvg')),CM=cam(mapCam,1.45,560,700);
+S('rect',{x:-1500,y:-1200,width:4900,height:3600,fill:'#F4F1E6'},mapCam);
+for(let gx=-450;gx<2400;gx+=150)for(let gy=-300;gy<1400;gy+=150)S('rect',{x:gx+20,y:gy+20,width:110,height:110,rx:16,fill:'#EAE5D5'},mapCam);
+S('path',{d:'M-500 420 C 200 300 500 520 820 400 S 1300 110 2600 40',fill:'none',stroke:'#BFE0EC','stroke-width':86},mapCam);
+S('rect',{x:600,y:150,width:270,height:180,rx:44,fill:'#CDE9D6'},mapCam);S('rect',{x:1160,y:880,width:290,height:150,rx:44,fill:'#CDE9D6'},mapCam);
+const R1='M360 760 L760 620 L1180 470 L1560 300',R2='M360 760 C 470 900 800 940 1040 830 C 1250 735 1330 640 1420 520 C 1480 440 1520 360 1560 300';
+const road=(d,w,c,o)=>{S('path',{d,fill:'none',stroke:o,'stroke-width':w+12,'stroke-linecap':'round','stroke-linejoin':'round'},mapCam);S('path',{d,fill:'none',stroke:c,'stroke-width':w,'stroke-linecap':'round','stroke-linejoin':'round'},mapCam);};
+road('M-400 1010 L2400 1010',30,'#fff','#D8D2C0');road('M1290 -300 L1290 1400',30,'#fff','#D8D2C0');road(R2,34,'#fff','#D8D2C0');road(R1,56,'#F6D46B','#D9B54A');
+{const g=S('g',{transform:'translate(970 545) rotate(-20)'},mapCam);S('rect',{x:-8,y:-52,width:16,height:104,rx:6,fill:INK},g);
+  const b=S('g',{transform:'translate(970 545)'},mapCam);S('circle',{cx:0,cy:-70,r:30,fill:INK},b);T('₩',0,-58,{class:'plex','font-size':34,'text-anchor':'middle',fill:LIT},b);
+  T('요금소',0,-116,{class:'plex','font-size':36,'text-anchor':'middle',fill:INK,stroke:'#F4F1E6','stroke-width':10,'paint-order':'stroke'},b);}
+const rt1=S('path',{d:R1,fill:'none',stroke:TEAL,'stroke-width':16,'stroke-linecap':'round','stroke-linejoin':'round'},mapCam);
+const rt2=S('path',{d:R2,fill:'none',stroke:TEAL,'stroke-width':16,'stroke-linecap':'round'},mapCam);
+const L1=rt1.getTotalLength(),L2=rt2.getTotalLength();rt1.setAttribute('stroke-dasharray',L1);rt2.setAttribute('stroke-dasharray',L2);
+for(const [n,x,y,f,c] of [['A',360,760,'#fff',INK],['B',1560,300,INK,'#fff']]){S('circle',{cx:x,cy:y,r:36,fill:f,stroke:INK,'stroke-width':7},mapCam);T(n,x,y+13,{class:'plex','font-size':38,'text-anchor':'middle',fill:c},mapCam);}
+const car=S('g',{},mapCam);S('rect',{x:-30,y:-20,width:60,height:40,rx:12,fill:'#fff',stroke:INK,'stroke-width':6},car);S('circle',{cx:10,cy:0,r:8,fill:TEAL},car);
+const route={p1:0,p2:0};
+const dw=S('g',{transform:'translate(1600 1000) scale(.5)'},mapCam),MD=drawMachine(dw);
+const mdA=T('최단',0,-200,{class:'plex','font-size':84,'text-anchor':'middle',fill:'#7EE0CF'},MD.screen);
+const mdB=T('무료',0,-200,{class:'plex','font-size':84,'text-anchor':'middle',fill:'#7EE0CF',style:'opacity:0'},MD.screen);
+const cM1=prop(drawCart(MD.cartLayer,{color:TEAL,label:'최단'}),{x:0,y:-382});
+const cM2=prop(drawCart(MD.cartLayer,{color:TEAL,label:'무료'}),{x:1400,y:-620});
+const hM=prop(drawHand(MD.front,-1),{x:1400+79,y:-675});
+const chipMap=(()=>{const g=S('g',{},mapCam);S('rect',{x:-196+7,y:-34+7,width:392,height:68,rx:14,fill:INK},g);S('rect',{x:-196,y:-34,width:392,height:68,rx:14,fill:'#fff',stroke:INK,'stroke-width':5},g);
+  T('setStrategy(free)',0,12,{class:'mono','font-size':34,'text-anchor':'middle',fill:TEAL},g);return prop(g,{x:1600,y:668,s:0,o:0});})();
+
+/* ================= VIEW 3: 정면 — 자판기가 된 Context ================= */
+const vendCam=S('g',{},$('#vendSvg')),CV=cam(vendCam,1.3,710,520);
+const vCart=S('g',{},vendCam),vBody=S('g',{},vendCam),vFront=S('g',{},vendCam);
+const VM={shake:prop(vBody),led:null,spark:null};
+S('rect',{x:374,y:314,width:700,height:740,rx:40,fill:INK},vBody);
+S('rect',{x:360,y:300,width:700,height:740,rx:40,fill:'#fff',stroke:INK,'stroke-width':8},vBody);
+S('rect',{x:570,y:286,width:280,height:28,rx:10,fill:INK},vBody);
+S('rect',{x:420,y:345,width:580,height:110,rx:16,fill:INK},vBody);
+const vMsg=['동전을 넣으세요','버튼을 누르세요','음료 나왔어요','동전을 넣으세요'].map(s=>T(s,710,416,{class:'plex','font-size':46,'text-anchor':'middle',fill:'#FFB4A6',style:'opacity:0'},vBody));
+S('rect',{x:420,y:490,width:420,height:300,rx:16,fill:'#DDEFF0',stroke:INK,'stroke-width':6},vBody);
+[[TEAL,'#7EE0CF'],[CORAL,'#FFB4A6'],[INDIGO,'#A9B8F5'],['#E8A317','#F7D98A'],[TEAL,'#7EE0CF'],[INDIGO,'#A9B8F5']].forEach(([c,l],k)=>{const x=465+(k%3)*125,y=515+Math.floor(k/3)*140;
+  S('rect',{x,y,width:80,height:116,rx:16,fill:c,stroke:INK,'stroke-width':5},vBody);S('rect',{x:x+14,y:y+18,width:16,height:76,rx:8,fill:l,opacity:.8},vBody);});
+S('rect',{x:870,y:490,width:130,height:300,rx:16,fill:'#F3F6F5',stroke:INK,'stroke-width':5},vBody);
+const btnG=S('g',{},vBody);S('circle',{r:46,fill:CORAL,stroke:INK,'stroke-width':7},btnG);S('circle',{cx:-12,cy:-14,r:12,fill:'#fff',opacity:.45},btnG);const btn=prop(btnG,{x:935,y:585});
+S('rect',{x:925,y:680,width:20,height:72,rx:8,fill:INK},vBody);
+S('rect',{x:470,y:850,width:480,height:110,rx:18,fill:INK},vBody);
+VM.led=S('circle',{cx:1004,cy:905,r:18,fill:GRAY,stroke:INK,'stroke-width':6},vBody);
+T('Context',420,1012,{class:'mono','font-size':36,fill:INK},vBody);
+{const sp=S('g',{},vendCam);for(let k=0;k<7;k++){const a=-Math.PI*(k+.5)/7;S('line',{x1:Math.cos(a)*60,y1:Math.sin(a)*60,x2:Math.cos(a)*104,y2:Math.sin(a)*104,stroke:INK,'stroke-width':7,'stroke-linecap':'round'},sp);}VM.spark=prop(sp,{x:710,y:290,o:0});}
+const vc=[['동전 없음','NoCoin'],['동전 있음','HasCoin'],['동전 없음','NoCoin']].map(([l,s],k)=>prop(drawCart(vCart,{color:CORAL,label:l,sub:s,w:250,h:240}),k?{x:710,y:202,s:.4,o:0}:{x:710,y:302}));
+const canG=S('g',{},vFront);S('rect',{x:-40,y:-58,width:80,height:116,rx:16,fill:TEAL,stroke:INK,'stroke-width':5},canG);S('rect',{x:-26,y:-40,width:16,height:76,rx:8,fill:'#7EE0CF'},canG);
+const can=prop(canG,{x:630,y:660,o:0});
+const coinG=S('g',{},vFront);S('circle',{r:32,fill:'#F2C14E',stroke:INK,'stroke-width':6},coinG);S('circle',{r:18,fill:'none',stroke:INK,'stroke-width':4,opacity:.4},coinG);
+const coin=prop(coinG,{x:1500,y:380,o:0});
+const loopG=S('g',{},vFront);S('path',{d:'M-30 0 A30 30 0 1 1 0 30',fill:'none',stroke:CORAL,'stroke-width':9,'stroke-linecap':'round'},loopG);S('path',{d:'M-14 18 L2 30 L-12 44',fill:'none',stroke:CORAL,'stroke-width':9,'stroke-linecap':'round','stroke-linejoin':'round'},loopG);
+const loopP=prop(loopG,{x:530,y:200,o:0});
+const chipV=(()=>{const g=S('g',{},vFront);S('rect',{x:-232+7,y:-34+7,width:464,height:68,rx:14,fill:INK},g);S('rect',{x:-232,y:-34,width:464,height:68,rx:14,fill:'#fff',stroke:INK,'stroke-width':5},g);
+  T('return new NoCoin();',0,12,{class:'mono','font-size':34,'text-anchor':'middle',fill:CORAL},g);return prop(g,{x:1110,y:160,s:0,o:0});})();
+const hV=prop(drawHand(vFront,-1,true),{x:2150,y:585});
+function vsnap(at){tl.to(VM.shake,{y:8,duration:.05,yoyo:true,repeat:5,ease:'sine.inOut'},at);tl.set(VM.led,{attr:{fill:CORAL}},at);
+  tl.fromTo(VM.spark,{o:1,s:.6},{o:0,s:1.5,duration:.42,ease:'power2.out',immediateRender:false},at);}
+function selfSwap(old,nw,at){   // 손 없이: 현재 상태가 다음 상태를 만들어 끼운다
+  tl.to(old,{y:202,duration:.35,ease:'power2.out'},at);
+  tl.fromTo(nw,{x:710,y:202,s:.4,o:0},{s:1,o:1,duration:.5,ease:'back.out(1.8)',immediateRender:false},at+.4);
+  tl.to(old,{x:380,y:60,r:-28,o:0,duration:.6,ease:'power2.in'},at+.45);
+  tl.to(nw,{y:302,duration:.28,ease:'power3.in'},at+1.0);vsnap(at+1.28);}
+function press(at,msgOff,msgOn){tl.to(hV,{x:992,duration:.45,ease:'power3.out'},at);
+  tl.to(hV,{x:976,duration:.1,yoyo:true,repeat:1},at+.5);tl.to(btn,{s:.86,duration:.1,yoyo:true,repeat:1},at+.5);
+  if(msgOff)hide(msgOff,at+.55,.15);if(msgOn)show(msgOn,at+.6,.2);tl.to(hV,{x:2150,duration:.6,ease:'power2.in'},at+.9);}
+
+/* ================= VIEW 4: 탑다운 — 부모가 고정한 순서 ================= */
+const topCam=S('g',{},$('#topSvg')),CT=cam(topCam,1.35,560,400);
+const topStripes=[];
+{S('rect',{x:-600,y:470,width:3120,height:180,fill:'#2B3646'},topCam);
+  for(let i=0;i<54;i++)topStripes.push(S('rect',{x:0,y:482,width:12,height:156,rx:4,fill:'#3A4A60'},topCam));
+  S('rect',{x:-600,y:460,width:3120,height:14,fill:'#4A5A70'},topCam);S('rect',{x:-600,y:646,width:3120,height:14,fill:'#4A5A70'},topCam);}
+const frameR=S('rect',{x:190,y:150,width:1580,height:560,rx:34,fill:'rgba(59,91,219,.05)','fill-opacity':0,stroke:INDIGO,'stroke-width':8},topCam);
+const FL=frameR.getTotalLength();frameR.setAttribute('stroke-dasharray',FL);frameR.setAttribute('stroke-dashoffset',FL);
+const bowls=[];
+for(let i=0;i<7;i++){const g=S('g',{},topCam);S('circle',{r:64,fill:'#fff',stroke:INK,'stroke-width':7},g);S('circle',{r:48,fill:'#EEF1F0'},g);
+  const water=S('circle',{r:48,fill:'#9ED3E6'},g),soup=S('circle',{r:48,fill:CORAL,opacity:.9},g);
+  const noodle=S('path',{d:'M-34 -14 q11 -14 22 0 t22 0 t22 0 M-34 8 q11 -14 22 0 t22 0 t22 0 M-24 28 q11 -12 22 0 t22 0',fill:'none',stroke:'#F2C14E','stroke-width':7,'stroke-linecap':'round'},g);
+  const chop=S('g',{},g);S('line',{x1:-70,y1:-30,x2:46,y2:10,stroke:'#8A5A3B','stroke-width':9,'stroke-linecap':'round'},chop);S('line',{x1:-66,y1:-12,x2:50,y2:24,stroke:'#8A5A3B','stroke-width':9,'stroke-linecap':'round'},chop);
+  bowls.push({g,water,soup,noodle,chop,i});}
+const XS=[380,780,1180,1580];
+function station(x,label,icon,{dashed=false}={}){const g=S('g',{},topCam);
+  S('rect',{x:-14,y:90,width:28,height:52,fill:INK},g);
+  if(!dashed)S('rect',{x:-110+9,y:-90+9,width:220,height:180,rx:22,fill:INK},g);
+  S('rect',{x:-110,y:-90,width:220,height:180,rx:22,fill:dashed?'rgba(59,91,219,.08)':'#fff',stroke:dashed?INDIGO:INK,'stroke-width':7,...(dashed?{'stroke-dasharray':'20 13'}:{})},g);
+  T(label,0,-110,{class:'plex','font-size':38,'text-anchor':'middle',fill:INK},g);icon(g);return prop(g,{x,y:330,s:0,o:0});}
+const ST=[
+  station(380,'물 끓이기',g=>{S('rect',{x:-56,y:-18,width:112,height:66,rx:16,fill:'#9ED3E6',stroke:INK,'stroke-width':6},g);S('rect',{x:-74,y:-6,width:20,height:14,rx:6,fill:INK},g);S('rect',{x:54,y:-6,width:20,height:14,rx:6,fill:INK},g);
+    for(const x of [-26,0,26])S('path',{d:`M${x} -34 q-10 -12 0 -24 t0 -24`,fill:'none',stroke:INK,'stroke-width':5,'stroke-linecap':'round',opacity:.55},g);}),
+  station(780,'면 넣기',g=>{S('path',{d:'M-60 -30 q15 -18 30 0 t30 0 t30 0 t30 0 M-60 0 q15 -18 30 0 t30 0 t30 0 t30 0 M-60 30 q15 -18 30 0 t30 0 t30 0 t30 0',fill:'none',stroke:'#E8A317','stroke-width':10,'stroke-linecap':'round'},g);}),
+  station(1180,'스프 넣기',g=>{T('abstract',0,-12,{class:'mono','font-size':30,'text-anchor':'middle',fill:INDIGO},g);T('addSoup()',0,30,{class:'mono','font-size':30,'text-anchor':'middle',fill:INDIGO},g);},{dashed:true}),
+  station(1580,'먹기',g=>{S('circle',{cx:0,cy:12,r:46,fill:'#fff',stroke:INK,'stroke-width':6},g);S('circle',{cx:0,cy:12,r:32,fill:CORAL,opacity:.85},g);
+    S('line',{x1:-62,y1:-46,x2:40,y2:0,stroke:'#8A5A3B','stroke-width':9,'stroke-linecap':'round'},g);S('line',{x1:-56,y1:-28,x2:46,y2:14,stroke:'#8A5A3B','stroke-width':9,'stroke-linecap':'round'},g);})];
+const CH=[580,980,1380].map(x=>{const g=S('g',{},topCam);S('path',{d:'M-14 -24 L12 0 L-14 24',fill:'none',stroke:INK,'stroke-width':9,'stroke-linecap':'round','stroke-linejoin':'round'},g);return prop(g,{x,y:330,s:0,o:0});});
+const tab1=(()=>{const g=S('g',{},topCam);S('rect',{x:-215,y:-31,width:430,height:62,rx:14,fill:INDIGO,stroke:INK,'stroke-width':5},g);T('abstract class Ramen',0,11,{class:'mono','font-size':32,'text-anchor':'middle',fill:'#fff'},g);return prop(g,{x:405,y:121,s:0,o:0});})();
+let tab2Rect;const tab2=(()=>{const g=S('g',{},topCam);tab2Rect=S('rect',{x:-170,y:-31,width:340,height:62,rx:14,fill:INK,stroke:INK,'stroke-width':5},g);
+  S('path',{d:'M-140 -6 v-10 a12 12 0 0 1 24 0 v10',fill:'none',stroke:LIT,'stroke-width':5},g);S('rect',{x:-146,y:-6,width:36,height:26,rx:5,fill:LIT},g);
+  T('final cook()',22,11,{class:'mono','font-size':32,'text-anchor':'middle',fill:'#fff'},g);return prop(g,{x:820,y:121,s:0,o:0});})();
+let shinTag,bolts=[];const shin=(()=>{const g=S('g',{},topCam);
+  S('rect',{x:-110+9,y:-90+9,width:220,height:180,rx:22,fill:INK},g);S('rect',{x:-110,y:-90,width:220,height:180,rx:22,fill:'#D9483B',stroke:INK,'stroke-width':7},g);
+  T('ShinRamen',0,-8,{class:'mono','font-size':32,'text-anchor':'middle',fill:'#fff'},g);T('매운 스프',0,40,{class:'plex','font-size':34,'text-anchor':'middle',fill:'#fff'},g);
+  for(const [x,y] of [[-88,-68],[88,-68],[-88,68],[88,68]])bolts.push(S('circle',{cx:x,cy:y,r:9,fill:'#AAB4C3',stroke:INK,'stroke-width':4,style:'opacity:0'},g));
+  shinTag=S('g',{},g);S('rect',{x:-160,y:104,width:320,height:58,rx:29,fill:INDIGO,stroke:INK,'stroke-width':5},shinTag);T('extends Ramen',0,143,{class:'mono','font-size':30,'text-anchor':'middle',fill:'#fff'},shinTag);
+  return prop(g,{x:1180,y:1260});})();
+const weld=prop(sparks(topCam,10,120,170),{x:1180,y:330,o:0});
+const deny=(()=>{const g=S('g',{},topCam);S('rect',{x:-200,y:-34,width:400,height:68,rx:34,fill:CORAL,stroke:INK,'stroke-width':5},g);T('실행 중 교체 불가',0,13,{class:'plex','font-size':36,'text-anchor':'middle',fill:'#fff'},g);return prop(g,{x:1460,y:150,s:0,o:0});})();
+const hT=prop(drawHand(topCam,1),{x:1180,y:-760,r:90});
+const ACT=[38.2,38.5,42.45,39.1];   // 스테이션이 일하기 시작한 시각 (스프는 용접 순간)
+
+/* ================= VIEW 5: 판별 레일 ================= */
+const railCam=S('g',{},$('#railSvg')),CR=cam(railCam,1.25,420,600);
+const K=['M-100 640 L560 640 C760 640 860 250 1060 250 L1470 250','M-100 640 L1100 640 C1260 640 1300 520 1470 520','M-100 640 L1100 640 C1260 640 1300 820 1470 820'];
+for(const d of K){S('path',{d,fill:'none',stroke:INK,'stroke-width':30,'stroke-linecap':'round'},railCam);}
+for(const d of K){S('path',{d,fill:'none',stroke:'#fff','stroke-width':14,'stroke-linecap':'round'},railCam);}
+const DEST=[[INDIGO,'Template Method',250],[TEAL,'Strategy',520],[CORAL,'State',820]];
+const trails=K.map((d,k)=>{const e=S('path',{d,fill:'none',stroke:DEST[k][0],'stroke-width':12,'stroke-linecap':'round'},railCam);const L=e.getTotalLength();e.setAttribute('stroke-dasharray',L);e.setAttribute('stroke-dashoffset',L);return {e,L};});
+const lab=(s,x,y,c=INK,f=36)=>T(s,x,y,{class:'plex','font-size':f,'text-anchor':'middle',fill:c},railCam);
+lab('상속',700,470,INDIGO);lab('합성',830,712);lab('밖에서',1320,505,TEAL);lab('안에서',1320,805,CORAL);
+const gates=[[560,'1','상속?'],[1100,'2','누가 바꾸나?']].map(([x,n,q])=>{const g=S('g',{},railCam);
+  const c=S('circle',{r:44,fill:'#fff',stroke:INK,'stroke-width':7},g);T(n,0,13,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},g);T(q,0,-68,{class:'plex','font-size':40,'text-anchor':'middle',fill:INK},g);
+  return {p:prop(g,{x,y:640,s:0,o:0}),c,len:x+100};});
+const dests=DEST.map(([c,n,y])=>{const g=S('g',{},railCam);S('rect',{x:-190+9,y:-55+9,width:380,height:110,rx:28,fill:INK},g);S('rect',{x:-190,y:-55,width:380,height:110,rx:28,fill:c,stroke:INK,'stroke-width':7},g);
+  T(n,0,14,{class:'plex','font-size':40,'text-anchor':'middle',fill:'#fff'},g);return prop(g,{x:1660,y,s:0,o:0});});
+const cards=[['extends Ramen',0],['setStrategy(s)',1],['new NoCoin()',2]].map(([s,k])=>{const g=S('g',{},railCam);
+  S('rect',{x:-165+7,y:-40+7,width:330,height:80,rx:14,fill:INK},g);S('rect',{x:-165,y:-40,width:330,height:80,rx:14,fill:'#fff',stroke:INK,'stroke-width':6},g);
+  T(s,0,11,{class:'mono','font-size':32,'text-anchor':'middle',fill:DEST[k][0]},g);
+  const path=S('path',{d:K[k]});return {g,path,L:trails[k].L,k,p:0,o:0};});
+
+/* ================= 타임라인 ================= */
+for(const c of cams)cutTo(c,0,c.z0,c.cx0,c.cy0);
+tl.set('.flood',{scale:0},0);
+/* --- 0–9 훅: 엉킨 if/else → 클래스 3개 --- */
+say('#s1',1.0);
+shot(CS,3.3,1.1,1,960,540);
+unsay('#s1',3.9);
+hide(scrCode,4.2,.3);wires.forEach(w=>hide(w,4.2,.3));
+HK.forEach((h,k)=>tl.fromTo(h.p,{x:0,y:-230,s:.2,o:0},{x:h.x,y:-520,s:1,o:1,duration:.85,ease:'back.out(1.5)',immediateRender:false},4.25+k*.13));
+say('#s2',4.8);
+lamps.forEach((l,k)=>{pop(l.p,6.4+k*.25);tl.set(l.c,{attr:{fill:LIT}},6.75+k*.25);});
+unsay('#s2',8.1);
+HK.forEach((h,k)=>tl.to(h.p,{x:h.x*1.6,y:-1250,r:(k-1)*24,duration:.5,ease:'power2.in'},8.3+k*.06));
+lamps.forEach(l=>tl.to(l.p,{s:0,o:0,duration:.3,ease:'power2.in'},8.35));
+/* --- 9–23 Strategy: 밖에서 꽂는다 --- */
+carry(hS,cA,9.0,1.0,0,-600);
+chipIn('#chS',9.2);
+shot(CS,9.4,.9,1.2,960,430);
+carry(hS,cA,10.1,.3,0,-382,{ease:'power3.in'});
+snap(M,10.4,TEAL);show(scrA,10.45,.2);flood('#fl1',10.4);
+tl.to(hS,{x:-1500,y:-640,duration:.7,ease:'power2.in'},10.65);
+whip(11.4,'#side','#map',1);
+cutTo(CM,11.4,1.45,560,700);
+tl.to(route,{p1:1,duration:2.0,ease:'power1.inOut'},11.9);
+shot(CM,11.9,2.2,1,960,560,'sine.inOut');
+say('#s3',14.3);
+shot(CM,15.1,.8,1.7,1560,820);
+tl.to(cM1,{y:-720,duration:.3,ease:'power2.out'},15.4);tl.to(cM1,{x:-900,y:-1400,r:-30,o:0,duration:.5,ease:'power2.in'},15.7);
+tl.set(MD.led,{attr:{fill:GRAY}},15.45);hide(mdA,15.45,.15);
+carry(hM,cM2,15.55,.7,0,-620,{dir:-1});
+carry(hM,cM2,16.3,.28,0,-382,{dir:-1,ease:'power3.in'});
+snap(MD,16.58,TEAL);show(mdB,16.6,.2);
+pop(chipMap,16.75,{from:.6});
+tl.to(hM,{x:1800,y:-675,duration:.6,ease:'power2.in'},16.85);
+shot(CM,17.3,.9,1,960,560);
+tl.to(rt1,{opacity:.22,duration:.4},17.4);
+tl.to(route,{p2:1,duration:2.2,ease:'power1.inOut'},17.6);
+chipOut('#chS',21.0);unsay('#s3',21.0);
+/* 측면으로 복귀: 전략 카트리지가 빠지고, 화면 속으로 파고든다 */
+tl.set(cA,{o:0},21.0);tl.set(cB,{o:1},21.0);hide(scrA,21.0,.01);show(scrB,21.0,.01);cutTo(CS,21.0,1.05,960,540);
+whip(21.2,'#map','#side',-1);
+tl.to(cB,{y:-760,duration:.3,ease:'power2.out'},21.8);tl.to(cB,{x:900,y:-1300,r:30,o:0,duration:.45,ease:'power2.in'},22.1);
+tl.set(M.led,{attr:{fill:GRAY}},21.85);hide(scrB,21.9,.15);
+shot(CS,22.3,.7,4.4,960,530,'power2.in');show(scrRed,22.4,.3);
+flood('#fl2',22.8);
+/* --- 23–37 State: 안에서 스스로 --- */
+tl.set('#side',{visibility:'hidden'},23.0);tl.set('#vend',{visibility:'visible'},23.0);
+cutTo(CV,23.0,1.3,710,520);shot(CV,23.0,1.0,1,960,540,'power3.out');
+chipIn('#chT',23.4);
+press(24.2,null,vMsg[0]);
+pop(loopP,24.85,{d:.3,ease:'power2.out',from:.6});tl.fromTo(loopP,{r:0},{r:360,duration:.9,ease:'power2.inOut',immediateRender:false},24.9);tl.to(loopP,{o:0,duration:.3},25.9);
+hide(vMsg[0],25.9,.2);
+tl.set(coin,{o:1},26.0);tl.to(coin,{x:935,duration:.6,ease:'power1.in'},26.0);tl.to(coin,{y:716,duration:.6,ease:'power2.in'},26.0);tl.to(coin,{o:0,s:.5,duration:.15},26.6);
+selfSwap(vc[0],vc[1],26.7);
+show(vMsg[1],28.0,.2);
+press(28.3,vMsg[1],vMsg[2]);
+tl.set(can,{o:1},28.9);tl.to(can,{x:700,duration:.7,ease:'power1.out'},28.9);tl.to(can,{y:905,duration:.7,ease:'bounce.out'},28.9);
+shot(CV,29.4,.8,1.55,760,240);
+selfSwap(vc[1],vc[2],29.8);
+pop(chipV,30.5,{from:.6});
+shot(CV,31.4,.9,1,960,540);
+say('#s4',32.3);
+hide(can,33.4,.3);
+press(33.6,vMsg[2],vMsg[3]);
+tl.to(loopP,{o:1,r:360,duration:.01},34.15);tl.to(loopP,{r:720,duration:.9,ease:'power2.inOut'},34.2);tl.to(loopP,{o:0,duration:.3},35.2);
+unsay('#s4',36.0);chipOut('#chT',36.1);
+/* rack focus → 탑다운 */
+{const bv=blurOf($('#vend'),'xy'),bt=blurOf($('#top'),'xy');
+  tl.to('#vend',{scale:.86,opacity:0,duration:.7,ease:'power2.in'},36.6);tl.fromTo(bv,{v:0},{v:16,duration:.7,ease:'power2.in',immediateRender:false},36.6);
+  tl.set('#top',{visibility:'visible',scale:1.18,opacity:0},37.0);tl.set(bt,{v:16},37.0);
+  tl.to('#top',{scale:1,opacity:1,duration:.85,ease:'power3.out'},37.0);tl.to(bt,{v:0,duration:.85,ease:'power3.out'},37.0);
+  tl.set('#vend',{visibility:'hidden'},37.3);tl.set(bv,{v:0},37.3);}
+flood('#fl3',36.9);
+/* --- 37–49 Template Method --- */
+cutTo(CT,37.0,1.35,560,400);
+chipIn('#chM',37.6);
+ST.forEach((s,k)=>pop(s,38.2+k*.3));CH.forEach((c,k)=>pop(c,38.4+k*.3,{d:.4}));
+shot(CT,38.2,1.3,1.18,900,420);
+shot(CT,39.5,.9,1,960,540);
+tl.to(frameR,{attr:{'stroke-dashoffset':0},duration:1.0,ease:'power2.inOut'},39.7);tl.to(frameR,{attr:{'fill-opacity':1},duration:.4},40.5);
+pop(tab1,40.5);tl.fromTo(tab2,{s:1.7,o:0},{s:1,o:1,duration:.35,ease:'power4.in',immediateRender:false},40.75);
+tl.to(tab2,{y:126,duration:.06,yoyo:true,repeat:1},41.1);
+shot(CT,41.3,.9,1.5,1180,430);
+tl.to(shin,{y:330,duration:.8,ease:'power3.out'},41.6);
+tl.fromTo(weld,{o:1,s:.7},{o:0,s:1.4,duration:.45,ease:'power2.out',immediateRender:false},42.4);
+bolts.forEach((b,k)=>tl.fromTo(b,{opacity:0},{opacity:1,duration:.12,immediateRender:false},42.45+k*.08));
+hide(shinTag,42.9,.35);
+shot(CT,43.1,.9,1,960,540);
+say('#s5',43.9);
+shot(CT,45.3,.8,1.08,1100,470);
+tl.to(hT,{y:236,duration:.6,ease:'power3.out'},45.5);
+tl.to(hT,{y:212,duration:.09,yoyo:true,repeat:5,ease:'sine.inOut'},46.2);tl.to(shin,{y:322,duration:.09,yoyo:true,repeat:5,ease:'sine.inOut'},46.2);
+tl.to(tab2,{r:5,duration:.09,yoyo:true,repeat:5},46.2);tl.set(tab2Rect,{attr:{fill:CORAL}},46.2);tl.set(tab2Rect,{attr:{fill:INK}},47.5);
+pop(deny,46.5,{from:.5});
+tl.to(hT,{y:-760,duration:.6,ease:'power2.in'},47.4);
+shot(CT,47.8,.8,1,960,540);
+unsay('#s5',48.9);tl.to(deny,{o:0,duration:.3},48.9);chipOut('#chM',49.0);
+/* --- 49–60 판별 레일 --- */
+whip(49.3,'#top','#rail',1);
+cutTo(CR,49.3,1.25,420,600);flood('#fl4',49.4);
+gates.forEach((g,k)=>pop(g.p,49.8+k*.2));dests.forEach((d,k)=>pop(d,50.0+k*.15));
+shot(CR,50.2,2.2,1,960,540,'sine.inOut');
+cards.forEach((c,k)=>{const at=50.3+k*1.8;tl.set(c,{p:0,o:0},0);tl.set(c,{o:1},at);
+  tl.fromTo(c,{p:0},{p:1,duration:1.6,ease:'sine.inOut',immediateRender:false},at);tl.to(c,{o:0,duration:.25},at+1.6);
+  tl.fromTo(dests[k],{s:1.18},{s:1,duration:.45,ease:'power2.out',immediateRender:false},at+1.6);});
+{const br=blurOf($('#rail'),'xy');tl.to('#rail',{opacity:.2,duration:.6},55.9);tl.fromTo(br,{v:0},{v:8,duration:.6,immediateRender:false},55.9);}
+say('#s6',56.2,.11);
+unsay('#s6',59.3);
+tl.to({},{duration:.01},DUR-.01);
+
+/* ================= render: tl.time()의 순수 함수 ================= */
+const grid=$('#grid'),bl1=$('#bl1'),bl2=$('#bl2');
+const viewCam={side:CS,map:CM,vend:CV,top:CT,rail:CR};
+function render(){const t=tl.time(),d=V*t;
+  for(const p of props){p.el.setAttribute('transform',`translate(${p.x} ${p.y}) rotate(${p.r}) scale(${p.s})`);p.el.setAttribute('opacity',p.o);}
+  for(const c of cams){const z=c.z*(1+.006*Math.sin(t*.9));c.g.setAttribute('transform',`translate(960 540) scale(${z}) translate(${-c.cx} ${-c.cy})`);}
+  for(const b of blurs){if(b.v>.25){b.g.setAttribute('stdDeviation',b.axis==='y'?`${b.v*.12} ${b.v}`:b.axis==='x'?`${b.v} ${b.v*.08}`:`${b.v} ${b.v}`);b.el.style.filter=`url(#${b.id})`;}else b.el.style.filter='none';}
+  /* 배경: 그리드가 숨쉬고, 보이는 카메라 줌에 살짝 따라간다(패럴랙스) */
+  let cz=1;for(const k in viewCam)if(document.getElementById(k).style.visibility!=='hidden'){cz=viewCam[k].z;break;}
+  grid.style.transform=`scale(${(1+.022*Math.sin(t*.8))*(1+(cz-1)*.18)}) translate(${Math.sin(t*.21)*18}px,${Math.cos(t*.17)*14}px)`;
+  bl1.style.transform=`translate(${Math.sin(t*.31)*90}px,${Math.cos(t*.27)*60}px)`;bl2.style.transform=`translate(${Math.cos(t*.23)*80}px,${Math.sin(t*.29)*70}px)`;
+  /* 측면 컨베이어 */
+  beltStripes.forEach((s,i)=>s.setAttribute('x',mod(i*60+d,3240)-600));
+  for(const it of items){const x=mod(it.i*270+d,2700)-400,tp=t-(x-960)/V;let c='#fff';
+    if(x>1000)c=tp<8.3?[TEAL,CORAL,INDIGO][it.i%3]:tp<10.4?GRAY:tp<21.8?TEAL:GRAY;
+    it.g.setAttribute('transform',`translate(${x} 760)`);it.r.setAttribute('fill',c);it.tx.setAttribute('fill',c==='#fff'||c===GRAY?INK:'#fff');}
+  wires.forEach((w,k)=>{const a=Math.sin(t*1.3+k*2.1),b=Math.cos(t*1.7+k);
+    w.setAttribute('d',`M-230 ${-310+k*40} C ${-90+60*a} ${-120-40*k}, ${70-70*b} ${-330+30*k}, 230 ${-160-50*k}`);});
+  /* 지도 경로 */
+  rt1.setAttribute('stroke-dashoffset',L1*(1-route.p1));rt2.setAttribute('stroke-dashoffset',L2*(1-route.p2));
+  {const useB=route.p2>0,el=useB?rt2:rt1,L=useB?L2:L1,q=useB?route.p2:route.p1,a=el.getPointAtLength(L*q),b=el.getPointAtLength(Math.min(L,L*q+2));
+    car.setAttribute('transform',`translate(${a.x} ${a.y}) rotate(${Math.atan2(b.y-a.y,b.x-a.x)*57.3})`);}
+  /* 탑다운 컨베이어 + 라면 그릇: 각 스테이션을 지날 때 그 스테이션이 일하고 있었으면 내용이 생긴다 */
+  topStripes.forEach((s,i)=>s.setAttribute('x',mod(i*60+d,3240)-600));
+  for(const b of bowls){const x=mod(b.i*340+d,2380)-300,done=k=>x>XS[k]&&(t-(x-XS[k])/V)>=ACT[k];
+    b.g.setAttribute('transform',`translate(${x} 560)`);
+    b.water.setAttribute('opacity',done(0)?1:0);b.noodle.setAttribute('opacity',done(1)?1:0);b.soup.setAttribute('opacity',done(2)?.9:0);b.chop.setAttribute('opacity',done(3)?1:0);}
+  /* 판별 레일: 카드가 지나간 자리에 색 궤적, 게이트 통과 순간 점등 */
+  for(const c of cards){const tr=trails[c.k];tr.e.setAttribute('stroke-dashoffset',tr.L*(1-c.p));
+    const pt=c.path.getPointAtLength(c.L*c.p);c.g.setAttribute('transform',`translate(${pt.x} ${pt.y-64})`);c.g.setAttribute('opacity',c.o);}
+  for(const [gi,g] of gates.entries()){let lit=false;for(const c of cards){if(c.o<=0||(gi===1&&c.k===0))continue;if(Math.abs(c.p*c.L-g.len)<70)lit=true;}g.c.setAttribute('fill',lit?LIT:'#fff');}
+}
+gsap.ticker.add(render);
+
+/* ---------- 컨트롤: 자동재생 + 루프, 플레이어 없음. ?debug=1 스크럽, ?clean=1 export ---------- */
+const q=new URLSearchParams(location.search);
+const start=()=>tl.play(0);
+tl.eventCallback('onComplete',start);
+window.OPENER={W,H,DURATION:DUR,tl,ready:false,seek(t){tl.pause(t,false);render();},play:start};
+window.OPENER.seekFrame=t=>{window.OPENER.seek(t);return Promise.resolve();};
+addEventListener('keydown',e=>{if(/^[rR]$/.test(e.key))start();if(e.code==='Space'){e.preventDefault();tl.paused()?tl.play():tl.pause();}});
+if(q.has('debug')){const dbg=$('#dbg');dbg.style.display='flex';const sc=$('#dScrub'),ck=$('#dClock');let drag=false;
+  gsap.ticker.add(()=>{if(!drag)sc.value=String(tl.time()/DUR*1000);ck.textContent=tl.time().toFixed(2)+'s';$('#dPlay').textContent=tl.paused()?'Play':'Pause';});
+  sc.addEventListener('pointerdown',()=>{drag=true;tl.pause();});addEventListener('pointerup',()=>drag=false);
+  sc.addEventListener('input',()=>{tl.pause();tl.time(sc.value/1000*DUR);});$('#dPlay').onclick=()=>tl.paused()?tl.play():tl.pause();}
+document.fonts.ready.then(()=>{render();window.OPENER.ready=true;if(!q.has('clean'))start();});
+</script>
+</body>
+</html>

@@ -385,3 +385,13 @@
 
 ## GoF Gaps
 - 정보처리기사 실기 기출을 공식 출처로 확인할 자료(큐넷)는 아직 목록에 없음. 사용자가 가진 기출 지문을 직접 받는 것이 가장 정확.
+
+## OSC 7501 Knowledge
+- [Rex: Program Status Protocol (OSC 7501)](https://www.superlogical.com/rex/docs/build/program-status)
+  스펙 원문, rev 0.4(2026-10-10). 2026-11-12에 전문을 읽고 검증함. Use for: 문법, state, key, lifetime, 한도, 다른 OSC와의 관계, 개정 이력.
+- [Otty: OSC 7501](https://docs.otty.sh/vt/osc/osc-7501)
+  consume 쪽(터미널) 구현 문서. 아직 읽지 않음. Use for: 터미널이 보고를 어떻게 처리·표시하는지.
+- [Are we OSC 7501 yet?](https://areweosc7501yet.com/data.json)
+  도구별 지원 현황 추적 데이터. 받아 두었으나 아직 대조하지 않음. Use for: ecosystem-map의 emit/consume 사례 검증.
+- [claude-code #104945](https://github.com/anthropics/claude-code/issues/104945)
+  Claude Code가 AskUserQuestion 중에도 `working`을 유지하는 문제 이슈. 확인함. Use for: emit 쪽 구현 이슈 사례.

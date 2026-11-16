@@ -64,8 +64,9 @@
   </table>
 
   <h2>§2 · Composite (컴포지트) — 부분과 전체를 같게</h2>
-  <p><strong>이론.</strong> 객체를 <strong>트리</strong>로 구성하고, 개별 객체(잎)와 묶음 객체(가지)를 <strong>같은 인터페이스</strong>로 다룬다. 그래서 "크기 구하기"를 파일에 호출하든 폴더에 호출하든 똑같이 쓰고, 폴더는 안에 든 것들에게 재귀로 위임한다.</p>
-  <p><strong>비유.</strong> 컴퓨터의 폴더. 폴더 안에 파일도 있고 폴더도 있다. "용량 확인"은 파일에도 폴더에도 똑같이 누른다.</p>
+  <p><strong>한 문장.</strong> 낱개 객체(잎)와 그것들을 묶은 객체(가지)가 <strong>같은 인터페이스</strong>를 갖게 해서, 호출하는 쪽이 둘을 구별하지 않고 똑같이 쓰게 하는 패턴이다.</p>
+  <p><strong>구조.</strong> 객체들이 <strong>트리</strong>를 이룬다. 가지는 자기와 같은 타입의 객체를 목록으로 들고, 요청이 오면 목록의 각 자식에게 같은 메서드를 불러서 결과를 합친다(<strong>재귀</strong>: 자기 안의 같은 종류에게 같은 일을 시키는 것). 잎은 목록 없이 자기 값만 돌려준다.</p>
+  <p><strong>비유.</strong> 컴퓨터의 폴더. 폴더 안에 파일도 있고 폴더도 있다. "용량 확인"은 파일에도 폴더에도 똑같이 누르고, 폴더는 안에 든 것들의 용량을 더한다. 예를 들어 폴더 A(파일 3KB + 폴더 B(파일 2KB))의 <code>size()</code>는 3 + (2) = 5KB다.</p>
 <pre>interface Node { int size(); }
 class FileNode implements Node {                        // 잎
     private final int bytes;
@@ -79,8 +80,8 @@ class Folder implements Node {                          // 가지: 같은 인터
   <p class="sm">구조 신호: <strong>자기와 같은 타입의 리스트</strong>를 필드로 들고 있다. Decorator와 모양이 비슷하지만 Decorator는 자식이 <strong>하나</strong>이고 기능을 더하며, Composite는 자식 <strong>여러 개</strong>의 결과를 합친다 (<a href="https://refactoring.guru/design-patterns/composite">Refactoring.Guru</a>).</p>
 
   <h2>§3 · Facade (퍼사드) — 단순한 창구</h2>
-  <p><strong>이론.</strong> 서브시스템의 여러 클래스를 일일이 호출하지 않아도 되게 <strong>높은 수준의 단순한 인터페이스</strong> 하나를 제공한다. 서브시스템 객체를 직접 쓰는 것을 막지는 않는다.</p>
-  <p><strong>비유.</strong> 호텔 컨시어지. 식당 예약, 택시, 공연 티켓을 각각 전화하지 않고 창구 한 곳에 부탁한다.</p>
+  <p><strong>한 문장.</strong> 여러 클래스가 얽힌 복잡한 부분(서브시스템: 함께 쓰이는 클래스 묶음) 앞에, 자주 쓰는 일만 한 번에 처리하는 단순한 창구 클래스를 두는 패턴이다. 서브시스템의 클래스를 직접 쓰는 길은 막지 않는다.</p>
+  <p><strong>비유.</strong> 호텔 컨시어지. 식당 예약, 택시, 공연 티켓을 각각 전화하지 않고 창구 한 곳에 부탁한다. 비유가 맞지 않는 곳: 컨시어지에게 못 맡기는 특별한 요청은 직접 식당에 전화하면 된다. Facade도 같아서, 창구에 없는 기능이 필요하면 서브시스템 클래스를 직접 쓴다.</p>
 <pre>class HomeTheaterFacade {                        // 창구
     private final Amp amp; private final Projector pj; private final Player player;
     void watchMovie(String m) {                  // 호출 한 번에 여러 서브시스템을 조율
@@ -90,8 +91,15 @@ class Folder implements Node {                          // 가지: 같은 인터
   <p class="sm">구조 신호: <strong>여러 서로 다른 객체를 필드로 들고</strong> 순서대로 호출하는 메서드가 있다. Adapter와의 차이: Adapter는 <strong>기존 인터페이스를 맞추는 것</strong>(보통 객체 1개), Facade는 <strong>새 인터페이스를 정의</strong>하는 것(서브시스템 전체). Proxy와의 차이: Proxy는 원본과 <strong>같은 인터페이스</strong>, Facade는 다르다 (<a href="https://refactoring.guru/design-patterns/facade">Refactoring.Guru</a>).</p>
 
   <h2>§4 · Bridge (브리지) — 두 갈래로 쪼갠다</h2>
-  <p><strong>이론.</strong> 클래스가 <strong>두 방향</strong>으로 변할 때(예: 리모컨 종류 × TV 제조사), 상속으로 다 만들면 조합 수만큼 클래스가 폭발한다. 그래서 <strong>기능(추상) 계층</strong>과 <strong>구현 계층</strong>을 별개의 계층으로 쪼개고, 기능 쪽이 구현 쪽을 <strong>필드로 들고 위임</strong>한다. 그 필드가 "다리"다.</p>
-  <p><strong>비유.</strong> 리모컨(기본/고급)과 TV(삼성/LG). 상속만 쓰면 기본-삼성, 기본-LG, 고급-삼성, 고급-LG 4개를 만들어야 한다. 쪼개면 리모컨 2개 + TV 2개 = 4개를 <strong>더하기</strong>로 만들고 조합은 런타임에 연결한다.</p>
+  <p><strong>한 문장.</strong> 클래스가 서로 독립적인 <strong>두 방향</strong>으로 늘어날 때, 두 방향을 별개의 클래스 계층으로 나누고 한쪽이 다른 쪽을 필드로 들어 연결하는 패턴이다. 그 필드가 "다리(bridge)"다.</p>
+  <p><strong>용어 먼저.</strong> 이 패턴의 "추상"과 "구현"은 Java의 <code>abstract class</code>와 <code>implements</code>가 아니다. <strong>추상 = 사용자가 직접 다루는 쪽</strong>(리모컨), <strong>구현 = 실제로 일을 하는 쪽</strong>(TV)이다. 추상이 구현을 필드로 들고 일을 맡긴다. 이 레슨에서는 앞쪽을 "기능 계층", 뒤쪽을 "구현 계층"이라고만 부른다.</p>
+  <p><strong>왜 쪼개나: 클래스 수를 세어 본다.</strong> 리모컨 종류 2개(기본, 고급) × TV 제조사 2곳(삼성, LG)이라고 하자.</p>
+  <ul>
+    <li><strong>상속만 쓰면</strong> 조합마다 클래스가 필요하다. 기본삼성, 기본LG, 고급삼성, 고급LG로 4개다.</li>
+    <li><strong>쪼개면</strong> 리모컨 2개 + TV 2개로 4개다. 지금은 같다.</li>
+    <li><strong>소니 TV가 추가되면</strong> 상속은 기본소니, 고급소니 2개가 늘어 6개가 되고, 쪼갠 쪽은 소니 TV 1개만 늘어 5개다. 리모컨 3종 × TV 3사까지 가면 상속 9개 대 쪼갠 쪽 6개다. 곱하기로 늘 것을 더하기로 늘게 만드는 것이 이 패턴의 효과다.</li>
+  </ul>
+  <p class="sm">비유가 맞지 않는 곳: 현실의 리모컨은 TV 제조사에 묶여 팔리지만, 이 코드의 리모컨은 생성할 때 <code>new AdvancedRemote(new LgTv())</code>처럼 TV를 골라 끼운다. 조합이 실행 중에 정해진다.</p>
 <pre>interface Device { void on(); void off(); }               // 구현 계층 (TV 제조사)
 class SamsungTv implements Device { ... }
 class LgTv implements Device { ... }
@@ -103,12 +111,13 @@ class Remote {                                            // 기능 계층
 }
 class AdvancedRemote extends Remote { void mute() { ... } }
 new AdvancedRemote(new LgTv());                           // 조합은 선택</pre>
-  <p class="warn"><strong>용어 주의.</strong> 여기서 추상/구현은 Java의 <code>interface</code>·<code>abstract class</code>가 아니다. Refactoring.Guru: 추상 = 상위 수준 제어 계층(예: GUI), 구현 = 플랫폼(예: OS API). 또 Bridge는 보통 <strong>처음부터 설계</strong>하고, Adapter는 <strong>이미 있는 것</strong>을 맞추는 데 쓴다.</p>
-  <p class="sm">구조 신호: 합성 모양은 Strategy와 같다(인터페이스를 필드로 들고 위임). 다른 점은 <strong>두 계층이 둘 다 확장된다</strong>는 것이다 (<a href="https://refactoring.guru/design-patterns/bridge">Refactoring.Guru — Bridge</a>).</p>
+  <p class="sm">같은 뜻을 Refactoring.Guru는 "추상 = 상위 수준 제어 계층(예: GUI), 구현 = 플랫폼(예: OS API)"이라고 쓴다. Adapter와의 차이: Bridge는 보통 <strong>처음부터 두 계층으로 설계</strong>하고, Adapter는 <strong>이미 있는 것</strong>을 맞추는 데 쓴다.</p>
+  <p class="sm"><strong>구조 신호.</strong> 인터페이스를 필드로 들고 위임하는 모양은 Strategy와 같다. 다른 점은 <strong>양쪽이 각자 하위 클래스를 늘려 간다</strong>는 것이다. 위 예에서는 리모컨 종류도 늘고 TV 제조사도 는다 (<a href="https://refactoring.guru/design-patterns/bridge">Refactoring.Guru: Bridge</a>).</p>
 
   <h2>§5 · Flyweight (플라이웨이트) — 공유로 아낀다</h2>
-  <p><strong>이론.</strong> 똑같은 데이터를 가진 객체가 수만 개면 메모리가 터진다. 그래서 객체의 상태를 둘로 나눈다. <strong>내재 상태(intrinsic)</strong> = 바뀌지 않아서 <strong>공유</strong>할 수 있는 부분, <strong>외재 상태(extrinsic)</strong> = 상황마다 달라서 <strong>사용할 때 밖에서 넘겨주는</strong> 부분. 내재 상태만 가진 가벼운 객체를 하나씩만 만들어 재사용한다.</p>
-  <p><strong>비유.</strong> 게임 속 숲의 나무 1만 그루. 나무 모델·텍스처(내재)는 하나를 공유하고, 위치·크기(외재)만 그루마다 따로 가진다.</p>
+  <p><strong>한 문장.</strong> 같은 데이터를 가진 객체가 수만 개일 때, 그 같은 데이터를 객체 하나에 담아 모두가 공유해서 메모리를 아끼는 패턴이다.</p>
+  <p><strong>구조.</strong> 객체의 데이터를 둘로 나눈다. <strong>내재 상태(intrinsic)</strong>는 모든 객체에서 같고 바뀌지 않아서 <strong>공유</strong>할 수 있는 부분이다. <strong>외재 상태(extrinsic)</strong>는 객체마다 달라서 공유할 수 없는 부분이고, 쓸 때 <strong>밖에서 넘겨주거나 따로 보관</strong>한다. 내재 상태만 가진 객체(Flyweight)는 종류마다 하나만 만들어 재사용한다.</p>
+  <p><strong>비유.</strong> 게임 속 숲의 나무 1만 그루. 나무 모델과 텍스처(내재)는 소나무용 하나를 1만 그루가 공유하고, 위치와 크기(외재)만 그루마다 따로 가진다. 모델이 1MB라면 1만 그루가 각자 들 때 10GB지만, 공유하면 1MB에 위치 1만 개(작음)만 더해진다.</p>
 <pre>class TreeType {                                    // Flyweight: 공유되는 내재 상태 (불변)
     final String name; final byte[] texture;
 }
@@ -117,7 +126,7 @@ class TreeFactory {                                 // 이미 있으면 재사�
     static TreeType get(String name) { return cache.computeIfAbsent(name, TreeType::new); }
 }
 class Tree { int x, y; TreeType type; }            // 위치(외재)만 개별, 모델은 공유</pre>
-  <p class="sm">Singleton과의 차이: Flyweight는 <strong>여러 종류의 인스턴스</strong>가 있을 수 있고 <strong>불변</strong>이다. Singleton은 인스턴스가 <strong>하나</strong>이고 가변일 수 있다 (<a href="https://refactoring.guru/design-patterns/flyweight">Refactoring.Guru — Flyweight</a>).</p>
+  <p class="sm">Singleton(인스턴스를 하나만 만드는 생성 패턴, 레슨 0054)과의 차이: Flyweight는 <strong>종류마다 하나씩, 여러 종류</strong>가 있을 수 있고 <strong>불변</strong>(만든 뒤 값이 안 바뀜)이다. Singleton은 인스턴스가 <strong>전체에서 하나</strong>이고 값이 바뀔 수 있다 (<a href="https://refactoring.guru/design-patterns/flyweight">Refactoring.Guru: Flyweight</a>).</p>
 
   <h2>§6 · 헷갈리는 쌍</h2>
   <table>
@@ -126,7 +135,7 @@ class Tree { int x, y; TreeType type; }            // 위치(외재)만 개별, 
       <tr><td><strong>Composite vs Decorator</strong></td><td>자식이 <strong>여럿이고 결과를 합치면</strong> Composite, 자식이 <strong>하나이고 기능을 더하면</strong> Decorator</td></tr>
       <tr><td><strong>Facade vs Adapter</strong></td><td>서브시스템 전체에 <strong>새 창구</strong>를 만들면 Facade, <strong>기존 모양을 기대하는 모양으로</strong> 바꾸면 Adapter</td></tr>
       <tr><td><strong>Facade vs Mediator</strong></td><td>Facade는 서브시스템끼리는 <strong>직접 소통하게 둔다</strong>(밖에서 쓰기 편하게 할 뿐). Mediator는 소통을 <strong>전부 허브로 모은다</strong></td></tr>
-      <tr><td><strong>Bridge vs Strategy</strong></td><td>인터페이스를 필드로 들고 위임하는 모양은 같다. <strong>기능 계층이 따로 확장</strong>되면 Bridge, 알고리즘 교체만이면 Strategy</td></tr>
+      <tr><td><strong>Bridge vs Strategy</strong></td><td>인터페이스를 필드로 들고 위임하는 모양은 같다. 바뀌는 부분 <strong>하나(알고리즘)만</strong> 밖으로 뺐으면 Strategy, <strong>양쪽이 각자 하위 클래스를 늘려 가면</strong> Bridge</td></tr>
     </tbody>
   </table>
 

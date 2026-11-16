@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="ko">
+<!-- Made with the Bang Motion skill by Bang Tutorial (https://youtube.com/bangtutorial) - MIT -->
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>new 오븐</title>
+<!--
+  GoF 6/6 — 생성 패턴 5개 판별 explainer (75초, 16:9, 무음 + VO 대본 별도).
+  주인공: `new` 오븐. "객체를 어떻게 만들까?"를 오븐을 쓰는 다섯 가지 방법으로 보여준다.
+    Factory Method   : 부모 Bakery가 createBread()를 비워 두고, 지점(서브클래스)마다 다른 빵을 굽는다 → 거리 뷰
+    Abstract Factory : 오븐에 공장 간판(ModernFactory)을 걸면 의자·소파·탁자 세트가 한 번에 → 간판만 바꾸면 세트 전체 교체
+    Builder          : 인자 6개 생성자 대신 .size().cheese().pepperoni() 단계별 → build()에서 오븐으로
+    Prototype        : 오븐(new)을 쓰지 않고 있는 객체를 copy()
+    Singleton        : 오븐 문에 private 자물쇠, getInstance()를 몇 번 불러도 같은 하나
+    리캡             : 판별 레일 — 코드 모양 → 이름
+  더블클릭으로 열기. 자동재생 + 루프, R 다시, Space 일시정지. ?debug=1 스크럽, ?clean=1 export용.
+  모든 시각 요소는 tl.time()의 순수 함수.
+-->
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1F2A37;--base:#EEF7F5;--fm:#F08A24;--af:#8E5BD6;--bd:#2E9BD6;--pr:#E0559A;--sg:#6AA329}
+html,body{margin:0;height:100%;background:#0d1417;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;overflow:hidden;background:var(--base);color:var(--ink);font-family:'IBM Plex Sans KR',sans-serif}
+#bg{position:absolute;inset:0;overflow:hidden}
+.flood{position:absolute;left:-1440px;top:-1860px;width:4800px;height:4800px;border-radius:50%;transform:scale(0)}
+#grid{position:absolute;inset:-240px;background-image:linear-gradient(rgba(31,42,55,.075) 2px,transparent 2px),linear-gradient(90deg,rgba(31,42,55,.075) 2px,transparent 2px);background-size:80px 80px;background-position:center}
+.blob{position:absolute;border-radius:50%;width:1300px;height:1300px;background:radial-gradient(circle,rgba(255,255,255,.8),rgba(255,255,255,0) 65%)}
+.view{position:absolute;inset:0}
+.view svg{position:absolute;inset:0;width:1920px;height:1080px;overflow:visible}
+.plex{font-family:'IBM Plex Sans KR',sans-serif;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace;font-weight:700}
+#ui{position:absolute;inset:0;pointer-events:none}
+.say{position:absolute;font-family:'Do Hyeon',sans-serif;line-height:1.12;letter-spacing:-.01em;white-space:nowrap;color:var(--ink)}
+.say .wd{display:inline-block;opacity:0;transform-origin:50% 100%}
+.hl{position:relative}
+.hl i{position:absolute;left:-.14em;right:-.14em;top:.0em;bottom:-.02em;border:.05em solid var(--c,var(--ink));border-radius:.14em;transform:scaleX(0);transform-origin:0 50%}
+.chip{position:absolute;right:64px;top:54px;padding:8px 30px 12px;border-radius:44px;color:#fff;font:600 42px 'IBM Plex Sans KR',sans-serif;opacity:0;border:5px solid var(--ink);box-shadow:8px 8px 0 var(--ink)}
+#vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(95% 95% at 50% 50%,transparent 62%,rgba(31,42,55,.16))}
+#dbg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);display:none;gap:12px;align-items:center;padding:10px 16px;border-radius:14px;background:rgba(14,16,22,.9);color:#cfd5e3;font:13px system-ui;z-index:50}
+#dbg input{width:420px}#dbg span{font-variant-numeric:tabular-nums;min-width:6ch}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs id="defs"></defs></svg>
+<div id="stage">
+  <div id="bg">
+    <div class="flood" id="fl1" style="background:#FDE9D4"></div>
+    <div class="flood" id="fl2" style="background:#ECE2F8"></div>
+    <div class="flood" id="fl3" style="background:#DDEFFA"></div>
+    <div class="flood" id="fl4" style="background:#FBE1EE"></div>
+    <div class="flood" id="fl5" style="background:#E8F3DA"></div>
+    <div class="flood" id="fl6" style="background:#EEF7F5"></div>
+    <div class="blob" id="bl1" style="left:-300px;top:-420px"></div>
+    <div class="blob" id="bl2" style="left:1100px;top:380px"></div>
+    <div id="grid"></div>
+  </div>
+  <div id="kit"    class="view"><svg id="kitSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="street" class="view" style="visibility:hidden"><svg id="stSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="af"     class="view" style="visibility:hidden"><svg id="afSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="bld"    class="view" style="visibility:hidden"><svg id="bdSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="pro"    class="view" style="visibility:hidden"><svg id="prSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="rail"   class="view" style="visibility:hidden"><svg id="railSvg" viewBox="0 0 1920 1080"></svg></div>
+  <div id="vig"></div>
+  <div id="ui">
+    <div class="say" id="s1" style="left:110px;top:70px;font-size:100px"><span class="wd">객체를</span> <span class="wd">어떻게</span> <span class="wd hl"><i></i>만들까?</span></div>
+    <div class="say" id="s2" style="left:0;right:0;text-align:center;top:236px;font-size:96px"><span class="wd">만드는</span> <span class="wd">방법이</span> <span class="wd hl"><i></i>다섯</span> <span class="wd">가지</span></div>
+    <div class="say" id="s3" style="left:0;right:0;text-align:center;top:930px;font-size:98px;--c:var(--fm)"><span class="wd">무엇을</span> <span class="wd">만들지</span> <span class="wd hl"><i></i>자식이</span> <span class="wd">정한다</span></div>
+    <div class="say" id="s4" style="left:110px;top:70px;font-size:106px;--c:var(--af)"><span class="wd">제품군을</span> <span class="wd hl"><i></i>한&nbsp;번에</span></div>
+    <div class="say" id="s5" style="left:0;right:0;text-align:center;top:58px;font-size:104px;--c:var(--bd)"><span class="wd hl"><i></i>단계별로</span> <span class="wd">조립한다</span></div>
+    <div class="say" id="s6" style="left:110px;top:70px;font-size:106px;--c:var(--pr)"><span class="wd">있는</span> <span class="wd">것을</span> <span class="wd hl"><i></i>복제한다</span></div>
+    <div class="say" id="s7" style="left:0;right:0;text-align:center;top:938px;font-size:98px;--c:var(--sg)"><span class="wd">몇</span> <span class="wd">번</span> <span class="wd">불러도</span> <span class="wd hl"><i></i>같은&nbsp;하나</span></div>
+    <div class="say" id="s8" style="left:0;right:0;text-align:center;top:330px;font-size:116px"><span class="wd">객체를</span> <span class="wd">어떻게</span> <span class="wd">만드는지</span><br><span class="wd hl"><i></i>코드&nbsp;모양이</span> <span class="wd">말해</span> <span class="wd">준다</span></div>
+    <div class="chip" id="chFM" style="background:var(--fm)">Factory Method</div>
+    <div class="chip" id="chAF" style="background:var(--af)">Abstract Factory</div>
+    <div class="chip" id="chBD" style="background:var(--bd)">Builder</div>
+    <div class="chip" id="chPR" style="background:var(--pr)">Prototype</div>
+    <div class="chip" id="chSG" style="background:var(--sg)">Singleton</div>
+  </div>
+  <div id="dbg"><button id="dPlay">Pause</button><input id="dScrub" type="range" min="0" max="1000" value="0"><span id="dClock">0.00s</span></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+const W=1920,H=1080,DUR=75;
+const INK='#1F2A37',FM='#F08A24',AF='#8E5BD6',BD='#2E9BD6',PR='#E0559A',SG='#6AA329',LIT='#FFD34E',RED='#D9483B';
+const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg',defs=$('#defs');
+function S(tag,a={},p){const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+const T=(txt,x,y,a,p)=>{const e=S('text',{x,y,...a},p);e.textContent=txt;return e;};
+function fit(){const s=Math.min(innerWidth/W,innerHeight/H);$('#stage').style.transform=`translate(-50%,-50%) scale(${s})`;}
+addEventListener('resize',fit);fit();
+let uid=0;
+const tl=gsap.timeline({paused:true});
+
+/* ---------- prop: SVG 그룹의 변환을 수동으로 쓴다 ---------- */
+const props=[];
+function prop(el,i={}){const p={el,x:0,y:0,s:1,r:0,o:1,...i};props.push(p);return p;}
+/* ---------- 카메라: 뷰마다 하나 ---------- */
+const cams=[];
+function cam(g,z,cx,cy){const c={g,z,cx,cy,z0:z,cx0:cx,cy0:cy};cams.push(c);return c;}
+const shot=(c,at,dur,z,cx,cy,ease='power2.inOut')=>tl.to(c,{z,cx,cy,duration:dur,ease},at);
+const cutTo=(c,at,z,cx,cy)=>tl.set(c,{z,cx,cy},at);
+/* ---------- 방향성 모션 블러 ---------- */
+const blurs=[],blurMap=new Map();
+function blurOf(el,axis='y'){if(blurMap.has(el))return blurMap.get(el);const id='mb'+(uid++);
+  const f=S('filter',{id,x:'-40%',y:'-80%',width:'180%',height:'260%'},defs),g=S('feGaussianBlur',{stdDeviation:'0 0'},f);
+  const b={el,g,id,axis,v:0};blurs.push(b);blurMap.set(el,b);return b;}
+
+/* ================= 그림 부품 ================= */
+const shadowRect=(p,a)=>{S('rect',{...a,x:a.x+9,y:a.y+9,fill:INK},p);return S('rect',{stroke:INK,'stroke-width':7,...a},p);};
+/* 주인공 `new` 오븐: 원점 = 바닥 중앙, 문 중심 = (0,-250) */
+function drawOven(p,x,y,s=1,{name='new'}={}){
+  const g=S('g',{},p),root=prop(g,{x,y,s}),sg=S('g',{},g),shake=prop(sg);
+  const body='M-250 0 V-290 C-250 -420 -150 -470 0 -470 C150 -470 250 -420 250 -290 V0 Z';
+  S('path',{d:body,fill:INK,transform:'translate(14 14)'},sg);
+  S('path',{d:body,fill:'#FFFDF8',stroke:INK,'stroke-width':8},sg);
+  S('rect',{x:-86,y:-446,width:172,height:58,rx:16,fill:INK},sg);
+  T(name,0,-405,{class:'mono','font-size':40,'text-anchor':'middle',fill:LIT},sg);
+  S('rect',{x:-178,y:-362,width:356,height:224,rx:38,fill:INK},sg);
+  S('rect',{x:-156,y:-340,width:312,height:180,rx:28,fill:'#3A2E28'},sg);
+  const glow=S('rect',{x:-156,y:-340,width:312,height:180,rx:28,fill:'#FF9A3C',style:'opacity:0'},sg);
+  S('rect',{x:-120,y:-122,width:240,height:16,rx:8,fill:INK},sg);
+  for(const cx of [-170,-110])S('circle',{cx,cy:-58,r:22,fill:'#fff',stroke:INK,'stroke-width':6},sg);
+  S('circle',{cx:170,cy:-58,r:16,fill:FM,stroke:INK,'stroke-width':6},sg);
+  const st=S('g',{},g),steam=prop(st,{x:0,y:-470,o:0});
+  for(const [cx,cy,r] of [[-60,-10,26],[0,-40,34],[60,-14,24]])S('circle',{cx,cy,r,fill:'#fff',stroke:INK,'stroke-width':5},st);
+  const front=S('g',{},g);
+  return {g,root,shake,glow,steam,front,door:()=>[root.x,root.y-250*root.s]};}
+function bake(o,at){
+  tl.fromTo(o.glow,{opacity:0},{opacity:.95,duration:.12,immediateRender:false},at);tl.to(o.glow,{opacity:0,duration:.6},at+.3);
+  tl.to(o.shake,{y:7,duration:.05,yoyo:true,repeat:5,ease:'sine.inOut'},at);
+  tl.fromTo(o.steam,{o:.95,y:-470,s:.6},{o:0,y:-640,s:1.3,duration:1.0,ease:'power1.out',immediateRender:false},at+.1);}
+/* 꺼내기: 오븐 문에서 튀어나와 자리에 앉는다 */
+function popFrom(p,at,[fx,fy],x,y,s=1,d=.65){tl.fromTo(p,{x:fx,y:fy,s:.2,o:0,r:-10},{x,y,s,o:1,r:0,duration:d,ease:'back.out(1.6)',immediateRender:false},at);}
+/* 코드 칩: 원점 중앙 */
+function codeChip(p,text,x,y,{color=INK,fs=34,o=0}={}){const g=S('g',{},p),w=Math.round(text.length*fs*.6)+48,h=fs+34;
+  S('rect',{x:-w/2+7,y:-h/2+7,width:w,height:h,rx:14,fill:INK},g);S('rect',{x:-w/2,y:-h/2,width:w,height:h,rx:14,fill:'#fff',stroke:INK,'stroke-width':5},g);
+  T(text,0,fs*.36,{class:'mono','font-size':fs,'text-anchor':'middle',fill:color},g);return Object.assign(prop(g,{x,y,s:o?1:0,o}),{w,h,g});}
+function drawHand(p,dir=1,label='Client'){
+  const g=S('g',{},p),m=S('g',{transform:`scale(${dir} 1)`},g);
+  S('rect',{x:-1700,y:-40,width:1560,height:80,fill:'#55657A',stroke:INK,'stroke-width':7},m);
+  S('rect',{x:-160,y:-52,width:44,height:104,rx:10,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  S('rect',{x:-120,y:-56,width:120,height:112,rx:46,fill:'#fff',stroke:INK,'stroke-width':7},m);
+  S('path',{d:'M-66 -56 C-46 -90 -8 -84 -6 -54',fill:'#fff',stroke:INK,'stroke-width':7},m);
+  if(label)T(label,dir*-620,13,{class:'mono','font-size':36,'text-anchor':'middle',fill:'#fff'},g);
+  return g;}
+function sparks(p,n=8,r0=40,r1=80){const g=S('g',{},p);for(let k=0;k<n;k++){const a=Math.PI*2*k/n;S('line',{x1:Math.cos(a)*r0,y1:Math.sin(a)*r0,x2:Math.cos(a)*r1,y2:Math.sin(a)*r1,stroke:INK,'stroke-width':7,'stroke-linecap':'round'},g);}return g;}
+/* 빵 */
+function loaf(p){const g=S('g',{},p);const d='M-80 50 V-10 C-80 -60 -40 -62 -30 -48 C-20 -70 20 -70 30 -48 C40 -62 80 -60 80 -10 V50 Z';
+  S('path',{d,fill:INK,transform:'translate(8 8)'},g);S('path',{d,fill:'#E8A85A',stroke:INK,'stroke-width':7},g);S('rect',{x:-56,y:-14,width:112,height:52,rx:12,fill:'#FBE3B8'},g);return g;}
+function baguette(p){const g=S('g',{transform:''},p),r=S('g',{transform:'rotate(-14)'},g);
+  S('ellipse',{cx:8,cy:8,rx:150,ry:40,fill:INK},r);S('ellipse',{rx:150,ry:40,fill:'#D9984A',stroke:INK,'stroke-width':7},r);
+  for(const x of [-80,-20,40,100])S('path',{d:`M${x-22} 10 L${x+14} -14`,stroke:'#F6D9A8','stroke-width':9,'stroke-linecap':'round'},r);return g;}
+/* 가구: 원점 = 바닥 중앙. style m(모던: 각진 보라) / c(클래식: 둥근 갈색) */
+function furn(p,kind,style){const g=S('g',{},p),c=style==='m'?AF:'#A86A3D',l=style==='m'?'#C9B2EE':'#E9BE90',rx=style==='m'?4:26,lw=style==='m'?8:16;
+  const leg=(x1,y1,x2)=>S('path',{d:style==='m'?`M${x1} ${y1} L${x2} 0`:`M${x1} ${y1} Q${x1+(x2-x1)*1.6} ${y1/2} ${x2} 0`,fill:'none',stroke:INK,'stroke-width':lw,'stroke-linecap':'round'},g);
+  if(kind==='chair'){leg(-46,-80,-58);leg(46,-80,58);shadowRect(g,{x:-62,y:-104,width:124,height:28,rx:rx/2,fill:c});
+    if(style==='m')shadowRect(g,{x:-62,y:-236,width:24,height:140,rx:3,fill:c});else{S('path',{d:'M-60 -100 V-190 C-60 -250 60 -250 60 -190 V-100 Z',fill:c,stroke:INK,'stroke-width':7},g);S('path',{d:'M-34 -110 V-180 C-34 -214 34 -214 34 -180 V-110 Z',fill:l},g);}}
+  if(kind==='sofa'){leg(-130,-40,-138);leg(130,-40,138);shadowRect(g,{x:-160,y:-176,width:320,height:80,rx,fill:c});
+    shadowRect(g,{x:-160,y:-110,width:320,height:72,rx,fill:l});shadowRect(g,{x:-182,y:-136,width:44,height:98,rx,fill:c});shadowRect(g,{x:138,y:-136,width:44,height:98,rx,fill:c});}
+  if(kind==='table'){leg(-110,-100,-118);leg(110,-100,118);shadowRect(g,{x:-140,y:-126,width:280,height:28,rx:rx/2,fill:c});}
+  return g;}
+
+/* ---------- 타임라인 헬퍼 ---------- */
+const show=(el,at,d=.25)=>tl.to(el,{opacity:1,duration:d},at), hide=(el,at,d=.25)=>tl.to(el,{opacity:0,duration:d},at);
+const pop=(p,at,{d=.6,from=0,ease='back.out(1.8)'}={})=>tl.fromTo(p,{s:from,o:0},{s:1,o:1,duration:d,ease,immediateRender:false},at);
+const out=(p,at,d=.3)=>tl.to(p,{o:0,s:.8,duration:d,ease:'power2.in'},at);
+function draw(el,at,d=.6){const L=el.getTotalLength();el.setAttribute('stroke-dasharray',L);el.setAttribute('stroke-dashoffset',L);
+  tl.fromTo(el,{attr:{'stroke-dashoffset':L}},{attr:{'stroke-dashoffset':0},duration:d,ease:'power2.inOut',immediateRender:false},at);}
+function say(id,at,st=.09){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.fromTo(w,{opacity:0,yPercent:70,scaleY:1.35},{opacity:1,yPercent:0,scaleY:1,duration:.8,ease:'power4.out',stagger:st,immediateRender:false},at);
+  tl.fromTo(b,{v:20},{v:0,duration:.8+st*(w.length-1),ease:'power3.out',immediateRender:false},at);
+  el.querySelectorAll('.hl i').forEach(i=>tl.fromTo(i,{scaleX:0},{scaleX:1,duration:.5,ease:'power3.out',immediateRender:false},at+.3+st*w.length));}
+function unsay(id,at){const el=$(id),w=el.querySelectorAll('.wd'),b=blurOf(el);
+  tl.to(w,{opacity:0,yPercent:-60,duration:.4,ease:'power2.in',stagger:.025},at);
+  tl.fromTo(b,{v:0},{v:16,duration:.45,ease:'power2.in',immediateRender:false},at);tl.set(b,{v:0},at+.55);}
+function chipIn(id,at){const el=$(id),b=blurOf(el,'x');
+  tl.fromTo(el,{opacity:0,x:90},{opacity:1,x:0,duration:.6,ease:'power4.out',immediateRender:false},at);
+  tl.fromTo(b,{v:24},{v:0,duration:.6,ease:'power3.out',immediateRender:false},at);}
+const chipOut=(id,at)=>tl.to($(id),{opacity:0,x:70,duration:.35,ease:'power2.in'},at);
+const flood=(id,at)=>tl.fromTo(id,{scale:0},{scale:1,duration:1.1,ease:'power2.inOut',immediateRender:false},at);
+function whip(t,from,to,dir=1){const bf=blurOf($(from)),bt=blurOf($(to));
+  tl.to(from,{y:-150*dir,duration:.28,ease:'power2.in'},t);tl.fromTo(bf,{v:0},{v:24,duration:.28,ease:'power2.in',immediateRender:false},t);
+  tl.set(from,{visibility:'hidden'},t+.28);tl.set(to,{visibility:'visible',y:150*dir},t+.28);tl.set(bt,{v:24},t+.28);
+  tl.to(to,{y:0,duration:.42,ease:'power3.out'},t+.28);tl.to(bt,{v:0,duration:.42,ease:'power3.out'},t+.28);
+  tl.set(from,{y:0},t+.3);tl.set(bf,{v:0},t+.3);}
+const cut=(t,from,to)=>{tl.set(from,{visibility:'hidden'},t);tl.set(to,{visibility:'visible'},t);};
+
+/* ================= VIEW 1: 주방 — `new` 오븐 (훅 + Singleton) ================= */
+const kitCam=S('g',{},$('#kitSvg')),CK=cam(kitCam,1.6,960,640);
+S('rect',{x:-900,y:900,width:3720,height:500,fill:'#ECE3D3'},kitCam);S('rect',{x:-900,y:896,width:3720,height:10,fill:INK},kitCam);
+for(let x=-900;x<2820;x+=160)S('rect',{x,y:906,width:4,height:400,fill:INK,opacity:.08},kitCam);
+const KO=drawOven(kitCam,960,900,1);
+const kitFront=S('g',{},kitCam);
+const objG=S('g',{},kitFront);shadowRect(objG,{x:-55,y:-110,width:110,height:110,rx:18,fill:'#fff'});T('{ }',0,-42,{class:'mono','font-size':38,'text-anchor':'middle',fill:INK},objG);
+const obj=prop(objG,{x:1340,y:900,o:0});
+const PATS=[['Factory Method',FM],['Abstract Factory',AF],['Builder',BD],['Prototype',PR],['Singleton',SG]];
+const cards=PATS.map(([n,c],k)=>{const g=S('g',{},kitFront);shadowRect(g,{x:-160,y:-56,width:320,height:112,rx:18,fill:c});
+  T(n,0,12,{class:'plex','font-size':34,'text-anchor':'middle',fill:'#fff'},g);return {p:prop(g,{x:960,y:650,s:.2,o:0}),x:240+k*360,r:(k-2)*3};});
+/* Singleton 부품 */
+const lockG=S('g',{},kitFront);S('path',{d:'M-26 -20 V-44 a26 26 0 0 1 52 0 V-20',fill:'none',stroke:LIT,'stroke-width':12},lockG);
+shadowRect(lockG,{x:-44,y:-24,width:88,height:70,rx:12,fill:LIT});S('circle',{cx:0,cy:8,r:8,fill:INK},lockG);
+T('private',0,96,{class:'mono','font-size':34,'text-anchor':'middle',fill:'#fff'},lockG);
+const lock=prop(lockG,{x:960,y:640,o:0,s:0});
+const plinG=S('g',{},kitFront);shadowRect(plinG,{x:-96,y:-28,width:192,height:56,rx:12,fill:'#fff'});T('static',0,12,{class:'mono','font-size':32,'text-anchor':'middle',fill:SG},plinG);
+const plinth=prop(plinG,{x:960,y:385,o:0,s:0});
+const cfgG=S('g',{},kitFront);
+S('path',{d:'M-70 -84 L-70 -150 L-36 -116 L0 -158 L36 -116 L70 -150 L70 -84 Z',fill:LIT,stroke:INK,'stroke-width':7,'stroke-linejoin':'round'},cfgG);
+shadowRect(cfgG,{x:-130,y:-86,width:260,height:166,rx:22,fill:SG});T('Config',0,-22,{class:'mono','font-size':40,'text-anchor':'middle',fill:'#fff'},cfgG);
+const nTxt=[0,1,2,3].map(n=>T(`n = ${n}`,0,42,{class:'mono','font-size':38,'text-anchor':'middle',fill:'#fff',style:`opacity:${n?0:1}`},cfgG));
+const cfg=prop(cfgG,{x:960,y:270,o:0,s:0});
+const CALL=[[330,330],[330,640],[1590,470]];
+const lines=CALL.map(([x,y])=>{const tx=x<960?x+150:x-150;return S('path',{d:`M${tx} ${y} L${x<960?830:1090} ${y<500?250:300}`,fill:'none',stroke:SG,'stroke-width':10,'stroke-linecap':'round',opacity:0},kitFront);});
+const calls=CALL.map(([x,y])=>codeChip(kitFront,'Config.get()',x,y,{color:SG}));
+const newCfg=codeChip(kitFront,'new Config()',1720,760,{color:RED});
+const denyG=S('g',{},kitFront);shadowRect(denyG,{x:-170,y:-34,width:340,height:68,rx:34,fill:RED});T('private 생성자',0,13,{class:'plex','font-size':36,'text-anchor':'middle',fill:'#fff'},denyG);
+const deny=prop(denyG,{x:1440,y:840,o:0,s:0});
+
+/* ================= VIEW 2: 거리 — Factory Method ================= */
+const stCam=S('g',{},$('#stSvg')),CSt=cam(stCam,1.45,960,200);
+S('rect',{x:-900,y:900,width:3720,height:500,fill:'#E4DED0'},stCam);S('rect',{x:-900,y:896,width:3720,height:10,fill:INK},stCam);
+const panG=S('g',{},stCam);
+shadowRect(panG,{x:640,y:90,width:640,height:160,rx:20,fill:'#fff'});
+S('path',{d:'M640 150 V110 a20 20 0 0 1 20 -20 H1260 a20 20 0 0 1 20 20 V150 Z',fill:FM,stroke:INK,'stroke-width':7},panG);
+T('abstract class Bakery',960,133,{class:'mono','font-size':32,'text-anchor':'middle',fill:'#fff'},panG);
+T('abstract Bread createBread();',690,213,{class:'mono','font-size':30,fill:INK},panG);
+const slotBox=S('rect',{x:952,y:182,width:248,height:44,rx:8,fill:'none',stroke:FM,'stroke-width':5,'stroke-dasharray':'12 8',style:'opacity:0'},panG);
+const shops=[[530,'강남점'],[1390,'부산점']].map(([x,n])=>{const g=S('g',{},stCam);
+  shadowRect(g,{x:x-330,y:380,width:660,height:520,rx:10,fill:'#fff'});
+  S('rect',{x:x-262,y:470,width:524,height:410,rx:12,fill:'#FFF1DE',stroke:INK,'stroke-width':6},g);
+  for(let k=0;k<8;k++)S('rect',{x:x-340+k*85,y:380,width:85,height:62,fill:k%2?'#fff':FM,stroke:INK,'stroke-width':5},g);
+  shadowRect(g,{x:x-110,y:300,width:220,height:64,rx:14,fill:INK});T(n,x,345,{class:'plex','font-size':40,'text-anchor':'middle',fill:'#fff'},g);
+  const ov=drawOven(g,x,880,.62);return {g,ov,x,p:prop(g,{o:0})};});
+const arrows=[[650,300,820,256],[1270,300,1100,256]].map(([x1,y1,x2,y2])=>{const a=Math.atan2(y2-y1,x2-x1);
+  const l=S('path',{d:`M${x1} ${y1} L${x2-Math.cos(a)*22} ${y2-Math.sin(a)*22}`,fill:'none',stroke:INK,'stroke-width':7},stCam);
+  const h=S('path',{d:`M${x2} ${y2} L${x2-Math.cos(a-.5)*30} ${y2-Math.sin(a-.5)*30} L${x2-Math.cos(a+.5)*30} ${y2-Math.sin(a+.5)*30} Z`,fill:'#fff',stroke:INK,'stroke-width':6,style:'opacity:0'},stCam);return {l,h};});
+const inhLab=[[585,262],[1335,262]].map(([x,y])=>T('상속',x,y,{class:'plex','font-size':34,'text-anchor':'middle',fill:FM,style:'opacity:0'},stCam));
+const stFront=S('g',{},stCam);
+const bread1=prop(loaf(stFront),{x:530,y:820,o:0}),bread2=prop(baguette(stFront),{x:1390,y:830,o:0});
+const fmChips=[codeChip(stFront,'new WhiteBread()',530,520,{color:FM}),codeChip(stFront,'new Baguette()',1390,520,{color:FM})];
+
+/* ================= VIEW 3: 쇼룸 — Abstract Factory ================= */
+const afCam=S('g',{},$('#afSvg')),CA=cam(afCam,1.3,560,640);
+S('rect',{x:-900,y:900,width:3720,height:500,fill:'#E9E2F2'},afCam);S('rect',{x:-900,y:896,width:3720,height:10,fill:INK},afCam);
+S('ellipse',{cx:1380,cy:906,rx:480,ry:44,fill:AF,opacity:.18},afCam);
+const AO=drawOven(afCam,560,900,.9);
+const afFront=S('g',{},afCam);
+function plate(text){const g=S('g',{},afFront);S('path',{d:'M-150 40 L-150 74 M150 40 L150 74',stroke:INK,'stroke-width':6},g);
+  shadowRect(g,{x:-210,y:-40,width:420,height:80,rx:16,fill:AF});T(text,0,12,{class:'mono','font-size':34,'text-anchor':'middle',fill:'#fff'},g);return g;}
+const plM=prop(plate('ModernFactory'),{x:560,y:-200,o:0}),plC=prop(plate('ClassicFactory'),{x:-1200,y:410});
+const hA=prop(drawHand(afFront,1),{x:-1500,y:410});
+const SPOT=[[1050,'chair'],[1360,'sofa'],[1710,'table']];
+const setM=SPOT.map(([x,k])=>prop(furn(afFront,k,'m'),{x,y:900,o:0})),setC=SPOT.map(([x,k])=>prop(furn(afFront,k,'c'),{x,y:900,o:0}));
+const afChips=[['createChair()',1050],['createSofa()',1360],['createTable()',1710]].map(([s,x])=>codeChip(afFront,s,x,560,{color:AF,fs:30}));
+
+/* ================= VIEW 4: 조리대 — Builder ================= */
+const bdCam=S('g',{},$('#bdSvg')),CB=cam(bdCam,1.3,960,300);
+S('rect',{x:-900,y:930,width:3720,height:500,fill:'#DCEAF3'},bdCam);S('rect',{x:-900,y:926,width:3720,height:10,fill:INK},bdCam);
+const BO=drawOven(bdCam,1530,930,.8);
+const bdFront=S('g',{},bdCam);
+const bad=codeChip(bdFront,'new Pizza(12, true, true, false, null)',960,190,{color:INK});
+const qs=[797,899,1022,1154,1287].map(x=>{const g=S('g',{},bdFront);S('circle',{r:26,fill:RED,stroke:INK,'stroke-width':5},g);T('?',0,12,{class:'plex','font-size':34,'text-anchor':'middle',fill:'#fff'},g);return prop(g,{x,y:118,o:0,s:0});});
+const strike=S('path',{d:'M545 190 L1375 190',stroke:RED,'stroke-width':10,'stroke-linecap':'round',opacity:0},bdFront);
+const CODE=['new Pizza.Builder()','  .size(12)','  .cheese(true)','  .pepperoni(true)','  .build();'];
+const codeLines=CODE.map((s,k)=>{const g=S('g',{},bdFront);const hl=S('rect',{x:-14,y:-44,width:s.length*22.8+28,height:60,rx:10,fill:BD,opacity:0},g);
+  T(s,0,0,{class:'mono','font-size':38,fill:INK,style:'white-space:pre'},g);return {p:prop(g,{x:110,y:380+k*92,o:0}),hl};});
+const pzG=S('g',{},bdFront),dough=S('g',{},pzG),cheese=S('g',{},pzG),pep=S('g',{},pzG);
+S('ellipse',{cx:8,cy:10,rx:230,ry:96,fill:INK},dough);S('ellipse',{rx:230,ry:96,fill:'#F2D29B',stroke:INK,'stroke-width':7},dough);S('ellipse',{rx:188,ry:74,fill:'#F9E6C2'},dough);
+S('path',{d:'M-180 0 C-170 -60 -60 -78 10 -72 C110 -66 190 -40 180 6 C170 50 60 72 -20 70 C-110 68 -188 46 -180 0 Z',fill:LIT,stroke:'#E8A317','stroke-width':5},cheese);
+const PEP=[[-110,-20],[-30,-44],[60,-30],[130,6],[-60,26],[40,34]];
+const peps=PEP.map(([x,y])=>{const g=S('g',{},pep);S('ellipse',{rx:30,ry:14,fill:'#C8423A',stroke:INK,'stroke-width':4},g);return prop(g,{x,y,s:0,o:0});});
+const pz=prop(pzG,{x:920,y:780}),doughP=prop(dough,{s:0,o:0}),cheeseP=prop(cheese,{o:0,y:-160});
+const sizeTag=codeChip(bdFront,'12',920,620,{color:BD,fs:34});
+const baked=(()=>{const g=S('g',{},bdFront);S('ellipse',{cx:8,cy:10,rx:230,ry:96,fill:INK},g);S('ellipse',{rx:230,ry:96,fill:'#D9984A',stroke:INK,'stroke-width':7},g);
+  S('ellipse',{rx:188,ry:74,fill:'#F2B33D'},g);for(const [x,y] of PEP)S('ellipse',{cx:x,cy:y,rx:30,ry:14,fill:'#A8322B',stroke:INK,'stroke-width':4},g);return prop(g,{x:920,y:800,o:0});})();
+
+/* ================= VIEW 5: 복사기 — Prototype ================= */
+const prCam=S('g',{},$('#prSvg')),CP=cam(prCam,1.3,700,560);
+S('rect',{x:-900,y:900,width:3720,height:500,fill:'#F6E3EC'},prCam);S('rect',{x:-900,y:896,width:3720,height:10,fill:INK},prCam);
+const PO=drawOven(prCam,1660,1010,.55);PO.root.o=.45;
+const prFront=S('g',{},prCam);
+function shape(name,fill){const g=S('g',{},prFront);S('circle',{cx:10,cy:10,r:130,fill:INK},g);const c=S('circle',{r:130,fill,stroke:INK,'stroke-width':8},g);
+  S('circle',{cx:-46,cy:-48,r:26,fill:'#fff',opacity:.5},g);shadowRect(g,{x:-110,y:154,width:220,height:62,rx:31,fill:'#fff'});
+  T(name,0,197,{class:'mono','font-size':34,'text-anchor':'middle',fill:INK},g);return {g,c};}
+const shB=shape('Shape b',PR),shA=shape('Shape a',PR);
+const pa=prop(shA.g,{x:700,y:520,o:0}),pb=prop(shB.g,{x:700,y:520,o:0});
+const scanG=S('g',{},prFront);S('rect',{x:-14,y:-180,width:28,height:360,rx:14,fill:'#fff',stroke:PR,'stroke-width':6},scanG);const scan=prop(scanG,{x:540,y:520,o:0});
+const copyChip=codeChip(prFront,'Shape b = a.copy();',960,820,{color:PR});
+const newCircle=codeChip(prFront,'new Circle()',1660,660,{color:INK});
+const strike2=S('path',{d:'M1500 660 L1820 660',stroke:RED,'stroke-width':10,'stroke-linecap':'round',opacity:0},prFront);
+
+/* ================= VIEW 6: 판별 레일 ================= */
+const railCam=S('g',{},$('#railSvg')),CR=cam(railCam,1.25,420,540);
+const YS=[150,345,540,735,930],SIG=[['상속 · 한 제품',FM],['제품군',AF],['단계별',BD],['복제',PR],['하나뿐',SG]];
+const K=YS.map(y=>`M-100 540 L440 540 C640 540 700 ${y} 900 ${y} L1470 ${y}`);
+for(const d of K)S('path',{d,fill:'none',stroke:INK,'stroke-width':30,'stroke-linecap':'round'},railCam);
+for(const d of K)S('path',{d,fill:'none',stroke:'#fff','stroke-width':14,'stroke-linecap':'round'},railCam);
+const trails=K.map((d,k)=>{const e=S('path',{d,fill:'none',stroke:SIG[k][1],'stroke-width':12,'stroke-linecap':'round'},railCam);const L=e.getTotalLength();e.setAttribute('stroke-dasharray',L);e.setAttribute('stroke-dashoffset',L);return {e,L};});
+SIG.forEach(([s,c],k)=>T(s,1185,YS[k]-32,{class:'plex','font-size':36,'text-anchor':'middle',fill:c},railCam));
+const gateG=S('g',{},railCam);const gateC=S('circle',{r:46,fill:'#fff',stroke:INK,'stroke-width':7},gateG);T('?',0,14,{class:'plex','font-size':40,'text-anchor':'middle',fill:INK},gateG);
+T('코드 모양',0,-72,{class:'plex','font-size':40,'text-anchor':'middle',fill:INK},gateG);const gate=prop(gateG,{x:440,y:540,s:0,o:0});
+const dests=PATS.map(([n,c],k)=>{const g=S('g',{},railCam);shadowRect(g,{x:-190,y:-50,width:380,height:100,rx:26,fill:c});
+  T(n,0,13,{class:'plex','font-size':38,'text-anchor':'middle',fill:'#fff'},g);return prop(g,{x:1660,y:YS[k],s:0,o:0});});
+const riders=['abstract create()','createA() createB()','.size().build()','a.copy()','getInstance()'].map((s,k)=>{const g=S('g',{},railCam);
+  S('rect',{x:-190+7,y:-38+7,width:380,height:76,rx:14,fill:INK},g);S('rect',{x:-190,y:-38,width:380,height:76,rx:14,fill:'#fff',stroke:INK,'stroke-width':6},g);
+  T(s,0,11,{class:'mono','font-size':30,'text-anchor':'middle',fill:SIG[k][1]},g);
+  return {g,path:S('path',{d:K[k]}),L:trails[k].L,k,p:0,o:0};});
+
+/* ================= 타임라인 ================= */
+for(const c of cams)cutTo(c,0,c.z0,c.cx0,c.cy0);
+tl.set('.flood',{scale:0},0);
+/* --- 0–7.7 훅: 객체를 어떻게 만들까? --- */
+say('#s1',.8);
+bake(KO,2.3);popFrom(obj,2.45,KO.door(),1340,900);
+shot(CK,3.2,1.1,1,960,540);
+unsay('#s1',3.9);
+cards.forEach((c,k)=>tl.fromTo(c.p,{x:960,y:650,s:.2,o:0,r:0},{x:c.x,y:130,s:1,o:1,r:c.r,duration:.8,ease:'back.out(1.5)',immediateRender:false},4.3+k*.1));
+say('#s2',5.2);
+unsay('#s2',7.0);
+cards.forEach((c,k)=>tl.to(c.p,{y:-200,r:c.r*4,o:0,duration:.45,ease:'power2.in'},7.1+k*.05));
+out(obj,7.1);
+whip(7.6,'#kit','#street',1);
+/* --- 8–21 Factory Method: 지점이 빵을 정한다 --- */
+chipIn('#chFM',8.2);
+tl.fromTo(slotBox,{opacity:0},{opacity:1,duration:.2,repeat:3,yoyo:true,immediateRender:false},8.6);tl.set(slotBox,{opacity:1},9.5);
+shot(CSt,9.4,1.1,1,960,560);
+shops.forEach((s,k)=>tl.fromTo(s.p,{o:0,y:60},{o:1,y:0,duration:.6,ease:'power3.out',immediateRender:false},9.8+k*.2));
+arrows.forEach((a,k)=>{draw(a.l,10.6+k*.15,.4);show(a.h,11.0+k*.15,.15);show(inhLab[k],11.1+k*.15,.2);});
+shot(CSt,11.7,.8,1.35,530,650);
+bake(shops[0].ov,12.4);popFrom(bread1,12.55,[530,725],530,820,1.1);pop(fmChips[0],12.9,{from:.6});
+flood('#fl1',12.4);
+shot(CSt,13.7,.9,1.35,1390,650);
+bake(shops[1].ov,14.5);popFrom(bread2,14.65,[1390,725],1390,830,1.0);pop(fmChips[1],15.0,{from:.6});
+shot(CSt,15.9,1.0,1,960,540);
+say('#s3',16.9);
+unsay('#s3',19.8);chipOut('#chFM',19.9);
+/* push-through: 부산점 오븐 문 속으로 */
+shot(CSt,20.2,.75,5,1390,725,'power2.in');
+flood('#fl2',20.7);
+cut(20.95,'#street','#af');
+/* --- 21–32.5 Abstract Factory: 제품군 한 번에 --- */
+cutTo(CA,20.95,1.3,560,640);shot(CA,20.95,1.0,1,960,540,'power3.out');
+chipIn('#chAF',21.3);
+tl.fromTo(plM,{y:-200,o:1,r:-14},{y:410,r:0,duration:.7,ease:'back.out(1.4)',immediateRender:false},21.7);
+bake(AO,22.6);setM.forEach((p,k)=>popFrom(p,22.75+k*.08,AO.door(),SPOT[k][0],900,1));
+afChips.forEach((c,k)=>pop(c,23.4+k*.1,{from:.6}));
+say('#s4',24.3);
+tl.to(hA,{x:560-214,y:410,duration:.6,ease:'power3.out'},26.0);
+tl.to([hA,plM],{x:'-=1500',duration:.5,ease:'power2.in'},26.65);
+tl.fromTo(hA,{x:-1500},{x:560-214,duration:.6,ease:'power3.out',immediateRender:false},27.15);
+tl.fromTo(plC,{x:-1286},{x:560,duration:.6,ease:'power3.out',immediateRender:false},27.15);
+tl.to(hA,{x:-1500,duration:.5,ease:'power2.in'},27.85);
+shot(CA,27.9,.8,1.15,1300,640);
+bake(AO,28.3);
+setM.forEach((p,k)=>tl.to(p,{y:1100,o:0,r:(k-1)*10,duration:.35,ease:'power2.in'},28.3+k*.05));
+setC.forEach((p,k)=>popFrom(p,28.55+k*.08,AO.door(),SPOT[k][0],900,1));
+shot(CA,29.9,.8,1,960,540);
+unsay('#s4',31.4);chipOut('#chAF',31.5);
+flood('#fl3',31.9);
+whip(32.2,'#af','#bld',-1);
+/* --- 32.5–44.5 Builder: 단계별 조립 --- */
+cutTo(CB,32.2,1.3,960,300);
+chipIn('#chBD',32.8);
+pop(bad,33.0,{from:.6});
+qs.forEach((q,k)=>tl.fromTo(q,{s:0,o:0,y:150},{s:1,o:1,y:118,duration:.4,ease:'back.out(2.4)',immediateRender:false},33.6+k*.15));
+tl.to(strike,{opacity:1,duration:.01},34.9);draw(strike,34.9,.35);
+tl.to([bad,...qs],{o:0,y:'-=40',duration:.35,ease:'power2.in'},35.4);tl.to(strike,{opacity:0,duration:.3},35.4);
+shot(CB,35.4,1.0,1.12,760,600);
+const step=(k,at)=>{tl.fromTo(codeLines[k].p,{o:0,x:70},{o:1,x:110,duration:.5,ease:'power4.out',immediateRender:false},at);
+  tl.fromTo(codeLines[k].hl,{opacity:0},{opacity:.28,duration:.2,immediateRender:false},at+.25);if(k)tl.to(codeLines[k-1].hl,{opacity:0,duration:.2},at+.25);};
+step(0,35.8);
+step(1,36.6);tl.to(doughP,{s:1,o:1,duration:.6,ease:'back.out(1.6)'},36.8);pop(sizeTag,37.0,{from:.5});
+step(2,37.7);tl.to(cheeseP,{o:1,y:0,duration:.5,ease:'bounce.out'},37.9);out(sizeTag,37.7);
+step(3,38.8);peps.forEach((p,k)=>tl.to(p,{s:1,o:1,duration:.35,ease:'back.out(2.2)'},39.0+k*.08));
+step(4,40.0);
+shot(CB,40.0,.9,1.18,1250,720);
+tl.to(pz,{x:1530,y:700,s:.4,o:0,duration:.6,ease:'power2.in'},40.3);
+bake(BO,40.95);popFrom(baked,41.1,BO.door(),920,800,1,.7);
+tl.to(codeLines[4].hl,{opacity:0,duration:.3},41.4);
+shot(CB,41.6,.9,1,960,540);
+say('#s5',42.0);
+unsay('#s5',44.0);chipOut('#chBD',44.1);
+/* rack focus → 복사기 */
+{const b1=blurOf($('#bld'),'xy'),b2=blurOf($('#pro'),'xy');
+  tl.to('#bld',{scale:.86,opacity:0,duration:.7,ease:'power2.in'},44.3);tl.fromTo(b1,{v:0},{v:16,duration:.7,ease:'power2.in',immediateRender:false},44.3);
+  tl.set('#pro',{visibility:'visible',scale:1.18,opacity:0},44.7);tl.set(b2,{v:16},44.7);
+  tl.to('#pro',{scale:1,opacity:1,duration:.85,ease:'power3.out'},44.7);tl.to(b2,{v:0,duration:.85,ease:'power3.out'},44.7);
+  tl.set('#bld',{visibility:'hidden'},45.0);tl.set(b1,{v:0},45.0);}
+flood('#fl4',44.6);
+/* --- 44.7–54 Prototype: new 없이 복제 --- */
+cutTo(CP,44.7,1.3,700,560);
+chipIn('#chPR',45.2);
+pop(pa,45.3,{from:.4});tl.set(pb,{o:1},46.2);
+tl.fromTo(scan,{x:540,o:0},{x:860,o:1,duration:.9,ease:'sine.inOut',immediateRender:false},46.3);tl.to(scan,{o:0,duration:.2},47.2);
+tl.to(pb,{x:1220,duration:.75,ease:'back.out(1.4)'},47.4);
+shot(CP,47.4,1.0,1,960,540);
+pop(copyChip,48.1,{from:.6});
+pop(newCircle,48.9,{from:.6});tl.to(strike2,{opacity:1,duration:.01},49.4);draw(strike2,49.4,.3);
+tl.to(shB.c,{attr:{fill:'#F5A3C7'},duration:.4},50.2);tl.to(pb,{s:.86,duration:.4,ease:'back.out(2)'},50.2);
+say('#s6',50.6);
+unsay('#s6',53.3);chipOut('#chPR',53.4);
+whip(53.8,'#pro','#kit',1);
+/* --- 54–63 Singleton: 하나뿐 (주방 오븐으로 복귀) --- */
+cutTo(CK,53.8,1,960,540);
+flood('#fl5',54.1);
+chipIn('#chSG',54.5);
+pop(lock,54.6);pop(plinth,54.9);pop(cfg,55.1);
+CALL.forEach((_,k)=>{const at=55.9+k*1.15;pop(calls[k],at,{from:.6});
+  tl.fromTo(lines[k],{opacity:0},{opacity:1,duration:.01,immediateRender:false},at+.3);draw(lines[k],at+.3,.35);
+  tl.fromTo(cfg,{s:1.14},{s:1,duration:.35,ease:'power2.out',immediateRender:false},at+.65);
+  tl.set(nTxt[k],{opacity:0},at+.65);tl.set(nTxt[k+1],{opacity:1},at+.65);});
+say('#s7',59.4);
+pop(newCfg,60.3,{from:.6});
+tl.to(newCfg,{x:1110,y:690,duration:.4,ease:'power2.in'},60.6);
+tl.to(newCfg,{x:1500,y:760,r:12,duration:.5,ease:'power3.out'},61.0);
+tl.to(lock,{r:10,duration:.07,yoyo:true,repeat:5},61.0);
+pop(deny,61.1,{from:.5});
+tl.to([newCfg,deny],{o:0,duration:.3},62.4);
+unsay('#s7',62.4);chipOut('#chSG',62.5);
+/* push-through: 하나뿐인 Config 속으로 → 레일 */
+shot(CK,62.7,.7,5,960,250,'power2.in');
+flood('#fl6',63.1);
+cut(63.4,'#kit','#rail');
+/* --- 63.4–75 판별 레일: 코드 모양 → 이름 --- */
+cutTo(CR,63.4,1.25,420,540);
+pop(gate,63.6);dests.forEach((d,k)=>pop(d,63.8+k*.1));
+shot(CR,64.0,2.0,1,960,540,'sine.inOut');
+riders.forEach((c,k)=>{const at=64.3+k*1.25;tl.set(c,{p:0,o:0},0);tl.set(c,{o:1},at);
+  tl.fromTo(c,{p:0},{p:1,duration:1.5,ease:'sine.inOut',immediateRender:false},at);tl.to(c,{o:0,duration:.25},at+1.5);
+  tl.fromTo(dests[k],{s:1.18},{s:1,duration:.45,ease:'power2.out',immediateRender:false},at+1.5);});
+{const br=blurOf($('#rail'),'xy');tl.to('#rail',{opacity:.2,duration:.6},70.9);tl.fromTo(br,{v:0},{v:8,duration:.6,immediateRender:false},70.9);}
+say('#s8',71.2,.1);
+unsay('#s8',74.3);
+tl.to({},{duration:.01},DUR-.01);
+
+/* ================= render: tl.time()의 순수 함수 ================= */
+const grid=$('#grid'),bl1=$('#bl1'),bl2=$('#bl2');
+const viewCam={kit:CK,street:CSt,af:CA,bld:CB,pro:CP,rail:CR};
+function render(){const t=tl.time();
+  for(const p of props){p.el.setAttribute('transform',`translate(${p.x} ${p.y}) rotate(${p.r}) scale(${p.s})`);p.el.setAttribute('opacity',p.o);}
+  for(const c of cams){const z=c.z*(1+.006*Math.sin(t*.9));c.g.setAttribute('transform',`translate(960 540) scale(${z}) translate(${-c.cx} ${-c.cy})`);}
+  for(const b of blurs){if(b.v>.25){b.g.setAttribute('stdDeviation',b.axis==='y'?`${b.v*.12} ${b.v}`:b.axis==='x'?`${b.v} ${b.v*.08}`:`${b.v} ${b.v}`);b.el.style.filter=`url(#${b.id})`;}else b.el.style.filter='none';}
+  let cz=1;for(const k in viewCam)if(document.getElementById(k).style.visibility!=='hidden'){cz=viewCam[k].z;break;}
+  grid.style.transform=`scale(${(1+.022*Math.sin(t*.8))*(1+(cz-1)*.18)}) translate(${Math.sin(t*.21)*18}px,${Math.cos(t*.17)*14}px)`;
+  bl1.style.transform=`translate(${Math.sin(t*.31)*90}px,${Math.cos(t*.27)*60}px)`;bl2.style.transform=`translate(${Math.cos(t*.23)*80}px,${Math.sin(t*.29)*70}px)`;
+  /* 판별 레일: 지나간 자리에 색 궤적, 게이트 통과 순간 점등 */
+  let lit=false;
+  for(const c of riders){const tr=trails[c.k];tr.e.setAttribute('stroke-dashoffset',tr.L*(1-c.p));
+    const pt=c.path.getPointAtLength(c.L*c.p);c.g.setAttribute('transform',`translate(${pt.x} ${pt.y-62})`);c.g.setAttribute('opacity',c.o);
+    if(c.o>0&&Math.abs(c.p*c.L-540)<70)lit=true;}
+  gateC.setAttribute('fill',lit?LIT:'#fff');
+}
+gsap.ticker.add(render);
+
+/* ---------- 컨트롤: 자동재생 + 루프, 플레이어 없음. ?debug=1 스크럽, ?clean=1 export ---------- */
+const q=new URLSearchParams(location.search);
+const start=()=>tl.play(0);
+tl.eventCallback('onComplete',start);
+window.OPENER={W,H,DURATION:DUR,tl,ready:false,seek(t){tl.pause(t,false);render();},play:start};
+window.OPENER.seekFrame=t=>{window.OPENER.seek(t);return Promise.resolve();};
+addEventListener('keydown',e=>{if(/^[rR]$/.test(e.key))start();if(e.code==='Space'){e.preventDefault();tl.paused()?tl.play():tl.pause();}});
+if(q.has('debug')){const dbg=$('#dbg');dbg.style.display='flex';const sc=$('#dScrub'),ck=$('#dClock');let drag=false;
+  gsap.ticker.add(()=>{if(!drag)sc.value=String(tl.time()/DUR*1000);ck.textContent=tl.time().toFixed(2)+'s';$('#dPlay').textContent=tl.paused()?'Play':'Pause';});
+  sc.addEventListener('pointerdown',()=>{drag=true;tl.pause();});addEventListener('pointerup',()=>drag=false);
+  sc.addEventListener('input',()=>{tl.pause();tl.time(sc.value/1000*DUR);});$('#dPlay').onclick=()=>tl.paused()?tl.play():tl.pause();}
+document.fonts.ready.then(()=>{render();window.OPENER.ready=true;if(!q.has('clean'))start();});
+</script>
+</body>
+</html>
