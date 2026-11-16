@@ -395,3 +395,8 @@
   도구별 지원 현황 추적 데이터. 받아 두었으나 아직 대조하지 않음. Use for: ecosystem-map의 emit/consume 사례 검증.
 - [claude-code #104945](https://github.com/anthropics/claude-code/issues/104945)
   Claude Code가 AskUserQuestion 중에도 `working`을 유지하는 문제 이슈. 확인함. Use for: emit 쪽 구현 이슈 사례.
+
+## Database Storage & Indexing
+
+- [DDIA 2판 ch04 存储与检索 (Vonng 중국어 번역)](https://github.com/Vonng/ddia/blob/main/content/zh/ch4.md)
+  로컬 사본: `ai-book-study/designing-data-intensive-applications/Preprocessed/chapters/04`. Use for: B-tree page·split·WAL, LSM-tree(memtable·SSTable·compaction·tombstone·Bloom filter), secondary index와 clustered/heap/covering, LSM vs B-tree 비교. 엔진별 세부(InnoDB, PostgreSQL)는 공식 문서로 따로 확인한다.

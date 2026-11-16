@@ -54,3 +54,18 @@ figure.diagram figcaption {
 .d-msg   { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; fill: #1f2933; }
 .d-msg-a { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; fill: #0f766e; font-weight: 700; }
 .d-msg-x { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; fill: #b91c1c; }
+
+/* B-tree visualizer controls (assets/btree-viz.js). */
+.bt-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; font-size: 0.92rem; }
+.bt-controls input, .bt-controls select { font: inherit; padding: 4px 6px; border: 1px solid #9aa5b1; border-radius: 6px; }
+.bt-controls input { width: 7em; }
+.bt-controls button { font: inherit; padding: 5px 12px; border: 1px solid #0f766e; background: #eef7f5; color: #0f766e; border-radius: 6px; cursor: pointer; }
+.bt-controls button:disabled { opacity: 0.4; cursor: default; }
+.bt-counter { margin-left: auto; font-weight: 700; color: #b45309; }
+.bt-log { font-size: 0.92rem; line-height: 1.6; }
+.bt-log .bt-done { list-style: none; margin-top: 6px; font-weight: 700; color: #0f766e; }
+.bt-bars { margin: 8px 0 4px; }
+.bt-bar-row { display: grid; grid-template-columns: 11em 1fr 6em; gap: 10px; align-items: center; margin: 6px 0; font-size: 0.92rem; }
+.bt-bar { height: 16px; background: #0f766e; border-radius: 4px; min-width: 4px; }
+.bt-bar-row:first-child .bt-bar { background: #9aa5b1; }
+.bt-bar-val { font-weight: 700; }

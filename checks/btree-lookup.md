@@ -1,7 +1,7 @@
-# btree-lookup: B-tree에서 key 하나를 찾을 때 어떤 page를 어떤 순서로 읽는지 그림 없이 설명한다
+# btree-lookup: key 하나를 찾을 때 root→leaf로 어떤 page를 어떤 순서로 읽는지, 왜 몇 번이면 끝나는지 설명한다
 
-Version: 1
-Task: `users` 테이블에 primary key `id`가 있고 B-tree index다. `SELECT * FROM users WHERE id = 4200` 을 실행하면 DB는 디스크(또는 buffer)에서 무엇을 어떤 순서로 읽어 row를 찾는가? 네 말로 단계별로 설명해 줘. 그리고 row가 1억 개로 늘어나도 왜 몇 번만 읽으면 되는지 한 줄로.
-Pass when: (1) 고정 크기 page 단위로 읽는다 (2) root page에서 시작해 각 page 안의 key 범위 경계를 보고 4200이 속한 child page 참조를 따라 내려간다 (3) leaf page에 도달해 값(또는 값에 대한 참조)을 얻는다 (4) 한 page가 수백 개 child를 가리키므로(branching factor) depth가 log로만 늘어 몇 단계면 된다 — DDIA ch04 "B-tree" (Preprocessed/chapters/04, study/ch04.md §B-tree)
-Also accept: "page" 대신 "노드/블록"이라 불러도 의미가 같으면 통과. depth 숫자(3~4단계 등)는 없어도 됨.
+Version: 2
+Task: `orders` 테이블의 PK B-tree는 branching factor가 약 400이고 3층이다. `SELECT * FROM orders WHERE id = 917` 을 실행할 때 DB가 읽는 page를 순서대로 말하고, 각 page에서 "무엇을 보고 다음을 고르는지" 한 줄씩 설명해 줘. 마지막으로, 주문이 400배로 늘면 이 조회에서 읽는 page 수는 어떻게 변하는지와 그 이유를 말해 줘.
+Pass when: (1) root page부터 읽는다 (2) root와 중간 page에서 경계 key와 917을 비교해 child 참조 하나만 따라간다(다른 child는 안 읽음) (3) 3번째에 leaf page에 도달해 917의 값(또는 값의 위치)을 얻는다, 총 3 page (4) 400배 늘면 깊이가 한 층 늘어 4 page쯤이 된다. 이유는 page 하나가 ~400갈래라 400배마다 한 층(log₄₀₀) — DDIA ch04 「B 树」
+Also accept: "약 1번 더", "4번" 등 의미가 같은 표현. 위쪽 page가 buffer에 있어 실제 디스크 읽기가 적을 수 있다는 언급은 가점이지 필수 아님.
 Aids allowed: none

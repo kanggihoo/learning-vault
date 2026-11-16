@@ -1,10 +1,10 @@
 # Notes
 
 ## Current
-- 미션: OSC 7501 (Program Status Protocol). osc-basics는 needs-repair(LR-0038).
-- lesson: lessons/0055-osc-7501-escape-sequence-anatomy.html (§3에 printf 표기 ↔ 실제 byte 대조 추가함)
-- pending: 다음 세션 시작에 osc-basics 재확인(changed task). 통과하면 why-7501로. 갭: printf 표기(`\a`, `\e\\`)와 실제로 터미널에 가는 byte를 구분하지 못함.
-- 열린 문제: 마지막 실습(emit-live)을 herdr 0.9.5에서 할 수 없다(7501 문자열 없음, 바깥 Ghostty 앱도 드롭). 대상 터미널을 그 레슨 전에 정한다.
+- 미션: DB 색인이 CRUD에서 어떻게 움직이는지 (DDIA ch04 OLTP). 2026-11-16 시작, `tutor` skill로 진행.
+- lesson: lessons/0056-btree-select-page-walk.html
+- pending: exit check btree-lookup (checks/btree-lookup.md v2). 통과하면 btree-write(빈 B-tree가 split으로 자라는 과정) 레슨으로. 진단 2(split)는 "몰라" → unassessed 유지.
+- 이전 미션 OSC 7501: osc-basics needs-repair(LR-0038), 재확인 대기 중. 열린 문제: emit-live를 herdr 0.9.5에서 할 수 없다.
 
 - React Hook 학습은 단순 정의보다 실제 상황과 실제 코드 예제를 함께 보여줄 때 더 직관적이다.
 - 분산 백엔드 아키텍처 학습은 미션이 "이해·설명"이다. 구현 코드보다 Sixmen 아키텍처 문서를 구체 예시로 쓰고, 개념 4개(Outbox → Streams Consumer Group → At-least-once+재시도 → Webhook)를 의존성 순으로 한 레슨에 하나씩 푼다.
@@ -60,3 +60,5 @@
 - GoF 레슨 공통 구조: 이전 묶음 복습 4문제(R) → 한 장 비교표 → 패턴별 이론·비유·코드 → 헷갈리는 쌍 → 검증한 Spring/JDK 사례 → 판별 퀴즈 6문제. 공통 스타일은 `assets/lesson.css`의 `.gof` 블록.
 - **OSC 7501 학습(2026-11-12~).** 터미널 escape sequence 선행지식 0. 연습 순서는 개념 먼저, 직접 `printf` 실험(herdr)은 마지막 레슨. 구현 코드는 범위 밖. 사용처 표는 원문 대조 후에만 가르친다. 학습자가 가져온 조사 정리는 대체로 맞았고 "규칙 위반 시 보고 전체 폐기"만 틀렸다(잘못된 pair는 그 pair만 skip).
 - **OSC 7501 질문에서 나온 오해와 앵커(2026-11-12).** ① "AI가 규칙을 알아서 쓰면 된다"는 전제: 시퀀스를 쓰는 주체는 모델이 아니라 CLI 프로그램의 코드(claude-code #104945: 앱 UI 상태인 AskUserQuestion 중 `working` 유지 = 개발자가 상태 전환 지점에서 emit을 빠뜨린 버그). `ecosystem-map`·`emit-live`에서 이 구분을 회수한다. ② 학습자는 Wireshark식 바이너리 규격(비트·바이트 필드)을 앵커로 갖고 있다. `report-syntax` 레슨은 "바이너리: 위치·길이로 구분 / 7501: 구분자와 종결자로 구분, URL query string과 비슷"으로 시작한다.
+- **DB 색인 미션(2026-11-16~).** 학습자는 "텍스트로는 안 잡힌다, 직관적인 이미지로 보고 싶다"고 했다. 구조는 단계별 인터랙티브(`assets/btree-viz.js`)로 먼저 보여 준다. 학습자 앵커는 시간복잡도(O(n)→O(log n))다. "log가 무엇을 세는가(page 읽기 = depth)"와 "밑이 수백"으로 연결하면 된다. CRUD 지도 표(0056 §5)를 이후 레슨이 확장한다(secondary index → index마다 반복, LSM → 오른쪽 칸이 덧붙이기).
+- **DB 색인 intake 보정(2026-11-16).** 학습자가 출발점을 보며 "page, root→leaf 개념 설명도 필요하다", "B-tree를 어떻게 만드는지도"라고 했다. 기초 용어를 아는 전제로 쓰지 말 것. 0056에 §2(page란)·§3(root/중간/leaf)를 추가했고, B-tree가 만들어지는 과정은 btree-write 레슨에서 빈 트리부터 split으로 자라는 단계별 인터랙티브로 다룬다.

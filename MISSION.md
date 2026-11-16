@@ -320,3 +320,29 @@ Claude Code, Codex, herdr, iTerm2 등 여러 도구가 OSC 7501이라는 프로�
 
 ## Out of scope
 - 구현 코드(emit 함수·파서 작성). 보안·한도·feature detection의 세부는 이름과 위치만.
+
+---
+
+# Mission: DB 색인이 CRUD에서 어떻게 움직이는지 그림으로 이해하기 (DDIA ch04 OLTP 구역)
+
+## Why
+DDIA ch04의 색인 구조를 텍스트로만 읽으니 그림이 안 잡힌다.
+색인이 어떻게 생겼고 INSERT·SELECT·UPDATE·DELETE 때 어떻게 움직이는지 직관적인 그림으로 이해해서,
+스터디에서 설명하고 실무에서 MySQL/PostgreSQL index를 판단할 때 쓰고 싶다.
+
+## Success looks like
+- B-tree에서 key를 찾고 삽입할 때 거치는 page를 그림으로 설명한다.
+- 테이블 row가 어디에 저장되는지 DB마다 다르다는 것을, PK index 안에 들어 있는 방식(InnoDB)과 별도 heap 파일에 있는 방식(PostgreSQL)으로 그림으로 설명한다.
+- PK가 아닌 컬럼으로 찾을 때, index에 PK를 적어 두는 방식과 row 위치를 적어 두는 방식이 row까지 가는 길이 어떻게 다른지 설명한다.
+- LSM에서 쓰기 하나가 memtable → SSTable → compaction으로 가는 과정과 읽기 순서를 설명한다.
+- CRUD 네 연산마다 B-tree와 LSM이 무엇을 읽고 무엇을 바꾸는지 예측한다.
+- workload가 주어지면 LSM과 B-tree 중 무엇이 유리한지 근거를 댄다.
+
+## Constraints
+- 1차 출처는 DDIA ch04(`ai-book-study/designing-data-intensive-applications/Preprocessed/chapters/04`). 구조는 텍스트보다 그림(단계별 인터랙티브)으로 먼저 보여 준다.
+- LSM은 처음부터 시작한다.
+- 한국어, 기술 용어는 영어 원문 그대로.
+
+## Out of scope
+- 분석용 column 저장, 다차원·전문 검색·vector index.
+- 엔진 소스 코드 수준 구현.

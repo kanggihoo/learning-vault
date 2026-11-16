@@ -298,3 +298,17 @@ GoF 23개 패턴을 시험·실무 양쪽에서 **구분해서** 쓰기 위한 �
 
 - [0037 - OSC 7501 학습 시작](./learning-records/0037-osc-7501-baseline.md)
 - [0038 - OSC 7501 osc-basics 확인 결과: printf 표기와 실제 byte 혼동](./learning-records/0038-osc-basics-printf-notation-gap.md)
+
+## Database Storage & Indexing
+
+### DDIA ch04 OLTP 색인: B-tree, LSM-tree, secondary index, CRUD
+
+**Lessons**
+
+- [0056 - SELECT 하나가 B-tree를 내려가는 길](./lessons/0056-btree-select-page-walk.html)
+  — page 단위 root→leaf 하강을 단계별로 직접 실행, log₂ vs log₅₀₀ 깊이 계산기, CRUD 지도
+
+**Learning Records**
+
+- [0039 - DB 색인 미션 시작](./learning-records/0039-db-index-mission-baseline.md)
+- [0040 - btree-lookup: 시간복잡도는 알지만 page 하강은 없음](./learning-records/0040-btree-lookup-knows-big-o-not-pages.md)

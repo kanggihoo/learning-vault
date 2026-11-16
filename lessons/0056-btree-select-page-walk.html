@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SELECT 하나가 B-tree를 내려가는 길 — page 단위로 보기</title>
+  <link rel="stylesheet" href="../assets/lesson.css">
+  <link rel="stylesheet" href="../assets/diagram.css">
+</head>
+<body>
+<main class="std">
+
+  <p class="d-label-sm">DB 색인 (DDIA ch04 OLTP) · 1/? · 레슨 0056 · 대상: <code>btree-lookup</code></p>
+  <h1>SELECT 하나가 B-tree를 내려가는 길</h1>
+
+  <p class="lead">
+    "index를 쓰면 O(n)이 O(log n)이 된다"는 맞는 말이다. 이 레슨은 그 문장 안에 숨은 그림을 꺼낸다.
+    DB는 <strong>무엇을</strong>(page) <strong>어떤 순서로</strong>(root → leaf) 읽는가?
+    그리고 1억 row에서도 <strong>4번이면 끝나는 이유</strong>는 무엇인가? log의 밑이 2가 아니기 때문이다.
+  </p>
+
+  <p class="note">
+    <strong>이 레슨 하나로 얻는 것.</strong>
+    <code>WHERE id = 4200</code>이 실행될 때 디스크에서 page가 하나씩 열리는 장면을 머릿속에 재생할 수 있다.
+    이 장면은 CRUD 네 연산 모두의 <strong>첫 단계</strong>다(§7).
+  </p>
+
+  <h2>§0 · 이 레슨에서 쓰는 용어</h2>
+  <div class="terms">
+    <b>page</b><div>디스크를 자르는 고정 크기 단위. 전통적으로 4 KiB이고 PostgreSQL 기본값은 8 KiB, MySQL 기본값은 16 KiB다. DB는 byte 하나가 아니라 <em>page 하나를 통째로</em> 읽고 쓴다.</div>
+    <b>page 번호</b><div>page마다 붙는 번호. 다른 page를 가리키는 "디스크 위의 포인터"로 쓰인다. 파일 하나에 다 있으면 <code>번호 × page 크기</code> = 파일 안의 byte 위치다.</div>
+    <b>root</b><div>검색이 항상 시작되는 맨 위 page.</div>
+    <b>경계 key</b><div>page 안에서 child 참조 사이사이에 놓인 key. "여기부터는 오른쪽 child 담당"이라는 경계선이다.</div>
+    <b>leaf page</b><div>맨 아래 page. key와 그 값(또는 값이 있는 page를 가리키는 참조)이 실제로 들어 있다.</div>
+    <b>branching factor</b><div>page 하나가 가리키는 child 수. 실제로는 수백이다.</div>
+  </div>
+  <p class="sm">출처: DDIA 2판 ch04 「B-tree」 절 (<a href="https://github.com/Vonng/ddia/blob/main/content/zh/ch4.md">원문</a>).</p>
+
+  <h2 id="s1">§1 · 네 답에서 맞은 것, 빠진 것</h2>
+  <p>
+    "full scan보다 훨씬 빠르게, log 시간에 찾는다"는 방향이 정확하다. 빠진 건 그 log가 <strong>무엇을 세는지</strong>다.
+    디스크 기반 DB에서 비싼 건 비교 연산이 아니라 <strong>page를 읽는 횟수</strong>다.
+    그래서 B-tree의 O(log n)은 "page를 몇 번 열어야 하나"로 읽어야 한다. 그 횟수는 <strong>트리의 깊이(depth)</strong>와 같다.
+  </p>
+
+
+  <h2 id="s2">§2 · page란: 디스크를 고정 크기로 자른 칸</h2>
+  <p>
+    DB의 데이터는 결국 디스크 위의 파일이다. DB는 이 파일을 <strong>같은 크기의 칸</strong>으로 잘라서 다룬다. 그 칸 하나가 <strong>page</strong>다.
+    책이 쪽(page) 단위로 나뉘어 있는 것과 같다. 크기는 DB마다 정해져 있다. 전통적으로 4 KiB이고 PostgreSQL 기본값은 8 KiB, MySQL 기본값은 16 KiB다.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 820 230" role="img" aria-label="DB 파일이 같은 크기의 page로 나뉜 모습과 page 하나를 확대한 그림">
+      <text class="d-title" x="20" y="24">DB 파일 하나 = page가 줄지어 있는 것</text>
+      <rect class="d-box" x="20"  y="40" width="90" height="40"/><text class="d-label-mono" x="65"  y="65" text-anchor="middle">#0</text>
+      <rect class="d-box" x="115" y="40" width="90" height="40"/><text class="d-label-mono" x="160" y="65" text-anchor="middle">#1</text>
+      <rect class="d-box" x="210" y="40" width="90" height="40"/><text class="d-label-mono" x="255" y="65" text-anchor="middle">#2</text>
+      <rect class="d-box-b" x="305" y="40" width="90" height="40"/><text class="d-label-mono" x="350" y="65" text-anchor="middle">#3</text>
+      <rect class="d-box" x="400" y="40" width="90" height="40"/><text class="d-label-mono" x="445" y="65" text-anchor="middle">#4</text>
+      <rect class="d-box" x="495" y="40" width="90" height="40"/><text class="d-label-mono" x="540" y="65" text-anchor="middle">#5</text>
+      <text class="d-label" x="600" y="65">… 수십만 장</text>
+      <text class="d-label-sm" x="20" y="98">칸마다 크기가 같다 (예: 8 KiB). 그래서 page #3의 위치 = 3 × 8 KiB = 파일의 24 KiB 지점. 번호만 알면 바로 찾아간다.</text>
+
+      <line class="d-line" x1="350" y1="80" x2="250" y2="122"/>
+      <line class="d-line" x1="350" y1="80" x2="560" y2="122"/>
+      <rect class="d-box-b" x="250" y="122" width="310" height="80"/>
+      <text class="d-label" x="405" y="142" text-anchor="middle">page #3 안</text>
+      <text class="d-label-mono" x="405" y="162" text-anchor="middle">key 4000 · key 4001 · … · key 4200 · …</text>
+      <text class="d-label-sm" x="405" y="182" text-anchor="middle">key 여러 개가 정렬돼 함께 들어 있다</text>
+      <text class="d-label-sm" x="410" y="222" text-anchor="middle">key 4200 하나만 필요해도 DB는 page #3을 <tspan font-weight="700">통째로</tspan> 읽는다</text>
+    </svg>
+    <figcaption>DB가 디스크를 읽고 쓰는 단위는 byte가 아니라 page다. 그래서 속도는 "몇 장을 읽었나"로 정해진다.</figcaption>
+  </figure>
+
+  <p>
+    여기서 두 가지가 나온다.
+    ① <strong>full scan</strong>은 4200을 찾으려고 #0부터 끝까지 모든 page를 읽는 것이다.
+    ② <strong>page 번호는 포인터처럼 쓸 수 있다.</strong> 한 page 안에 "다음은 page #3을 봐"라고 적어 두면 그 칸으로 바로 갈 수 있다. 이게 다음 절의 나무를 만든다.
+  </p>
+  <p class="sm">출처: DDIA ch04 「B-tree」 — page는 고정 크기 블록이고 page 번호로 서로를 가리킨다. 파일 하나에 있으면 page 번호 × page 크기가 byte 위치다.</p>
+
+  <h2 id="s3">§3 · root, 중간 page, leaf: page로 만든 나무</h2>
+  <p>
+    page가 다른 page의 번호를 적어 둘 수 있으니, page를 <strong>나무 모양</strong>으로 연결할 수 있다. 이게 B-tree다. page는 맡은 일에 따라 세 종류로 나뉜다.
+    책의 목차로 생각하면 쉽다. <em>대목차 → 소목차 → 본문 쪽</em>.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 820 300" role="img" aria-label="root, 중간 page, leaf page의 역할을 층별로 나타낸 그림">
+      <text class="d-label-sm" x="20" y="48">1층</text>
+      <text class="d-label-sm" x="20" y="148">2층</text>
+      <text class="d-label-sm" x="20" y="248">3층</text>
+
+      <rect class="d-box-a" x="300" y="24" width="220" height="44"/>
+      <text class="d-label" x="410" y="42" text-anchor="middle">root page (1장)</text>
+      <text class="d-label-sm" x="410" y="60" text-anchor="middle">0~2999 / 3000~5999 / 6000~ 중 어디?</text>
+      <text class="d-label-sm" x="540" y="42">대목차. 검색은 항상 여기서 시작</text>
+
+      <rect class="d-box" x="70"  y="124" width="180" height="44"/>
+      <text class="d-label-sm" x="160" y="150" text-anchor="middle">0~2999를 더 잘게</text>
+      <rect class="d-box-a" x="320" y="124" width="180" height="44"/>
+      <text class="d-label" x="410" y="142" text-anchor="middle">중간 page</text>
+      <text class="d-label-sm" x="410" y="160" text-anchor="middle">3000~3999 / 4000~4999 / …</text>
+      <rect class="d-box" x="570" y="124" width="180" height="44"/>
+      <text class="d-label-sm" x="660" y="150" text-anchor="middle">6000~를 더 잘게</text>
+      <text class="d-label-sm" x="520" y="190">소목차. 범위를 더 좁힌다 (실제로는 이런 층이 1~2개 더 있을 수 있다)</text>
+
+      <line class="d-line" x1="410" y1="68" x2="160" y2="124"/>
+      <line class="d-line-a" x1="410" y1="68" x2="410" y2="124"/>
+      <line class="d-line" x1="410" y1="68" x2="660" y2="124"/>
+
+      <rect class="d-box" x="250" y="224" width="120" height="44"/>
+      <text class="d-label-sm" x="310" y="250" text-anchor="middle">3000~3999</text>
+      <rect class="d-box-b" x="380" y="224" width="120" height="44"/>
+      <text class="d-label" x="440" y="242" text-anchor="middle">leaf page</text>
+      <text class="d-label-sm" x="440" y="260" text-anchor="middle">4000~4999의 key + 값</text>
+      <rect class="d-box" x="510" y="224" width="120" height="44"/>
+      <text class="d-label-sm" x="570" y="250" text-anchor="middle">5000~5999</text>
+      <text class="d-label-sm" x="640" y="290">본문 쪽. 실제 데이터는 여기에만 있다</text>
+
+      <line class="d-line" x1="410" y1="168" x2="310" y2="224"/>
+      <line class="d-line-a" x1="410" y1="168" x2="440" y2="224"/>
+      <line class="d-line" x1="410" y1="168" x2="570" y2="224"/>
+    </svg>
+    <figcaption>초록 선이 4200을 찾는 길이다. 층마다 page를 한 장만 열고, 내려갈수록 범위가 좁아진다.</figcaption>
+  </figure>
+
+  <div class="terms">
+    <b>root</b><div>맨 위 page 한 장. key 범위를 크게 나눈 경계와 아래 page 번호만 있다. 데이터는 없다.</div>
+    <b>중간 page</b><div>root와 leaf 사이. 받은 범위를 더 잘게 나눈 경계와 아래 page 번호만 있다.</div>
+    <b>leaf</b><div>맨 아래 page. 실제 key와 그 값(또는 값이 있는 곳의 위치)이 들어 있다.</div>
+    <b>root → leaf</b><div>위에서부터 "이 key는 어느 범위?"를 묻고 그 page로 내려가기를 반복해 leaf에 닿는 것. 층마다 1장씩 읽는다.</div>
+  </div>
+  <p class="sm">출처: DDIA ch04 「B-tree」 그림 4-5와 그 설명(key 251을 찾을 때 root에서 200~300 범위 page로, 다시 250~270 범위 page로 내려간다).</p>
+
+  <h2 id="s4">§4 · page 하나를 확대하면</h2>
+  <p>
+    B-tree의 page 안에는 <em>참조 · 경계 key · 참조 · 경계 key · 참조…</em>가 번갈아 들어 있다.
+    아래는 root page에 경계 key가 둘뿐인 장난감 예시다. 실제 page에는 이런 칸이 수백 개 있다.
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 760 230" role="img" aria-label="root page 하나의 내부: 참조와 경계 key가 번갈아 놓인 모습">
+      <text class="d-title" x="230" y="24">page #1 (root) — 8 KiB 한 덩어리</text>
+      <rect class="d-box-a" x="200" y="38" width="360" height="56"/>
+      <line class="d-line-d" x1="272" y1="44" x2="272" y2="88"/>
+      <line class="d-line-d" x1="344" y1="44" x2="344" y2="88"/>
+      <line class="d-line-d" x1="416" y1="44" x2="416" y2="88"/>
+      <line class="d-line-d" x1="488" y1="44" x2="488" y2="88"/>
+      <circle cx="236" cy="66" r="5" fill="#52606d"/>
+      <text class="d-label-mono" x="308" y="71" text-anchor="middle">3000</text>
+      <circle cx="380" cy="66" r="5" fill="#52606d"/>
+      <text class="d-label-mono" x="452" y="71" text-anchor="middle">6000</text>
+      <circle cx="524" cy="66" r="5" fill="#52606d"/>
+
+      <line class="d-line" x1="236" y1="71" x2="110" y2="150"/>
+      <line class="d-line-a" x1="380" y1="71" x2="380" y2="150"/>
+      <line class="d-line" x1="524" y1="71" x2="650" y2="150"/>
+
+      <rect class="d-box" x="40" y="150" width="140" height="44"/>
+      <text class="d-label" x="110" y="170" text-anchor="middle">page #2</text>
+      <text class="d-label-sm" x="110" y="186" text-anchor="middle">key &lt; 3000 담당</text>
+      <rect class="d-box-b" x="310" y="150" width="140" height="44"/>
+      <text class="d-label" x="380" y="170" text-anchor="middle">page #3</text>
+      <text class="d-label-sm" x="380" y="186" text-anchor="middle">3000 ≤ key &lt; 6000</text>
+      <rect class="d-box" x="580" y="150" width="140" height="44"/>
+      <text class="d-label" x="650" y="170" text-anchor="middle">page #4</text>
+      <text class="d-label-sm" x="650" y="186" text-anchor="middle">6000 ≤ key 담당</text>
+
+      <text class="d-label-sm" x="380" y="218" text-anchor="middle">● = child page 번호(참조). 4200은 3000과 6000 사이 → 가운데 참조만 따라간다.</text>
+    </svg>
+    <figcaption>root page에서 하는 일은 하나다. 경계 key와 비교해 <strong>참조 하나를 고르는 것</strong>. 나머지 두 child page는 열지 않는다.</figcaption>
+  </figure>
+
+  <p>
+    이진 탐색 트리의 노드가 "왼쪽이냐 오른쪽이냐"를 고른다면, B-tree의 page는 "수백 갈래 중 하나"를 고른다.
+    DDIA는 이 구조를 B+ 트리라고 부르기도 한다고 짚지만, 지금은 구분할 필요가 없다.
+  </p>
+
+  <h2 id="s5">§5 · 직접 내려가 보기</h2>
+  <p>
+    아래는 3층짜리 B-tree다(branching factor 3). <strong>찾기 시작</strong>을 누르고 <strong>다음 page 읽기</strong>를 한 번씩 눌러 보자.
+    주황색이 지금 읽는 page, 초록색이 이미 지나온 길이다. key를 바꿔서도 해 보자. <code>150</code>, <code>8999</code>, <code>9500</code>은 어떻게 될까?
+  </p>
+
+  <div class="btree-viz" data-key="4200" data-tree='{"keys":[3000,6000],"children":[
+    {"keys":[1000,2000],"children":[{"leaf":[0,999]},{"leaf":[1000,1999]},{"leaf":[2000,2999]}]},
+    {"keys":[4000,5000],"children":[{"leaf":[3000,3999]},{"leaf":[4000,4999]},{"leaf":[5000,5999]}]},
+    {"keys":[7000,8000],"children":[{"leaf":[6000,6999]},{"leaf":[7000,7999]},{"leaf":[8000,8999]}]}
+  ]}'></div>
+
+  <p>
+    눈여겨볼 것은 <strong>"읽은 page" 숫자가 key와 상관없이 항상 3</strong>이라는 점이다.
+    B-tree는 page가 꽉 차면 쪼개고 부모를 갱신하는 방식으로 자라서 모든 leaf가 같은 깊이에 있다(<em>balanced</em>).
+    그래서 어떤 key를 찾든 읽는 횟수는 깊이와 같다. 쪼개는 장면은 다음 레슨에서 본다.
+  </p>
+
+  <h2 id="s6">§6 · 왜 1억 개여도 몇 번이면 끝나나</h2>
+  <p>
+    깊이 d인 트리에서 page 하나가 b개를 가리키면, 맨 아래에는 대략 b<sup>d</sup>개가 들어간다.
+    거꾸로 n개를 담으려면 깊이는 log<sub>b</sub> n이다. O(log n)은 맞지만, <strong>밑 b가 결정적</strong>이다.
+  </p>
+
+  <div class="depth-calc"></div>
+
+  <p>
+    1억 개를 이진 트리에 넣으면 27번이다. page 하나가 500개를 가리키면 3번이다.
+    page 한 번 읽기가 디스크 I/O 한 번일 수 있으니 이 차이가 곧 속도 차이다.
+    DDIA의 숫자로는 <strong>4층, 4 KiB page, branching factor 500이면 최대 250 TB</strong>를 담는다. 대부분의 DB는 3~4층이면 충분하다.
+  </p>
+  <p class="sm">
+    출처: DDIA ch04 「B-tree」 — "대부분의 DB는 B-tree가 서너 층이면 충분하다… 4층, page 4 KiB, branching factor 500인 트리는 최대 250 TB를 담을 수 있다."
+    root처럼 자주 읽히는 위쪽 page는 보통 메모리(buffer)에 이미 올라와 있어 실제 디스크 읽기는 더 적을 수 있다. DDIA는 B-tree 구현이 page를 메모리에 버퍼링한다고 설명한다(「B-tree를 믿을 수 있게 만들기」 절).
+  </p>
+
+  <h2 id="s7">§7 · CRUD 지도: 모든 연산이 이 하강으로 시작한다</h2>
+  <p>
+    오늘 본 root → leaf 하강은 SELECT만의 것이 아니다. 네 연산 모두 "그 key가 있어야 할 leaf"를 먼저 찾아야 한다.
+    차이는 <strong>leaf에 도착한 뒤에 하는 일</strong>이다.
+  </p>
+  <table>
+    <tr><th>연산</th><th>하강 후 leaf에서 하는 일</th><th>어디서 다루나</th></tr>
+    <tr><td><code>SELECT … WHERE id=4200</code></td><td>값(또는 값의 위치)을 읽는다</td><td>이 레슨</td></tr>
+    <tr><td><code>UPDATE … WHERE id=4200</code></td><td>새 값을 담은 page로 그 leaf page를 <strong>제자리에서 덮어쓴다</strong></td><td>다음 레슨 + WAL 레슨</td></tr>
+    <tr><td><code>INSERT (id=4201)</code></td><td>범위가 맞는 leaf에 끼워 넣는다. 자리가 없으면 page를 <strong>둘로 쪼개고</strong> 부모를 갱신한다</td><td>다음 레슨</td></tr>
+    <tr><td><code>DELETE … WHERE id=4200</code></td><td>key를 지운다. page를 합쳐야 할 수도 있어서 더 복잡하다</td><td>다음 레슨에서 짧게</td></tr>
+  </table>
+  <p class="sm">출처: DDIA ch04 「B-tree」 — 갱신은 leaf를 찾아 덮어쓰기, 추가는 범위가 맞는 page에 넣고 가득 차면 분할, "key를 지우면 노드를 합쳐야 할 수도 있어 처리가 더 복잡하다".</p>
+  <p>
+    테이블에 secondary index가 있으면 이 하강이 <strong>index마다</strong> 일어난다. 어떤 index의 어느 page가 바뀌는지는 secondary index 레슨에서 이 표를 확장한다.
+    LSM-tree는 이 표의 오른쪽 칸이 통째로 다르다. 덮어쓰지 않고 덧붙이기 때문이다. LSM 레슨들이 같은 표를 LSM 버전으로 채운다.
+  </p>
+
+  <h2>연습 (결과는 기록되지 않는다)</h2>
+
+  <section class="quiz">
+    <p><strong>Q1.</strong> row 1억 개, branching factor 500인 B-tree에서 <code>WHERE id = 77</code> 하나를 찾을 때 읽는 page 수는 대략?</p>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. 27은 이진 트리(밑 2)일 때의 깊이다. page 하나가 500갈래로 나뉘면 log₅₀₀(1억) ≈ 3이다.">page 27번 정도</button>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. 1억 번은 full scan이다. index는 바로 이걸 피하려고 만든다.">page 1억 번 정도</button>
+    <button type="button" data-target="a1" data-answer="correct">page 3번 정도</button>
+    <button type="button" data-target="a1" data-answer="wrong" data-hint="오답. 1만 번은 √n쯤이다. B-tree는 깊이만큼만 읽으니 log₅₀₀(1억) ≈ 3이다.">page 1만 번 정도</button>
+    <p class="answer" id="a1"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q2.</strong> 4200을 찾는 중에 root page를 읽었다. root page에서 DB가 하는 일은?</p>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. 그러면 index를 쓰는 의미가 없다. root는 경계만 보고 child 하나만 고른다.">child page를 모두 열어 4200이 어디 있는지 확인한다</button>
+    <button type="button" data-target="a2" data-answer="correct">경계 key와 비교해 child page 참조 하나를 고른다</button>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. root에는 경계 key와 참조만 있다. 실제 값은 leaf page에 있다.">root page 안에서 4200의 row 값을 바로 꺼낸다</button>
+    <button type="button" data-target="a2" data-answer="wrong" data-hint="오답. 그건 이진 탐색 트리의 좌/우 선택이다. B-tree page는 수백 갈래 중 하나를 고른다.">4200을 기준으로 왼쪽과 오른쪽 중 하나를 고른다</button>
+    <p class="answer" id="a2"></p>
+  </section>
+
+  <section class="quiz">
+    <p><strong>Q3.</strong> <code>UPDATE users SET name='kim' WHERE id = 4200</code>. B-tree에서 가장 먼저 일어나는 일은?</p>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 끝에 덧붙이는 건 LSM 방식이다. B-tree는 해당 leaf를 찾아서 제자리에서 덮어쓴다.">파일 끝에 새 값을 담은 레코드를 덧붙인다</button>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 그건 index 없이 하는 full scan이다.">leaf page를 처음부터 끝까지 차례로 훑는다</button>
+    <button type="button" data-target="a3" data-answer="wrong" data-hint="오답. 새 root는 split이 꼭대기까지 올라왔을 때만 생긴다. UPDATE는 key 범위를 바꾸지 않는다.">root 위에 새 root page를 하나 더 만든다</button>
+    <button type="button" data-target="a3" data-answer="correct">SELECT와 똑같이 root부터 leaf까지 내려간다</button>
+    <p class="answer" id="a3"></p>
+  </section>
+
+  <h2>가장 좋은 1차 출처</h2>
+  <p>
+    DDIA 2판 ch04 「B-tree」 절 (<a href="https://github.com/Vonng/ddia/blob/main/content/zh/ch4.md">원문, 중국어 번역판</a>, 로컬 사본은
+    <code>ai-book-study/designing-data-intensive-applications/Preprocessed/chapters/04</code>).
+    그림 4-5(key 251 찾기)가 이 레슨 §5와 같은 장면이다. 레슨을 본 뒤에 읽으면 두 문단이면 된다.
+  </p>
+
+  <h2>막히면 에이전트에게 물어보자</h2>
+  <p>이 레슨의 선생은 에이전트다. 레슨에 없는 것도 물어도 된다.</p>
+  <ul>
+    <li>"page 하나에 경계 key가 수백 개면, page 안에서 4200을 고르는 건 또 어떻게 빨리 해?"</li>
+    <li>"<code>WHERE id BETWEEN 4000 AND 4300</code> 같은 범위 조회는 이 그림에서 어떻게 돼?"</li>
+    <li>"MySQL에서 PK leaf에는 row 전체가 있다던데, 그럼 leaf의 '값'이 row야?" (secondary index 레슨의 입구)</li>
+  </ul>
+
+  <p class="sm">이 레슨을 마치면 채팅에서 확인 질문 1개가 이어진다. 레슨의 퀴즈와는 별개로 기록된다.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/btree-viz.js"></script>
+</body>
+</html>
