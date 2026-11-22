@@ -50,6 +50,26 @@ This index points to saved learning material in this Learning Vault.
 - [0007 - OAuth2 fragment와 implicit flow 구분](./learning-records/0007-oauth2-fragment-implicit-flow-pkce.md)
 - [0008 - OAuth2 최종 정리본 저장 위치 보정](./learning-records/0008-oauth2-final-summary-placement-corrected.md)
 
+### Proxy Forward Auth / SSO
+
+**Lessons**
+
+- [0057 - ForwardAuth 판정 뒤 누가 응답할까](./lessons/0057-proxy-forward-auth-decision-contract.html) · [초안](./lessons/0057-proxy-forward-auth-decision-contract.md)
+- [0058 - 앱은 왜 Remote-User를 믿을 수 있을까](./lessons/0058-proxy-forward-auth-trust.html) · [초안](./lessons/0058-proxy-forward-auth-trust.md)
+- [0059 - 한 번 로그인하면 어느 앱까지 열릴까](./lessons/0059-proxy-sso-scope.html) · [초안](./lessons/0059-proxy-sso-scope.md)
+- [0060 - 브라우저의 로그아웃과 DB 세션 폐기](./lessons/0060-proxy-session-revocation.html) · [초안](./lessons/0060-proxy-session-revocation.md)
+- [0061 - 접근 거부와 판정 실패를 구분하기](./lessons/0061-proxy-auth-outage.html) · [초안](./lessons/0061-proxy-auth-outage.md)
+- [0062 - 선택 · ID Token의 서명을 어떤 키로 검증할까](./lessons/0062-proxy-oidc-jwks.html) · [초안](./lessons/0062-proxy-oidc-jwks.md)
+
+**References**
+
+- [0026 - Proxy 단 인증 빠른 참조](./reference/0026-proxy-auth-quick-reference.html)
+- [Proxy 단 인증 근거와 lesson arc](./RESEARCH.md#mission--proxy-단-인증sso-개념-이해)
+
+**Learning Records**
+
+- [0041 - Forward Auth 판정과 앱의 최종 응답](./learning-records/0041-proxy-auth-decision-vs-client-response.md)
+
 ## Frontend
 
 ### React Hooks

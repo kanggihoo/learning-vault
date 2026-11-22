@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "OIDC code 교환과 JWKS 조회",
+    "subtitle": "등록한 callback에서 시작하는 서명 검증 예시",
+    "locale": "ko",
+    "output": "figures/0062-oidc-code-jwks-flow.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {"id":"browser","type":"external","label":"브라우저"},
+    {"id":"rp","type":"backend","label":"RP 백엔드"},
+    {"id":"op","type":"security","label":"OpenID Provider"}
+  ],
+  "messages": [
+    {"id":"authorization","from":"browser","to":"op","y":171,"label":"등록된 callback + challenge","variant":"security"},
+    {"id":"redirect","from":"op","to":"browser","y":216,"label":"callback으로 이동","variant":"return"},
+    {"id":"callback","from":"browser","to":"rp","y":261,"label":"callback?code=…"},
+    {"id":"exchange","from":"rp","to":"op","y":306,"label":"code + verifier","variant":"security"},
+    {"id":"token","from":"op","to":"rp","y":351,"label":"서명된 ID Token","variant":"return"},
+    {"id":"keyset","from":"rp","to":"op","y":396,"label":"필요할 때 JWKS 조회","variant":"security"},
+    {"id":"public-key","from":"op","to":"rp","y":441,"label":"공개 키 집합","variant":"return"},
+    {"id":"app-session","from":"rp","to":"browser","y":486,"label":"검증 뒤 세션 발급","variant":"return"}
+  ]
+}

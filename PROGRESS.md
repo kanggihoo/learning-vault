@@ -26,3 +26,17 @@
 | secondary-index | PK가 아닌 컬럼으로 찾을 때 index에 PK를 적는 방식과 row 위치를 적는 방식이 row까지 가는 길을 비교하고, covering이면 무엇이 생략되는지 말한다 | table-storage | claimed | LR-0039 | 2026-11-16 | |
 | lsm-crud | LSM에서 CRUD 네 연산이 각각 무엇을 쓰고 읽는지(memtable·SSTable·tombstone·compaction·Bloom filter) 예측한다 | | unassessed | | | |
 | lsm-vs-btree | workload가 주어지면 LSM과 B-tree 중 무엇이 유리한지 쓰기 방식·읽기 경로로 근거를 댄다 | btree-write, lsm-crud | unassessed | | | |
+
+# Proxy 단 인증(SSO) Progress
+
+Intake의 자기보고와 LR-0041의 판정을 보존했다. L1부터 L5까지가 기본 arc이며 O1은 선택이다. 수업 후 확인과 복습은 요청 시 진행한다.
+
+| id | target | prereqs | state | evidence | last checked | next check |
+|---|---|---|---|---|---|---|
+| proxy-auth-oauth-basics | OAuth 로그인에서 백엔드 callback과 이후 JWT·세션 cookie가 쓰이는 곳을 짚는다 | | claimed | | | |
+| proxy-forward-auth-decision | 인증 서비스의 응답을 보고 별도 설정 없는 proxy에서 앱 도달 여부와 클라이언트 응답 주체를 예측한다 | proxy-auth-oauth-basics | needs-repair | LR-0041 | 2026-11-21 | 다음 세션, 요청 시 |
+| proxy-forward-auth-trust | 원 요청·인증 서브요청·앱 요청의 host, path, method를 대조하고 앱이 읽는 신원 헤더의 출처와 통제 지점을 짚는다 | proxy-forward-auth-decision | unassessed | | | |
+| proxy-sso-scope | 두 앱에서 cookie 수신 범위를 그려 앱·중앙 로그아웃 뒤 재방문을 예측한다 | proxy-forward-auth-trust | unassessed | | | |
+| proxy-session-revocation | DB 세션과 서명·만료만 검사하는 JWT의 갱신·만료·폐기 전후를 비교하고 확인할 값을 짚는다 | proxy-sso-scope | unassessed | | | |
+| proxy-auth-outage | 응답·오류 로그·앱 도달 건수로 명시적 거부와 인증 서비스 장애를 구분한다 | proxy-forward-auth-decision, proxy-session-revocation | unassessed | | | |
+| proxy-oidc-jwks | 등록 callback부터 ID Token까지 따라가며 RP가 신뢰하는 issuer의 키를 고르고 검증할 항목을 짚는다 | proxy-auth-oauth-basics, proxy-sso-scope | unassessed | | | |

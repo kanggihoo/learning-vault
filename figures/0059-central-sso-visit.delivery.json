@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "164039e0-baf4-49e8-8a97-f10b3e87edb7",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/kkh/Desktop/learning-vault/figures/0059-central-sso-visit.json",
+  "output": "/Users/kkh/Desktop/learning-vault/figures/0059-central-sso-visit.html",
+  "specification": {
+    "sha256": "3c9a07c5091bc637826f2cf809c7a06e6258d303bb98bffb0cfa50c5d53d0555",
+    "bytes": 1216
+  },
+  "artifact": {
+    "sha256": "2b292f6a17205884622336bf03a80c91709dc5829074609c6612891f479b10ce",
+    "bytes": 831212
+  }
+}

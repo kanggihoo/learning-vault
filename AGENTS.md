@@ -11,8 +11,10 @@ Before working in this repository, read [CONTEXT.md](./CONTEXT.md). Use its lang
 Use the `tutor` skill for Teach Sessions. The following storage structure is the project standard:
 
 - `MISSION.md`
+- `RESEARCH.md`
 - `RESOURCES.md`
 - `NOTES.md`
+- `lessons/*.md`
 - `lessons/*.html`
 - `reference/*.html`
 - `summaries/*.md`

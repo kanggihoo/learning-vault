@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "ForwardAuth 허용 경로",
+    "subtitle": "Traefik v3.6.2와 tinyauth의 코드·문서 기반 예측",
+    "locale": "ko",
+    "output": "figures/0057-forward-auth-request-flow.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/tinyauthapp/tinyauth",
+      "revision": "6dfdcf048a82491e556b8635eaafb7cb557a902a"
+    }
+  },
+  "participants": [
+    {"id":"browser","type":"external","label":"브라우저"},
+    {"id":"proxy","type":"backend","label":"Traefik"},
+    {"id":"auth","type":"security","label":"tinyauth","sources":[
+      {"path":"internal/controller/proxy_controller.go","line":388,"end_line":417,"label":"ForwardAuth 요청 컨텍스트"},
+      {"path":"internal/middleware/context_middleware.go","line":79,"end_line":96,"label":"세션 cookie 인증"},
+      {"path":"internal/controller/proxy_controller.go","line":268,"end_line":287,"label":"허용 응답과 신원 헤더"}
+    ]},
+    {"id":"reports","type":"backend","label":"reports 앱"}
+  ],
+  "messages": [
+    {"id":"original","from":"browser","to":"proxy","y":171,"label":"GET /reports + Cookie","variant":"emphasis"},
+    {"id":"ask-auth","from":"proxy","to":"auth","y":220,"label":"GET /api/auth/traefik","variant":"security"},
+    {"id":"permit","from":"auth","to":"proxy","y":269,"label":"200 + Remote-User","variant":"return"},
+    {"id":"forward-app","from":"proxy","to":"reports","y":329,"label":"허용 후 GET /reports","variant":"emphasis"},
+    {"id":"app-result","from":"reports","to":"proxy","y":378,"label":"앱 응답 404 (예시)","variant":"return"},
+    {"id":"final","from":"proxy","to":"browser","y":427,"label":"최종 응답 404","variant":"return"}
+  ]
+}

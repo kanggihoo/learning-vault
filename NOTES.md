@@ -1,6 +1,11 @@
 # Notes
 
 ## Current
+- 미션: proxy 단 인증(SSO) 개념 이해.
+- lesson: lessons/0057-proxy-forward-auth-decision-contract.html
+- pending: review of the 0057–0062 drafts (md sources)
+
+## 재개 대기
 - 미션: DB 색인이 CRUD에서 어떻게 움직이는지 (DDIA ch04 OLTP). 2026-11-16 시작, `tutor` skill로 진행.
 - lesson: lessons/0056-btree-select-page-walk.html
 - pending: exit check btree-lookup (checks/btree-lookup.md v2). 통과하면 btree-write(빈 B-tree가 split으로 자라는 과정) 레슨으로. 진단 2(split)는 "몰라" → unassessed 유지.

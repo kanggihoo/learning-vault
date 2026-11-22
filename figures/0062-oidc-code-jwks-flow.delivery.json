@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "aecd7e73-d474-45b8-8eff-e56d4debf4be",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/kkh/Desktop/learning-vault/figures/0062-oidc-code-jwks-flow.json",
+  "output": "/Users/kkh/Desktop/learning-vault/figures/0062-oidc-code-jwks-flow.html",
+  "specification": {
+    "sha256": "cbaa89fd1f4de5067abe76655334fd67f48f42596d32aebfb67dafb9cef0db12",
+    "bytes": 1376
+  },
+  "artifact": {
+    "sha256": "f9f4a63781a76499d7f7a22bdb459a65e28ba97e27afc5fad39f12f86640aa55",
+    "bytes": 832183
+  }
+}

@@ -400,3 +400,24 @@
 
 - [DDIA 2판 ch04 存储与检索 (Vonng 중국어 번역)](https://github.com/Vonng/ddia/blob/main/content/zh/ch4.md)
   로컬 사본: `ai-book-study/designing-data-intensive-applications/Preprocessed/chapters/04`. Use for: B-tree page·split·WAL, LSM-tree(memtable·SSTable·compaction·tombstone·Bloom filter), secondary index와 clustered/heap/covering, LSM vs B-tree 비교. 엔진별 세부(InnoDB, PostgreSQL)는 공식 문서로 따로 확인한다.
+
+## Proxy Forward Auth / SSO Knowledge
+
+- [Traefik v3.6 ForwardAuth](https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/forwardauth/) · [v3.6.2 forward.go](https://github.com/traefik/traefik/blob/v3.6.2/pkg/middlewares/auth/forward.go)
+  2xx가 원 요청을 진행시키는 계약과 판정 요청 헤더, 신원 헤더 복사, 갱신 cookie 전달 옵션을 대조한다.
+- [Nginx auth_request](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html)
+  2xx·401·403과 그 밖의 서브요청 상태에서 기본 모듈이 어떤 결정을 하는지 확인한다.
+- [Envoy ext_authz](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/ext_authz/v3/ext_authz.proto#extensions-filters-http-ext-authz-v3-extauthz)
+  `failure_mode_allow`, `status_on_error`로 장애 시 허용·차단 계약을 확인한다.
+- [tinyauth @6dfdcf0](https://github.com/tinyauthapp/tinyauth/tree/6dfdcf048a82491e556b8635eaafb7cb557a902a)
+  판정 컨트롤러, 세션 서비스, OIDC provider 구현을 읽는다. 수업에서 쓴 줄 번호는 [RESEARCH.md](./RESEARCH.md)에 모았다.
+- [RFC 9110 §15.4.3](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.4.3)
+  302 및 Location이 브라우저의 다음 요청에 어떤 의미인지 확인한다.
+- [RFC 6265 §4.1.2, §5.3–5.4](https://www.rfc-editor.org/rfc/rfc6265.html#section-5.3)
+  Domain과 host-only 범위, 저장과 삭제, 전송 조건을 확인한다.
+- [RFC 7519 §4.1.4](https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1.4)
+  서명 JWT에 포함된 `exp`의 기본 의미를 확인한다.
+- [OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth) · [OIDC Discovery](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata) · [OIDC RP-Initiated Logout](https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout)
+  code 교환과 ID Token 검증, issuer의 `jwks_uri`, 중앙 로그아웃 계약을 읽는다.
+- [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517.html#section-4.5) · [RFC 7636](https://www.rfc-editor.org/rfc/rfc7636.html#section-4) · [RFC 6749](https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.2)
+  JWKS의 키 선택, PKCE S256의 확인 절차, code 일회성 규칙을 찾는다.

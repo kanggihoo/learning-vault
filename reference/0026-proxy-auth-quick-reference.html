@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proxy 단 인증 빠른 참조</title>
+  <link rel="stylesheet" href="../assets/tutor/lesson.css">
+</head>
+<body>
+<main class="lesson">
+  <header class="lesson-header">
+    <h1>Proxy 단 인증 빠른 참조</h1>
+    <p>요청을 추적할 때 볼 상태, 헤더, 저장 위치</p>
+  </header>
+
+  <h2>판정 상태</h2>
+  <table>
+    <thead><tr><th scope="col">인증 응답</th><th scope="col">Traefik ForwardAuth</th><th scope="col">Nginx auth_request</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">2xx</th><td>앱으로 진행</td><td>앱으로 진행</td></tr>
+      <tr><th scope="row">401 / 403</th><td>인증 응답 반환</td><td>같은 상태로 거부</td></tr>
+      <tr><th scope="row">302</th><td>유효한 Location과 이동 응답 반환</td><td>서브요청 오류</td></tr>
+    </tbody>
+  </table>
+  <p>기본 계약 기준. <a href="../lessons/0057-proxy-forward-auth-decision-contract.html">0057 판정 계약</a> · <a href="https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/forwardauth/">Traefik</a> · <a href="https://nginx.org/en/docs/http/ngx_http_auth_request_module.html">Nginx</a></p>
+
+  <h2>어느 연결에서 무엇을 볼까</h2>
+  <dl>
+    <dt><strong>인증 서비스에 들어온 요청</strong></dt>
+    <dd><code>Cookie</code>, 전달된 원 host/URI/method와 판정 요청의 실제 method. <code>TrustedProxies</code>는 tinyauth의 client IP 판단을 설정한다.</dd>
+    <dt><strong>보호 앱에 들어온 요청</strong></dt>
+    <dd>앱이 신원으로 쓰는 헤더 전체와 직접 접근 경로. <code>authResponseHeaders</code>의 관리 범위는 이름별로 확인한다.</dd>
+    <dt><strong>브라우저에 돌아온 응답</strong></dt>
+    <dd>이동이면 <code>Location</code>, 성공한 요청이면 앱 응답. 갱신 시 인증 응답과 최종 응답의 <code>Set-Cookie</code>를 대조한다.</dd>
+  </dl>
+  <p><a href="../lessons/0058-proxy-forward-auth-trust.html">0058 신뢰 경계</a> · <a href="https://doc.traefik.io/traefik/v3.6/reference/routing-configuration/http/middlewares/forwardauth/#configuration-options">Traefik 설정</a></p>
+
+  <h2>세션과 장애의 관측 지점</h2>
+  <ul>
+    <li>브라우저는 <code>Domain</code>·<code>Path</code> 등 전송 조건을 따른다. 중앙 host-only cookie와 각 앱 세션의 종료 효과는 각각 확인한다. <a href="../lessons/0059-proxy-sso-scope.html">0059 SSO 범위</a> · <a href="https://www.rfc-editor.org/rfc/rfc6265.html#section-5.4">RFC 6265 §5.4</a></li>
+    <li>갱신은 DB expiry, 인증 응답, 최종 응답, 브라우저 저장을 비교한다. 로그아웃 후 재방문은 화면 상태를, UUID의 행 조회는 서버 폐기를 보여 준다. <a href="../lessons/0060-proxy-session-revocation.html">0060 수명과 폐기</a> · <a href="https://github.com/tinyauthapp/tinyauth/blob/6dfdcf0/internal/service/auth_service.go#L416-L520">tinyauth @6dfdcf0</a></li>
+    <li>인증 서비스 응답 유무, proxy 오류 로그, 앱 도달 건수를 같은 요청에서 비교한다. Envoy ext_authz 기본 장애 응답도 403일 수 있다. <a href="../lessons/0061-proxy-auth-outage.html">0061 장애</a> · <a href="https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/ext_authz/v3/ext_authz.proto#extensions-filters-http-ext-authz-v3-extauthz">Envoy 설정</a></li>
+  </ul>
+
+  <h2>OIDC 서명 검증 지점</h2>
+  <p>등록 callback에 code가 도착한다. RP 백엔드가 교환하고 신뢰한 issuer의 <code>jwks_uri</code>에서 <code>kid</code>에 맞는 공개 키를 사용한다. RS256 서명과 <code>iss</code>, <code>aud</code>, <code>exp</code>, 보낸 경우 <code>nonce</code>를 확인한다. <a href="../lessons/0062-proxy-oidc-jwks.html">0062 선택 OIDC/JWKS</a> · <a href="https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation">OIDC Core §3.1.3.7</a></p>
+
+  <p>표와 관찰 항목은 코드·문서에 근거한다. 제품 사이의 HTTP 동작은 구축 단계에서 검증한다. <a href="../RESEARCH.md">근거와 확인 범위</a></p>
+</main>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "중앙 세션으로 두 번째 앱 열기",
+    "subtitle": "app A에서 이미 로그인했고 중앙 cookie가 남아 있는 경우",
+    "locale": "ko",
+    "output": "figures/0059-central-sso-visit.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {"id":"browser","type":"external","label":"브라우저"},
+    {"id":"app-b","type":"backend","label":"app B"},
+    {"id":"op","type":"security","label":"중앙 OP"}
+  ],
+  "messages": [
+    {"id":"visit","from":"browser","to":"app-b","y":171,"label":"app B 방문","variant":"emphasis"},
+    {"id":"start","from":"app-b","to":"browser","y":217,"label":"중앙 로그인으로 이동","variant":"return"},
+    {"id":"central","from":"browser","to":"op","y":263,"label":"인증 요청 + OP cookie","variant":"security"},
+    {"id":"reply","from":"op","to":"browser","y":309,"label":"기존 중앙 세션 확인 후 callback 이동","variant":"return"},
+    {"id":"callback","from":"browser","to":"app-b","y":355,"label":"app B callback"},
+    {"id":"session","from":"app-b","to":"browser","y":401,"label":"검증 뒤 app B 세션 발급","variant":"return"}
+  ]
+}
