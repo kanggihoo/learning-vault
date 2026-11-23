@@ -3,28 +3,48 @@ Lang: ko
 Target: 두 앱에서 cookie 수신 범위를 그려 앱·중앙 로그아웃 뒤 재방문을 예측한다.
 
 :::recap
-[앞선 레슨](./0058-proxy-forward-auth-trust.html)에서는 브라우저가 `reports` 호스트로 보낸 쿠키를 Traefik이 인증 서버에도 전달했다. 그렇다면 `reports`와 `dash`처럼 여러 앱이 있을 때, 브라우저가 어떤 기준으로 쿠키를 실어 보내고 로그인 상태가 어디까지 이어지는지 살펴보자.
+[앞선 레슨](./0058-proxy-forward-auth-trust.html)에서는 **Traefik(리버스 프록시) + tinyauth(인증 서버) + `reports`(보호 앱)** 구조에서 쿠키가 인증 서버로 전달되는 흐름을 봤다. 이제 앱이 `reports`와 `dash` 두 개로 늘어나면 "한 번 로그인했을 때 두 앱이 모두 열리는 SSO"를 어떻게 만들까? 여기에는 0057~0058에서 본 **프록시 ForwardAuth 방식**과, 앱이 직접 중앙 로그인 서버와 대화하는 **OIDC 방식** 두 가지가 있다.
 :::
 
 :::key
-한 번 로그인해 여러 앱을 여는 SSO 경험은 두 가지 구조로 만들 수 있다. 하나는 상위 도메인 쿠키를 여러 앱이 함께 쓰는 방식이고, 다른 하나는 중앙 인증 서버(OP)만 자기 쿠키를 갖고 각 앱(RP)이 자기만의 세션을 따로 만드는 방식이다. 두 구조는 **로그아웃했을 때 남는 세션 범위**가 완전히 다르다.
+한 번 로그인해 여러 앱을 여는 SSO(Single Sign-On) 경험은 두 가지 구조로 만들 수 있다. 첫째는 0057~0058에서 본 **프록시 ForwardAuth + 상위 도메인 쿠키 공유** 방식이고, 둘째는 리버스 프록시가 인증을 가로채지 않고 **중앙 인증 서버(OP)만 자기 쿠키를 갖고 각 앱(RP)이 자기만의 세션을 따로 만드는 OIDC 방식**이다. 두 구조는 **로그아웃했을 때 남는 세션 범위**가 완전히 다르다.
 :::
 
 :::terms
-- Host-only 쿠키: `Domain` 속성을 생략해 발급한 쿠키로, 오직 쿠키를 설정한 정확한 호스트에만 전송된다.
-- OP (OpenID Provider): 중앙에서 사용자를 인증하고 로그인 상태와 인증 결과를 발급하는 서버.
-- RP (Relying Party): 중앙 OP의 인증 결과를 검증해 받아들이고, 자기 서비스 세션을 관리하는 개별 앱.
+- Host-only 쿠키: 서버가 `Set-Cookie` 응답을 보낼 때 `Domain` 속성을 생략해 발급한 쿠키. 브라우저는 이 쿠키를 **발급해 준 정확한 호스트(예: `auth.example.com`)에만** 다시 전송하고, `reports.example.com` 같은 다른 하위 도메인에는 보내지 않는다.
+- OP (OpenID Provider): OIDC 표준에서 중앙 로그인 서버를 부르는 말. 사용자 비밀번호를 확인해 로그인 세션을 들고 있고, 앱들에게 "이 사람 로그인했음"이라는 인증 결과를 발급한다. (예: OIDC 공급자로 동작하는 tinyauth, Google 로그인의 Google)
+- RP (Relying Party): OIDC 표준에서 개별 서비스 앱(`reports`, `dash`)을 부르는 말. 로그인을 직접 처리하지 않고 OP의 인증 결과를 검증·신뢰(Rely)한 뒤, 자기 앱 전용 세션을 따로 발급해 관리한다.
 :::
+
+## Traefik과 tinyauth는 어디로 갔을까?
+
+0057~0058에서는 Traefik(리버스 프록시)이 모든 요청을 가로채 tinyauth에 물어봤는데, 왜 이번 레슨에는 **OP**와 **RP**가 새로 등장할까? **리버스 프록시가 사라진 것이 아니라, SSO를 구현하는 두 번째 아키텍처(OIDC)가 추가되었기 때문**이다.
 
 :::compare SSO를 만드는 두 가지 방식
-### 1. 상위 도메인 쿠키 공유
+### 1. 상위 도메인 쿠키 공유 (Traefik + tinyauth ForwardAuth 방식)
 
-`auth.example.com`에서 중앙 인증 쿠키를 `Domain=example.com`, `Path=/`로 발급한다. HTTPS 등 전송 조건이 맞으면 브라우저는 `reports.example.com`과 `dash.example.com`에 접속할 때도 같은 쿠키를 자동으로 보낸다. 두 앱 앞단의 프록시가 그 쿠키를 같은 인증 서버에 넘겨 판정받는 구조다. ([RFC 6265 쿠키 Domain 규칙](https://www.rfc-editor.org/rfc/rfc6265.html#section-4.1.2.3))
+0057~0058에서 다룬 구조 그대로다. `auth.example.com`(tinyauth)이 중앙 인증 쿠키를 `Domain=example.com`, `Path=/`로 발급한다. `Domain`을 상위 도메인으로 열어 두었기 때문에, 브라우저는 `reports.example.com`과 `dash.example.com`에 접속할 때도 같은 쿠키를 자동으로 실어 보낸다. 그러면 두 앱 앞단에 서 있는 **Traefik(리버스 프록시)**이 그 쿠키를 tinyauth에 넘겨 판정받는다. ([RFC 6265 쿠키 Domain 규칙](https://www.rfc-editor.org/rfc/rfc6265.html#section-4.1.2.3))
 
-### 2. 중앙 host-only 쿠키 + 앱별 독립 세션
+### 2. 중앙 host-only 쿠키 + 앱별 독립 세션 (OIDC 방식)
 
-중앙 OP가 `Domain`을 생략하면 중앙 쿠키는 `auth.example.com`에만 전송된다. 대신 `reports`와 `dash`는 각각 RP로서 자기 호스트 전용 앱 세션을 갖는다. 처음 `dash`를 열면 브라우저가 중앙 OP로 이동하는데, OP에 이미 유효한 중앙 세션이 있으므로 비밀번호를 다시 묻지 않고 통과시켜 `dash`가 자기 세션을 만들 수 있게 해 준다. ([OIDC Core 인증 흐름](https://openid.net/specs/openid-connect-core-1_0.html#Authenticates))
+여기서는 리버스 프록시가 인증 판정(ForwardAuth)을 대신하지 않고 단순 네트워크 라우팅만 담당하거나 생략된다. 대신 중앙 인증 서버가 **OP(`auth.example.com`)**, 각 앱이 **RP(`reports`, `dash`)** 역할을 맡는다. OP가 `Domain` 속성을 생략해 **host-only 쿠키**를 발급하므로, OP의 쿠키는 `auth.example.com`에만 전송되고 `reports`나 `dash`로는 넘어가지 않는다. 대신 `reports`와 `dash`는 각자 자기 호스트 전용 앱 세션을 따로 만든다. 처음 `dash`를 열면 브라우저가 OP로 이동하는데, OP에 이미 유효한 중앙 세션이 있으므로 비밀번호를 다시 묻지 않고 통과시켜 `dash`가 자기 세션을 만들 수 있게 해 준다. ([OIDC Core 인증 흐름](https://openid.net/specs/openid-connect-core-1_0.html#Authenticates))
 :::
+
+## 두 방식의 공통점, 차이점, 장단점
+
+### 공통점
+- 두 방식 모두 사용자는 중앙 로그인 페이지(`auth.example.com`)에서 **한 번만 로그인**하면 `reports`와 `dash`를 비밀번호 재입력 없이 이용할 수 있다.
+- 실제 비밀번호 검증과 중앙 로그인 상태 관리는 모두 중앙 인증 서버가 맡는다.
+
+### 차이점과 장단점
+
+| 비교 항목 | 방식 1 · 상위 도메인 쿠키 공유 (ForwardAuth) | 방식 2 · 중앙 host-only 쿠키 + 앱별 세션 (OIDC) |
+|---|---|---|
+| 인증 확인 주체 | 앞단 프록시(Traefik)가 매 요청마다 인증 서버에 확인 후 `Remote-*` 헤더 전달 | 각 앱(RP)이 OIDC로 최초 인증 결과를 검증한 뒤 자체 세션으로 처리 |
+| 쿠키 전송 범위 | `Domain=example.com`으로 모든 하위 도메인에 공유 | OP 쿠키는 `auth.example.com`에만, 각 앱은 자기 호스트 전용 세션 쿠키 사용 |
+| 도메인 제약 | 같은 상위 도메인(`*.example.com`) 아래에서만 동작 | 서로 다른 도메인(`a.com`, `b.org`) 간에도 SSO 가능 |
+| 장점 | 인증 기능이 없는 앱도 코드 수정 없이 빠르게 보호 가능. 중앙 세션을 끊으면 모든 앱 접근이 즉시 차단됨 | 표준 프로토콜(OIDC)로 외부 서비스 연동이 쉽고, 매 요청마다 중앙 인증 서버를 거치지 않아도 됨 |
+| 단점 | 매 요청마다 인증 서브요청 비용이 들며, `Remote-*` 헤더 신뢰 경계 관리가 필수 | 각 앱이 OIDC 연동을 구현해야 하며, 별도 전파 없이는 중앙 로그아웃이 개별 앱 세션을 즉시 끊지 못함 |
 
 :::iframe
 [중앙 cookie를 써서 두 번째 앱의 세션을 만드는 흐름](../figures/0059-central-sso-visit.html)
