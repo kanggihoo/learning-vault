@@ -35,8 +35,7 @@ def main():
     for d in COPY:
         if os.path.isdir(d):
             shutil.copytree(d, f"{OUT}/{d}", ignore=shutil.ignore_patterns(".hyperframes"))
-    for f in ("style.css", "app.js"):
-        shutil.copy(f"site/{f}", OUT)
+    for f in os.listdir("site"):\n        if f != "index.template.html":\n            shutil.copy(f"site/{f}", OUT)
     page = open("site/index.template.html", encoding="utf-8").read()
     body = "".join(section(d, label) for d, label in SECTIONS)
     open(f"{OUT}/index.html", "w", encoding="utf-8").write(page.replace("{{SECTIONS}}", body))

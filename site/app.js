@@ -6,3 +6,5 @@ q.addEventListener('input', () => {
   document.querySelectorAll('section').forEach(sec =>
     sec.classList.toggle('hidden', !sec.querySelector('li:not(.hidden)')));
 });
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
